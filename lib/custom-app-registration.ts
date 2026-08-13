@@ -1,6 +1,6 @@
-import { getNowMs } from "./virtual-time";
 "use client";
 
+import { getNowMs } from "./virtual-time";
 import type { InstalledCustomApp } from "./custom-app-types";
 import type { BindingSlot, PresetConfig, Prompt, RegexConfig, WorldBookConfig } from "./settings-types";
 import { mergeCustomAppResourceTags } from "./custom-app-tags";
