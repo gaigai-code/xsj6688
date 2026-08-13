@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react";
 import { findCustomStickerByName, resolveCustomStickerUrl } from "@/lib/custom-sticker-storage";
@@ -1672,7 +1673,7 @@ export function MediaDetailModal({ msg, userName, groupSize, onAccept, onClose }
         const updatedData = {
             ...d,
             status: "paid" as const,
-            paymentResolvedAt: new Date().toISOString(),
+            paymentResolvedAt: getNow().toISOString(),
             paymentPayerName: userName,
             paymentWalletTransactionId: result.transaction.id,
         };
@@ -1684,7 +1685,7 @@ export function MediaDetailModal({ msg, userName, groupSize, onAccept, onClose }
         const updatedData = {
             ...d,
             status: "declined" as const,
-            paymentResolvedAt: new Date().toISOString(),
+            paymentResolvedAt: getNow().toISOString(),
             paymentPayerName: userName,
         };
         updateMessageMediaData(msg.id, updatedData);

@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 import { useState, useMemo, useEffect } from "react";
 import { ArrowLeft, ChevronDown, MoreHorizontal, Plus, Play, Trash2 } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
@@ -179,7 +180,7 @@ export default function MapLobby({ onClose, onStartGame }: Props) {
     if (!apiConfig?.apiKey) { setError("未找到有效的API配置，请先在设置中配置API"); return; }
 
     // 1. Create placeholder world immediately
-    const now = new Date().toISOString();
+    const now = getNow().toISOString();
     const worldId = generateWorldId();
     const placeholder: MapWorld = {
       id: worldId,
@@ -219,7 +220,7 @@ export default function MapLobby({ onClose, onStartGame }: Props) {
         skeleton,
         renderedMap,
         createdAt: now,
-        updatedAt: new Date().toISOString(),
+        updatedAt: getNow().toISOString(),
       };
       saveMapWorld(world);
 
@@ -244,7 +245,7 @@ export default function MapLobby({ onClose, onStartGame }: Props) {
       // Mark as failed + surface reason and raw LLM output in a dialog.
       const reason = e instanceof Error ? e.message : String(e);
       const raw = (e as { rawOutput?: string })?.rawOutput || "";
-      const failed: MapWorld = { ...placeholder, status: "failed", statusMessage: reason, failureRaw: raw, updatedAt: new Date().toISOString() };
+      const failed: MapWorld = { ...placeholder, status: "failed", statusMessage: reason, failureRaw: raw, updatedAt: getNow().toISOString() };
       saveMapWorld(failed);
       setWorlds(loadMapWorlds());
       setGenError({ reason, raw });

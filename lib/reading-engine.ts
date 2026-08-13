@@ -1,3 +1,4 @@
+import { getNow } from "@/lib/virtual-time";
 // lib/reading-engine.ts — LLM integration for Reading feature.
 // All prompts go through the preset system via assemblePromptPayload. No extra message push.
 
@@ -332,7 +333,7 @@ export async function generateAnnotationBatch(
                 characterId,
                 characterName: character.name,
                 content,
-                createdAt: new Date().toISOString(),
+                createdAt: getNow().toISOString(),
             });
         }
     }

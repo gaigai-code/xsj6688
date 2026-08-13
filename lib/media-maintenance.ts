@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { chatDb } from "./chat-db";
 import { updateChatMessage, type ChatMessage } from "./chat-storage";
@@ -377,7 +378,7 @@ async function compressThemeAssetById(assetId: string): Promise<{ changed: boole
     ...record,
     dataUrl: nextDataUrl,
     mimeType: compressed.type || record.mimeType,
-    updatedAt: new Date().toISOString(),
+    updatedAt: getNow().toISOString(),
   }]);
   return {
     changed: true,
@@ -755,11 +756,11 @@ export function formatMediaMaintenanceResult(result: MediaMaintenanceResult): st
 }
 
 export async function runMediaMaintenance(options: { force?: boolean; auto?: boolean } = {}): Promise<MediaMaintenanceResult> {
-  if (!hasBrowserApi()) return createEmptyResult(new Date().toISOString());
+  if (!hasBrowserApi()) return createEmptyResult(getNow().toISOString());
   if (activeRun) return activeRun;
 
   activeRun = (async () => {
-    const startedAt = new Date().toISOString();
+    const startedAt = getNow().toISOString();
     const nowMs = Date.now();
     const result = createEmptyResult(startedAt);
     try {
@@ -770,13 +771,13 @@ export async function runMediaMaintenance(options: { force?: boolean; auto?: boo
       const orphan = await cleanupOrphanThemeAssets();
       result.deletedAssets = orphan.deletedAssets;
       result.freedBytes += orphan.freedBytes;
-      result.finishedAt = new Date().toISOString();
+      result.finishedAt = getNow().toISOString();
 
       const previous = loadMediaMaintenanceState();
       saveMediaMaintenanceState({
         ...previous,
-        lastRunAt: result.finishedAt,
-        ...(options.auto ? { lastAutoRunAt: result.finishedAt } : {}),
+        lastRunAt: new Date().toISOString(),
+        ...(options.auto ? { lastAutoRunAt: new Date().toISOString() } : {}),
         lastResult: result,
         lastError: undefined,
       });

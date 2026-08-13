@@ -1,3 +1,4 @@
+import { getNow } from "./virtual-time";
 // lib/chat-storage.ts
 
 import {
@@ -720,7 +721,7 @@ function restoreContactsForPrivateSessions(contacts: ChatContact[], sessions: Ch
         restored.push({
             id: `contact_recovered_${safeId}`,
             characterId: session.contactId,
-            addedAt: session.updatedAt || new Date().toISOString(),
+            addedAt: session.updatedAt || getNow().toISOString(),
         });
         contactIds.add(session.contactId);
         changed = true;
@@ -988,7 +989,7 @@ export function addChatContact(characterId: string): ChatContact | null {
     const newContact: ChatContact = {
         id: `contact_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         characterId,
-        addedAt: new Date().toISOString()
+        addedAt: getNow().toISOString()
     };
     saveChatContacts([...contacts, newContact]);
     return newContact;
@@ -1035,7 +1036,7 @@ export function createOrGetSession(contactId: string): ChatSession {
         id: `sess_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         contactId,
         unreadCount: 0,
-        updatedAt: new Date().toISOString(),
+        updatedAt: getNow().toISOString(),
         isPinned: false,
         bilingualTranslationEnabled: true,
         collapseBilingualTranslation: true,
@@ -1052,7 +1053,7 @@ export function createGroupSession(groupName: string, participantIds: string[], 
         id: `sess_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         contactId: `group_${Date.now()}`, // synthetic contactId for group
         unreadCount: 0,
-        updatedAt: new Date().toISOString(),
+        updatedAt: getNow().toISOString(),
         isPinned: false,
         bilingualTranslationEnabled: true,
         collapseBilingualTranslation: true,
@@ -1103,7 +1104,7 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
     let newMsg: ChatMessage = {
         ...msg,
         id: createMessageId(),
-        createdAt: new Date().toISOString(),
+        createdAt: getNow().toISOString(),
         order: getNextMessageOrder(msg.sessionId),
         status: msg.status || "sent"
     };
@@ -1145,7 +1146,7 @@ export function upsertImportedChatMessage(msg: ChatMessage): { message: ChatMess
     const newMsg: ChatMessage = {
         ...msg,
         status: msg.status || "sent",
-        createdAt: msg.createdAt || new Date().toISOString(),
+        createdAt: msg.createdAt || getNow().toISOString(),
         order: typeof msg.order === "number" ? msg.order : getNextMessageOrder(msg.sessionId),
     };
 

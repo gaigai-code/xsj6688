@@ -1,3 +1,4 @@
+import { getNow } from "@/lib/virtual-time";
 import { previewMessagesForApi, sendLLMRequest } from "./chat-engine";
 import { loadApiConfigs, loadBindingConfig } from "./settings-storage";
 import type { CheckPhoneShoppingProduct, CheckPhoneShoppingTone } from "./checkphone-config";
@@ -359,7 +360,7 @@ export async function generateShoppingSearchResults(query: string, searchPrompt:
       result: {
         query: normalizedQuery,
         items,
-        generatedAt: new Date().toISOString(),
+        generatedAt: getNow().toISOString(),
       },
       rawOutput,
     };

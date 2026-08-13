@@ -196,7 +196,7 @@ export function CheckPhoneDoubanPage({ character, onBack }: CheckPhoneDoubanPage
       snapshot?.updatedAt,
     );
     if (payload) {
-      const now = new Date().toISOString();
+      const now = getNow().toISOString();
       const nextSnapshot: CheckPhoneSnapshot<CheckPhoneDoubanPayload> = {
         id: `${character.id}:douban`,
         characterId: character.id,

@@ -1,3 +1,4 @@
+import { getNow } from "@/lib/virtual-time";
 import { reindexCoCreateChapters } from "./cocreate-storage";
 import type { LlmToolCall, LlmToolDefinition } from "./llm-provider-adapter";
 import type {
@@ -175,7 +176,7 @@ export function coCreateNativeToolCallToTextCall(call: LlmToolCall): CoCreateToo
 // ─────────────────────────────────────────────────────────────────────────────
 
 function nowIso(): string {
-  return new Date().toISOString();
+  return getNow().toISOString();
 }
 
 function createId(prefix: string): string {

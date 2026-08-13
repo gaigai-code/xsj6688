@@ -304,7 +304,7 @@ export function CheckPhoneYoutubePage({ character, onBack }: CheckPhoneYoutubePa
       debugNormalizeError: nextDebugNormalizeError,
     } = await generateCheckPhoneYoutube(character.id, snapshot?.payload ?? null, snapshot?.updatedAt);
     if (payload) {
-      const now = new Date().toISOString();
+      const now = getNow().toISOString();
       const nextSnapshot: CheckPhoneSnapshot<CheckPhoneYoutubePayload> = {
         id: `${character.id}:youtube`,
         characterId: character.id,

@@ -1,3 +1,4 @@
+import { getNow } from "@/lib/virtual-time";
 import { bgSetInterval } from "./bg-timer";
 import { loadCharacters } from "./character-storage";
 import type { Character } from "./character-types";
@@ -76,7 +77,7 @@ export async function runDiaryEntryTimerCheck(): Promise<void> {
 
   running = true;
   const attemptedIds = dueTargets.map(character => character.id);
-  const stamp = new Date().toISOString();
+  const stamp = getNow().toISOString();
   let createdCount = 0;
   const createdNames: string[] = [];
   const failedNames: string[] = [];

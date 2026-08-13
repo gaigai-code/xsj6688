@@ -1,3 +1,4 @@
+import { getNow } from "./virtual-time";
 // lib/memory-summarizer.ts
 // Auto-summarization engine: summarizes short-term events into long-term memories.
 // Trigger: every N events (configurable). Short-term events are NOT deleted after summarization.
@@ -140,7 +141,7 @@ export async function runSummarizationPipeline(
     ));
 
     // Save as long-term memory
-    const now = new Date().toISOString();
+    const now = getNow().toISOString();
     const longTermEntry: MemoryEntry = {
         id: `mem_lt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         characterId,

@@ -1,3 +1,4 @@
+import { getNow } from "@/lib/virtual-time";
 import Dexie from "dexie";
 import { CHECKPHONE_APP_SPECS, type CheckPhoneAppId, type CheckPhoneManifest, type CheckPhoneSnapshot } from "./checkphone-config";
 import { kvGet, kvRemove, kvSet, registerDynamicPrefix } from "./kv-db";
@@ -86,7 +87,7 @@ function recordCheckPhoneSnapshotEvent(snapshot: CheckPhoneSnapshot): void {
   const spec = CHECKPHONE_APP_SPECS[snapshot.appId];
   if (!spec) return;
 
-  const timestamp = snapshot.updatedAt || snapshot.generatedAt || new Date().toISOString();
+  const timestamp = snapshot.updatedAt || snapshot.generatedAt || getNow().toISOString();
   const formattedTime = formatPromptTimestamp(timestamp);
   const label = cleanEventText(spec.shortLabel || spec.label, 40) || snapshot.appId;
   const entry: CheckPhoneProjectionEntry = {

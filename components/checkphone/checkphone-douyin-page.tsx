@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import {
   useEffect,
@@ -240,7 +241,7 @@ export function CheckPhoneDouyinPage({
       previousSnapshot?.updatedAt,
     );
     if (payload) {
-      const now = new Date().toISOString();
+      const now = getNow().toISOString();
       const nextSnapshot: CheckPhoneSnapshot<CheckPhoneDouyinPayload> = {
         id: `${character.id}:douyin`,
         characterId: character.id,

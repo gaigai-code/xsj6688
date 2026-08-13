@@ -40,7 +40,7 @@ type CalendarAssemblerResolved = {
 };
 
 function buildSyntheticUserCharacter(identity: UserIdentity | null): Character {
-  const now = new Date().toISOString();
+  const now = getNow().toISOString();
   const personaLines = [
     identity?.bio?.trim(),
     identity?.occupation ? `职业：${identity.occupation}` : "",

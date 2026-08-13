@@ -1,3 +1,4 @@
+import { getNow } from "@/lib/virtual-time";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import type {
   CoCreateCastMember,
@@ -70,7 +71,7 @@ function normalizeSettings(value: unknown): CoCreateSettings {
 }
 
 function nowIso(): string {
-  return new Date().toISOString();
+  return getNow().toISOString();
 }
 
 function createId(prefix: string): string {

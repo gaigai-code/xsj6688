@@ -1,3 +1,4 @@
+import { getNow } from "./virtual-time";
 import { loadShoppingState, saveShoppingState } from "./shopping-storage";
 import type { ShoppingOrder, ShoppingShippingEvent, ShoppingState } from "./shopping-types";
 
@@ -163,7 +164,7 @@ export function settleShoppingPaymentRequest(input: {
   if (!input.orderId && !input.requestId) return null;
   const state = loadShoppingState();
   let updatedOrder: ShoppingOrder | null = null;
-  const now = new Date();
+  const now = getNow();
   const nextOrders = state.orders.map(order => {
     const matches = (input.orderId && order.id === input.orderId)
       || (input.requestId && order.paymentRequestId === input.requestId);

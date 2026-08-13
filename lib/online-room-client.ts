@@ -1,3 +1,4 @@
+import { getNowMs } from "./virtual-time";
 // 联机房间客户端：房间元数据走自己的服务端路由（登录/封禁/准入校验），
 // 房内消息走浏览器直连 Supabase Realtime（broadcast + presence，不落库）。
 // 自定义 APP 桥与游戏大厅桥共用这一份实现。
@@ -177,7 +178,7 @@ export class OnlineRoomConnection {
               userId: account.id,
               name: account.displayName || account.username,
               isHost: info.isHost,
-              joinedAt: Date.now(),
+              joinedAt: getNowMs(),
             });
             resolve();
           } catch (trackErr) {

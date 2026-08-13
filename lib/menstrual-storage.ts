@@ -1,3 +1,4 @@
+import { getNow } from "@/lib/virtual-time";
 import { formatIsoDate, parseIsoDate } from "./calendar-utils";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 
@@ -224,7 +225,7 @@ export function finishCurrentPeriod(dateText = formatIsoDate(new Date())): {
   if (!current.currentPeriodStartDate || current.currentPeriodStartDate > dateText) {
     return { config: current, records: loadMenstrualRecords(), saved: false };
   }
-  const now = new Date().toISOString();
+  const now = getNow().toISOString();
   const records = loadMenstrualRecords();
   const nextRecords = saveMenstrualRecords([
     {
@@ -298,7 +299,7 @@ export function saveMenstrualPeriodCareTrigger(input: {
     characterId: input.characterId,
     sessionId: input.sessionId,
     cycleKey: input.cycleKey,
-    triggeredAt: new Date().toISOString(),
+    triggeredAt: getNow().toISOString(),
   };
   if (typeof window !== "undefined") {
     kvSet(MENSTRUAL_PERIOD_CARE_TRIGGERS_KEY, JSON.stringify([trigger, ...loadMenstrualPeriodCareTriggers()]));

@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -211,7 +212,7 @@ export function VnPlayer({ characterId, chapterIndex, onClose, onChapterEnd, vnT
       const audio: VnFrameAudio = {
         audioDataUrl,
         synthesizedFromText: speechText,
-        updatedAt: new Date().toISOString(),
+        updatedAt: getNow().toISOString(),
       };
       updateVnMessageFrameAudio(messageId, frameIndex, audio);
       applyFrameAudioToState(messageId, frameIndex, audio);

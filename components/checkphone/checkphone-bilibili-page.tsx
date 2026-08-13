@@ -147,7 +147,7 @@ export function CheckPhoneBilibiliPage({ character, onBack }: CheckPhoneBilibili
       debugNormalizeError: nextDebugNormalizeError,
     } = await generateCheckPhoneBilibili(character.id, snapshot?.payload ?? null, snapshot?.updatedAt);
     if (payload) {
-      const now = new Date().toISOString();
+      const now = getNow().toISOString();
       const nextSnapshot: CheckPhoneSnapshot<CheckPhoneBilibiliPayload> = {
         id: `${character.id}:bilibili`,
         characterId: character.id,

@@ -1,3 +1,4 @@
+import { getNow } from "./virtual-time";
 // lib/moments-storage.ts
 // KV-DB persistence for Moments (朋友圈) feature.
 
@@ -109,7 +110,7 @@ export function addMomentPost(post: Omit<MomentPost, "id" | "likes" | "createdAt
         ...post,
         id: generateId("moment"),
         likes: [],
-        createdAt: new Date().toISOString(),
+        createdAt: getNow().toISOString(),
     };
     _postsCache = [newPost, ...loadMomentPosts()]; // newest first
     dbPutPost(newPost);
@@ -152,7 +153,7 @@ export function addMomentComment(comment: Omit<MomentComment, "id" | "createdAt"
     const newComment: MomentComment = {
         ...comment,
         id: generateId("mc"),
-        createdAt: comment.createdAt ?? new Date().toISOString(),
+        createdAt: comment.createdAt ?? getNow().toISOString(),
     };
     _commentsCache = [...loadAllMomentComments(), newComment];
     dbPutComment(newComment);
@@ -225,7 +226,7 @@ export function toggleMomentLike(
         post.likes.push({
             authorType,
             authorId,
-            createdAt: new Date().toISOString(),
+            createdAt: getNow().toISOString(),
         });
         dbPutPost(post);
         return true; // liked

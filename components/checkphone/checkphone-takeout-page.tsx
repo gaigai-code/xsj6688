@@ -123,7 +123,7 @@ export function CheckPhoneTakeoutPage({ character, onBack }: CheckPhoneTakeoutPa
       debugNormalizeError: nextDebugNormalizeError,
     } = await generateCheckPhoneTakeout(character.id, snapshot?.payload ?? null, snapshot?.updatedAt);
     if (payload) {
-      const now = new Date().toISOString();
+      const now = getNow().toISOString();
       const nextSnapshot: CheckPhoneSnapshot<CheckPhoneTakeoutPayload> = {
         id: `${character.id}:takeout`,
         characterId: character.id,

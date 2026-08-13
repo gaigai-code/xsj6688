@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { useEffect, useMemo, useState } from "react";
 import { useCheckPhoneRefresh } from "@/lib/checkphone-refresh-tracker";
@@ -80,7 +81,7 @@ export function CheckPhonePhotosPage({ character, onBack }: CheckPhonePhotosPage
       snapshot?.updatedAt,
     );
     if (payload) {
-      const now = new Date().toISOString();
+      const now = getNow().toISOString();
       const nextSnapshot: CheckPhoneSnapshot<CheckPhonePhotosPayload> = {
         id: `${character.id}:photos`,
         characterId: character.id,

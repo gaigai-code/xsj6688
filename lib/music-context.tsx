@@ -1,5 +1,6 @@
 // lib/music-context.tsx — Global music playback state & <audio> management
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { createContext, useContext, useState, useRef, useCallback, useEffect, useMemo, type ReactNode } from "react";
 import type { MusicTrack } from "./music-storage";
@@ -207,7 +208,7 @@ export function MusicProvider({ children }: { children: ReactNode }) {
             const url = URL.createObjectURL(blob);
             blobUrlRef.current = url;
             audio.src = url;
-            const playedAt = new Date().toISOString();
+            const playedAt = getNow().toISOString();
             void markTrackPlayed(track.id, playedAt).catch(() => undefined);
             track = { ...track, lastPlayedAt: playedAt };
         }
@@ -380,7 +381,7 @@ export function MusicProvider({ children }: { children: ReactNode }) {
                 coverUrl: detail?.coverUrl || r.coverUrl,
                 lyrics,
                 liked: false,
-                addedAt: new Date().toISOString(),
+                addedAt: getNow().toISOString(),
             };
             setFloatDismissed(false);
             setQueueRaw(prev => prev.some(item => item.id === track.id) ? prev : [track, ...prev]);

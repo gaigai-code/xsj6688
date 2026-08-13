@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useCheckPhoneRefresh } from "@/lib/checkphone-refresh-tracker";
@@ -312,7 +313,7 @@ export function CheckPhoneMusicPage({ character, onBack }: CheckPhoneMusicPagePr
       snapshot?.updatedAt,
     );
     if (payload) {
-      const now = new Date().toISOString();
+      const now = getNow().toISOString();
       const nextSnapshot: CheckPhoneSnapshot<CheckPhoneMusicPayload> = {
         id: `${character.id}:music`,
         characterId: character.id,

@@ -1,3 +1,4 @@
+import { getNow } from "./virtual-time";
 import { loadCharacters } from "./character-storage";
 import {
   loadBindingConfig,
@@ -199,7 +200,7 @@ async function buildStoryPromptMessages(
     retrieveCoreMemoriesForPrompt(characterId, memConfig).catch(() => null),
   ]);
 
-  const now = new Date();
+  const now = getNow();
 
   return assemblePromptPayload({
     character,

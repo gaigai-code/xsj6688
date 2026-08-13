@@ -1,3 +1,4 @@
+import { getNowMs } from "./virtual-time";
 import { callQaAgent, compactQaContext, formatQaErrorMessage, type QaContextEntry } from "./qa-agent-engine";
 import { QA_TOOLS, formatQaToolSubtitle, type QaCreatedContent, type QaProposedCommit } from "./qa-agent-tools";
 import { loadQaGithubConfig } from "./qa-github";
@@ -331,8 +332,8 @@ export function createQaSession(): string {
     const session: QaSession = {
         id: makeId(),
         title: "新对话",
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
+        createdAt: getNowMs(),
+        updatedAt: getNowMs(),
         messages: [],
     };
     sessions = [session, ...sessions].slice(0, MAX_SESSIONS);
@@ -392,13 +393,13 @@ export async function sendQaMessage(
         await compactSessionContext(sessionId);
     }
 
-    const userMsg: QaMsg = { id: makeId(), role: "user", content: trimmed, images: images?.length ? images : undefined, ts: Date.now() };
-    const assistantMsg: QaMsg = { id: makeId(), role: "assistant", content: "", ts: Date.now() };
+    const userMsg: QaMsg = { id: makeId(), role: "user", content: trimmed, images: images?.length ? images : undefined, ts: getNowMs() };
+    const assistantMsg: QaMsg = { id: makeId(), role: "assistant", content: "", ts: getNowMs() };
 
     updateSession(sessionId, (s) => ({
         ...s,
         title: s.messages.length === 0 ? autoTitle(trimmed || "（图片）") : s.title,
-        updatedAt: Date.now(),
+        updatedAt: getNowMs(),
         messages: [...s.messages, ...(options?.silentUser ? [] : [userMsg]), assistantMsg].slice(-MAX_MESSAGES_PER_SESSION),
         context: [...sessionContext(s), { role: "user", content: trimmed || "（用户发来图片）", images: images?.length ? images : undefined, turn: assistantMsg.id }],
     }));
@@ -425,7 +426,7 @@ export async function sendQaMessage(
             sessionId,
             (s) => ({
                 ...s,
-                updatedAt: Date.now(),
+                updatedAt: getNowMs(),
                 messages: s.messages.map((m) => (m.id === assistantMsg.id ? { ...m, ...patch } : m)),
             }),
             { persist: options?.persist !== false },

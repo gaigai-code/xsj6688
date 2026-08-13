@@ -1,3 +1,4 @@
+import { getNowMs } from "./virtual-time";
 "use client";
 
 import type { InstalledCustomApp } from "./custom-app-types";
@@ -203,7 +204,7 @@ function attachPromptEntriesToBuiltInPreset(app: InstalledCustomApp, prompts: Pr
     ...builtIn,
     prompts: [...existingPrompts, ...prompts],
     prompt_order: promptOrder,
-    updatedAt: Date.now(),
+    updatedAt: getNowMs(),
   };
   savePresets(presets.map(item => item.id === builtIn.id ? nextBuiltIn : item));
   window.dispatchEvent(new CustomEvent("settings-presets-updated"));
@@ -221,7 +222,7 @@ function removeAttachedPromptEntries(appId: string): number {
     const nextOrder = (preset.prompt_order ?? []).filter(entry => !entry.identifier.startsWith(prefix));
     return nextPrompts.length === prompts.length && nextOrder.length === (preset.prompt_order ?? []).length
       ? preset
-      : { ...preset, prompts: nextPrompts, prompt_order: nextOrder, updatedAt: Date.now() };
+      : { ...preset, prompts: nextPrompts, prompt_order: nextOrder, updatedAt: getNowMs() };
   });
   if (removed > 0) {
     savePresets(nextPresets);

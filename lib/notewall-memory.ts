@@ -1,3 +1,4 @@
+import { getNow } from "@/lib/virtual-time";
 import { kvGet, kvKeysWithPrefix, kvSet, registerDynamicPrefix } from "./kv-db";
 import { formatChatTimestamp } from "./llm-prompt-assembler";
 import type { NoteWallComment, NoteWallNote } from "./notewall-types";
@@ -88,7 +89,7 @@ function formatByline(authorName: string, isAnonymous: boolean): string {
 }
 
 export function recordNoteWallNoteEvent(input: RecordNoteWallNoteEventInput): void {
-  const timestamp = input.note.createdAt || new Date().toISOString();
+  const timestamp = input.note.createdAt || getNow().toISOString();
   const time = formatChatTimestamp(timestamp);
   const characterName = cleanEventText(input.characterName, 80) || "角色";
   const byline = formatByline(input.note.authorName, input.note.isAnonymous);
@@ -104,7 +105,7 @@ export function recordNoteWallNoteEvent(input: RecordNoteWallNoteEventInput): vo
 }
 
 export function recordNoteWallCommentEvent(input: RecordNoteWallCommentEventInput): void {
-  const timestamp = input.comment.createdAt || new Date().toISOString();
+  const timestamp = input.comment.createdAt || getNow().toISOString();
   const time = formatChatTimestamp(timestamp);
   const characterName = cleanEventText(input.characterName, 80) || "角色";
   const byline = formatByline(input.comment.authorName, input.comment.isAnonymous);

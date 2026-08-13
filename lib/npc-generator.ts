@@ -1,3 +1,4 @@
+import { getNow } from "@/lib/virtual-time";
 // lib/npc-generator.ts
 // 「生成配角」：为指定角色 AI 生成一批同世界观的配角（数量用户可选），
 // 每个产出完整角色卡（与主角同规格）+ 简量人设 + 双向关系标签。
@@ -281,7 +282,7 @@ export function materializeSupportingCharacter(
 ): Character {
     const characters = loadCharacters();
     const target = characters.find(c => c.id === targetCharacterId);
-    const now = new Date().toISOString();
+    const now = getNow().toISOString();
     const index = options.placementIndex ?? 0;
 
     const newChar = createCharacter({

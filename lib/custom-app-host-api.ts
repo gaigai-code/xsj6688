@@ -1,4 +1,5 @@
 "use client";
+import { getNow, getNowMs } from "@/lib/virtual-time";
 
 import type { CustomAppPermission, CustomAppPromptProfile, InstalledCustomApp } from "./custom-app-types";
 import {
@@ -220,7 +221,7 @@ function uniqueStrings(values: string[]): string[] {
 }
 
 function nowIso(): string {
-  return new Date().toISOString();
+  return getNow().toISOString();
 }
 
 function parseJsonArray<T>(key: string): T[] {
@@ -594,7 +595,7 @@ function createCustomAppGeneratedContextMessage(
     sessionId,
     content: "",
     status: "sent",
-    createdAt: new Date().toISOString(),
+    createdAt: getNow().toISOString(),
     origin: "custom_app",
     ...patch,
   };
@@ -865,7 +866,7 @@ function parseRunAt(value: unknown, delayMs?: unknown): string {
     return new Date(Date.now() + Math.min(delayNumber, 1000 * 60 * 60 * 24 * 30)).toISOString();
   }
   const date = new Date(String(value ?? ""));
-  return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+  return Number.isNaN(date.getTime()) ? getNow().toISOString() : date.toISOString();
 }
 
 function loadJsonArray<T>(key: string): T[] {
@@ -931,7 +932,7 @@ export function createCustomAppNotification(
     title,
     body,
     data: asRecord(input.data),
-    createdAt: new Date().toISOString(),
+    createdAt: getNow().toISOString(),
   };
   saveNotifications([notification, ...loadCustomAppNotifications()]);
   const badgeDelta = input.badgeDelta === undefined && input.badge === undefined
@@ -944,7 +945,7 @@ export function createCustomAppNotification(
 }
 
 export function markCustomAppNotificationsRead(appId: string, id?: string): CustomAppNotification[] {
-  const now = new Date().toISOString();
+  const now = getNow().toISOString();
   const next = loadCustomAppNotifications().map(item => {
     if (item.appId !== appId) return item;
     if (id && item.id !== id) return item;
@@ -1165,7 +1166,7 @@ export async function cloneCustomAppVoice(app: InstalledCustomApp, record: Recor
   const clonedVoice = {
     id: voiceId,
     name: cleanText(record.name ?? record.label, 80) || voiceId,
-    createdAt: Date.now(),
+    createdAt: getNowMs(),
   };
   const configs = loadVoiceConfigs();
   const nextConfigs = configs.map(item => item.id === config.id
@@ -1568,7 +1569,7 @@ function taskActionList(actions: CustomAppHostAction | CustomAppHostAction[] | u
 }
 
 export function scheduleCustomAppTask(app: InstalledCustomApp, input: Record<string, unknown>): CustomAppScheduledTask {
-  const now = new Date().toISOString();
+  const now = getNow().toISOString();
   const rawAction = input.action ?? input.actions ?? (input.type ? input : undefined);
   const action = normalizeHostActions(rawAction, "action", true);
   const onSuccess = normalizeHostActions(input.onSuccess ?? input.successActions, "onSuccess");
@@ -1590,7 +1591,7 @@ export function scheduleCustomAppTask(app: InstalledCustomApp, input: Record<str
 
 export function cancelCustomAppTask(appId: string, taskId: string): boolean {
   let changed = false;
-  const now = new Date().toISOString();
+  const now = getNow().toISOString();
   const next = loadCustomAppTasks().map(task => {
     if (task.appId !== appId || task.id !== taskId || task.status !== "pending") return task;
     changed = true;
@@ -1909,7 +1910,7 @@ export async function generateCustomAppText(app: InstalledCustomApp, record: Rec
     role: "user",
     content: `[${app.name}] ${instruction}`,
     status: "sent",
-    createdAt: new Date().toISOString(),
+    createdAt: getNow().toISOString(),
   };
   const appProvidedHistory = normalizeCustomAppGenerateMessages(record, session.id);
   const existingHistory = appProvidedHistory ?? [];
@@ -2039,7 +2040,7 @@ export async function generateCustomAppGroupText(app: InstalledCustomApp, record
       id: `custom_app_group_${app.id}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
       contactId: `group_custom_app_${app.id}`,
       unreadCount: 0,
-      updatedAt: new Date().toISOString(),
+      updatedAt: getNow().toISOString(),
       isPinned: false,
       bilingualTranslationEnabled: false,
       isGroup: true,
@@ -2058,7 +2059,7 @@ export async function generateCustomAppGroupText(app: InstalledCustomApp, record
     role: "user",
     content: `[${app.name}] ${instruction}`,
     status: "sent",
-    createdAt: new Date().toISOString(),
+    createdAt: getNow().toISOString(),
   };
   const recentLimit = Math.max(1, Math.min(50, Number(record.historyLimit ?? 12) || 12));
   const appProvidedHistory = normalizeCustomAppGenerateMessages(record, session.id);
@@ -2173,7 +2174,7 @@ export async function addCustomAppMemory(app: InstalledCustomApp, record: Record
   const characterId = cleanText(record.characterId, 160);
   const content = cleanText(record.content, 3000);
   if (!characterId || !content) throw new Error("memory.add 需要 characterId 和 content。");
-  const now = new Date().toISOString();
+  const now = getNow().toISOString();
   const importance = Math.max(0, Math.min(1, Number(record.importance ?? 0.6) || 0.6));
   await saveMemoryEntry({
     id: `custom_app_${app.id}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
@@ -2379,7 +2380,7 @@ export async function runDueCustomAppTasks(onNotice?: HostNotice): Promise<numbe
   let executed = 0;
   for (const task of due) {
     const app = apps.get(task.appId);
-    const startedAt = new Date().toISOString();
+    const startedAt = getNow().toISOString();
     tasks = tasks.map(item => item.id === task.id && item.appId === task.appId
       ? { ...item, status: "running" as const, updatedAt: startedAt }
       : item);
@@ -2392,13 +2393,13 @@ export async function runDueCustomAppTasks(onNotice?: HostNotice): Promise<numbe
       for (const action of taskActionList(task.onSuccess)) {
         await executeCustomAppHostAction(app, action, onNotice);
       }
-      const finishedAt = new Date().toISOString();
+      const finishedAt = getNow().toISOString();
       tasks = loadCustomAppTasks().map(item => item.id === task.id && item.appId === task.appId
         ? { ...item, status: "done" as const, updatedAt: finishedAt, lastError: undefined }
         : item);
       executed += 1;
     } catch (err) {
-      const failedAt = new Date().toISOString();
+      const failedAt = getNow().toISOString();
       let message = err instanceof Error ? err.message : String(err);
       if (app) {
         try {

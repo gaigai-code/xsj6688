@@ -828,7 +828,7 @@ export async function characterReact(
     }
     historyContent += `\n\n请以你的身份：1)对当前情况说点什么 2)决定你要做什么（可以选选项、做别的事、或跟随{{user}}的选择）`;
 
-    const history = [{ id: "adv_scene", sessionId: "", role: "user" as const, content: historyContent, status: "sent" as const, createdAt: new Date().toISOString() }];
+    const history = [{ id: "adv_scene", sessionId: "", role: "user" as const, content: historyContent, status: "sent" as const, createdAt: getNow().toISOString() }];
 
     const llmMessages = assemblePromptPayload({
       character, history, preset, worldBooks, regexes, userIdentity, appId: "adventure",
@@ -1032,7 +1032,7 @@ async function buildCompanionDeclarePromptPayload(
   );
   const history = [
     ...pastHistory,
-    { id: "adv_declare", sessionId: "", role: "user" as const, content: historyContent, status: "sent" as const, createdAt: new Date().toISOString() },
+    { id: "adv_declare", sessionId: "", role: "user" as const, content: historyContent, status: "sent" as const, createdAt: getNow().toISOString() },
   ];
 
   const { recentBlocks, truncatedHistory, wbActivationContext, unifiedRecentItems } = prepareShortTermContext(
@@ -1441,7 +1441,7 @@ export function executeAgentAction(
   updated.journal = [...updated.journal, {
     id: `aj_${Date.now()}_${Math.random().toString(36).slice(2, 4)}`,
     timestamp: now,
-    realTime: new Date().toISOString(),
+    realTime: getNow().toISOString(),
     locationName: nodeName(updated.currentNodeId),
     text: `${journalText}${decision.reasoning ? `（${decision.reasoning}）` : ""}`,
     type: "discovery" as const,
@@ -1559,7 +1559,7 @@ export async function generateAdventureSummary(
   // Save (overwrite previous)
   saveAdventureSummary(save.worldId, {
     text: summary,
-    timestamp: new Date().toISOString(),
+    timestamp: getNow().toISOString(),
     journalCount: save.journal.length,
     userName: summaryUserName,
   });

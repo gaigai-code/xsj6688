@@ -489,7 +489,7 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
 
         setSavingMemory(true);
         try {
-            const now = new Date().toISOString();
+            const now = getNow().toISOString();
             const type = memoryEditor.type;
             const source = memoryEditor.entry;
             const contentChanged = !source || source.content.trim() !== content;

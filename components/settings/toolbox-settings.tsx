@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { useState, useEffect, useRef, useContext } from "react";
 import type { ChangeEvent } from "react";
@@ -200,7 +201,7 @@ export function ToolboxSettings() {
         persistInternal(internalCapabilities.map(item => item.id === id ? { ...item, ...updates, updatedAt: Date.now() } : item));
     }
     async function updateCustomAppToolEnabled(tool: CustomAppToolEntry, enabled: boolean) {
-        const now = new Date().toISOString();
+        const now = getNow().toISOString();
         const nextApps = loadInstalledCustomApps().map(app => {
             if (app.id !== tool.appId) return app;
             const updateTools = (tools: CustomAppToolDefinition[] | undefined) => (
@@ -228,7 +229,7 @@ export function ToolboxSettings() {
             ids.add(tool.id);
             toolIdsByApp.set(tool.appId, ids);
         }
-        const now = new Date().toISOString();
+        const now = getNow().toISOString();
         const nextApps = loadInstalledCustomApps().map(app => {
             const ids = toolIdsByApp.get(app.id);
             if (!ids) return app;
@@ -519,7 +520,7 @@ export function ToolboxSettings() {
         return {
             format: "ai-phone-toolbox",
             version: 1,
-            exportedAt: new Date().toISOString(),
+            exportedAt: getNow().toISOString(),
             restPackages: Array.from(restPackageIds).map(id => restPackageById.get(id)).filter(Boolean).map(item => cloneJson(item as RestToolPackageConfig)),
             restTools: Array.from(restToolIds).map(id => restToolById.get(id)).filter(Boolean).map(item => cloneJson(item as RestToolConfig)),
             compositePackages: Array.from(compositePackageIds).map(id => compositePackageById.get(id)).filter(Boolean).map(item => cloneJson(item as CompositeToolPackageConfig)),
@@ -541,7 +542,7 @@ export function ToolboxSettings() {
         }
         const exportData = buildExportFile(exportSelection);
         const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json;charset=utf-8" });
-        await downloadFile(blob, `ai-phone-tools-${new Date().toISOString().slice(0, 10)}.json`);
+        await downloadFile(blob, `ai-phone-tools-${getNow().toISOString().slice(0, 10)}.json`);
         setShowExportDialog(false);
     }
 

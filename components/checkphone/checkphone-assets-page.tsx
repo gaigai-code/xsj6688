@@ -183,7 +183,7 @@ export function CheckPhoneAssetsPage({ character, onBack }: CheckPhoneAssetsPage
       snapshot?.updatedAt,
     );
     if (payload) {
-      const now = new Date().toISOString();
+      const now = getNow().toISOString();
       const nextSnapshot: CheckPhoneSnapshot<CheckPhoneAssetsPayload> = {
         id: `${character.id}:assets`,
         characterId: character.id,

@@ -1,3 +1,4 @@
+import { getNowMs } from "./virtual-time";
 import { buildProviderRequest, parseProviderResponse } from "./llm-provider-adapter";
 import { loadApiConfigs } from "./settings-storage";
 import type { ApiConfig } from "./settings-types";
@@ -966,7 +967,7 @@ const feedbackTool: QaTool = {
         feedbackSeq += 1;
         const ticket: QaFeedbackTicket = {
             id: `fb-${Date.now().toString(36)}-${feedbackSeq}`,
-            ts: Date.now(),
+            ts: getNowMs(),
             kind: kind as QaFeedbackTicket["kind"],
             title,
             detail,

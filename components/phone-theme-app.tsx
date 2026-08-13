@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -967,7 +968,7 @@ function updateIconSkin(draft: ThemeProfile, iconId: DesktopIconId, assetId: str
 
   const schemes = draft.iconSchemes.map(s =>
     s.id === draft.activeIconSchemeId
-      ? { ...s, iconSkins: { ...skins }, updatedAt: new Date().toISOString() }
+      ? { ...s, iconSkins: { ...skins }, updatedAt: getNow().toISOString() }
       : s
   );
 
@@ -1124,7 +1125,7 @@ function IconSkinPage({
       iconSkins: {},
       iconSchemes: draft.iconSchemes.map(s =>
         s.id === draft.activeIconSchemeId
-          ? { ...s, iconSkins: {}, updatedAt: new Date().toISOString() }
+          ? { ...s, iconSkins: {}, updatedAt: getNow().toISOString() }
           : s
       ),
       dockSkinAssetId: null,

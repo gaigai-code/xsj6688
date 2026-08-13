@@ -1,3 +1,4 @@
+import { getNow } from "@/lib/virtual-time";
 import { jsonrepair } from "jsonrepair";
 
 import { loadCharacters } from "./character-storage";
@@ -120,7 +121,7 @@ export function makeInterviewMessage(
     targetCharacterName: options?.targetCharacterName,
     speakerCharacterId: options?.speakerCharacterId,
     speakerName: options?.speakerName,
-    createdAt: new Date().toISOString(),
+    createdAt: getNow().toISOString(),
   };
 }
 

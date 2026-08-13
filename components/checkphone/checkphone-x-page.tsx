@@ -257,7 +257,7 @@ export function CheckPhoneXPage({ character, onBack }: CheckPhoneXPageProps) {
       debugNormalizeError: nextDebugNormalizeError,
     } = await generateCheckPhoneX(character.id, snapshot?.payload ?? null, snapshot?.updatedAt);
     if (payload) {
-      const now = new Date().toISOString();
+      const now = getNow().toISOString();
       const nextSnapshot: CheckPhoneSnapshot<CheckPhoneXPayload> = {
         id: `${character.id}:x`,
         characterId: character.id,

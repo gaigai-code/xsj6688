@@ -129,7 +129,7 @@ export function CheckPhoneInstagramPage({ character, onBack }: CheckPhoneInstagr
       debugNormalizeError: nextDebugNormalizeError,
     } = await generateCheckPhoneInstagram(character.id, snapshot?.payload ?? null, snapshot?.updatedAt);
     if (payload) {
-      const now = new Date().toISOString();
+      const now = getNow().toISOString();
       const nextSnapshot: CheckPhoneSnapshot<CheckPhoneInstagramPayload> = {
         id: `${character.id}:instagram`,
         characterId: character.id,

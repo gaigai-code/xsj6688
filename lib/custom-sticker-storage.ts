@@ -1,3 +1,4 @@
+import { getNow } from "@/lib/virtual-time";
 // lib/custom-sticker-storage.ts
 // Custom sticker pack system.
 // Data model: StickerPack[] + assignments (packId → characterId[]).
@@ -77,7 +78,7 @@ export function createStickerPack(name: string): StickerPack {
         id: `pack_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         name,
         stickers: [],
-        createdAt: new Date().toISOString(),
+        createdAt: getNow().toISOString(),
     };
     const packs = readPacks();
     packs.push(pack);

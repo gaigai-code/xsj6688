@@ -103,7 +103,7 @@ export function CheckPhoneEmailPage({ character, onBack }: CheckPhoneEmailPagePr
       snapshot?.updatedAt,
     );
     if (payload) {
-      const now = new Date().toISOString();
+      const now = getNow().toISOString();
       const nextSnapshot: CheckPhoneSnapshot<CheckPhoneEmailPayload> = {
         id: `${character.id}:email`,
         characterId: character.id,

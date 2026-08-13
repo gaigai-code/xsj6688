@@ -1,3 +1,4 @@
+import { getNow } from "@/lib/virtual-time";
 // lib/resource-hub-flowers.ts
 // 资源集市送花：下载成功自动送一朵，详情页也可手动送。
 // 计数存在资源仓库根目录 _flowers.json（由上传服务的机器人维护），
@@ -16,7 +17,7 @@ const FLOWERS_FILE = "_flowers.json";
 export type FlowerCounts = Record<string, number>;
 
 function today(): string {
-    return new Date().toISOString().slice(0, 10);
+    return getNow().toISOString().slice(0, 10);
 }
 
 function loadSentMap(): Record<string, string> {

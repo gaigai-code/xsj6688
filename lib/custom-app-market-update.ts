@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import {
   fetchCustomAppMarketItemByAppId,
@@ -163,7 +164,7 @@ export async function updateInstalledCustomAppFromMarket(
     const installed = await installCustomAppAsync({
       ...nextApp,
       installedAt: app.installedAt,
-      updatedAt: new Date().toISOString(),
+      updatedAt: getNow().toISOString(),
     });
     const registration = await applyCustomAppRegistrationsAsync(installed);
     return {

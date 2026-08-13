@@ -1,3 +1,4 @@
+import { getNowMs } from "./virtual-time";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 
 export type CssAssetKind = "bubble" | "icon" | "texture" | "background" | "misc";
@@ -128,7 +129,7 @@ export function updateCssAssetRecord(assetId: string, patch: Partial<CssAssetRec
         ...records[index],
         ...patch,
         id: records[index].id,
-        updatedAt: Date.now(),
+        updatedAt: getNowMs(),
     });
     if (!updated) return null;
     records[index] = updated;

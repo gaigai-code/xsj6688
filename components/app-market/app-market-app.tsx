@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -893,7 +894,7 @@ export function AppMarketApp({ onClose, onOpenCustomApp, onInstallToDesktop, onN
                 version: app.version,
                 manifest: { ...installed.manifest, version: app.version },
                 hasUnpublishedChanges: undefined,
-                updatedAt: new Date().toISOString(),
+                updatedAt: getNow().toISOString(),
               }
             : installed,
         ));

@@ -150,37 +150,33 @@ const VIRTUAL_TIME_RESUME_PARAMETER_SCHEMA = JSON.stringify({
 const VIRTUAL_TIME_USAGE_GUIDE = [
     "以下是你获取指令的返回结果：",
     "服务：虚拟时间",
-    "用途：你是当前角色所处剧情线的「时间导演」。这台小手机的时间可能处于角色扮演虚拟时间（不按真实流速走），你需要根据剧情发展**主动**推进或跳转时间，让时间线保持一致，不必等用户开口要求。",
+    "用途：系统标注的「当前系统时间」就是这个世界的绝对真实时间，判断时刻、作息、问候时一律以它为准。",
     "",
-    "什么时候该动时间（主动判断，自然融入剧情）：",
-    "- 场景转场：一段对话/事件告一段落，切换到明显更晚的时刻（比如从下午的咖啡馆聊到晚上散步）→ 推进几个小时",
-    "- 睡觉/醒来：角色入睡、第二天醒来 → 推进到第二天早上",
-    "- 明显的时间跳跃：「过了几天」「一周后」「下个月」「转眼到了周末」这类剧情 → 用设定或推进直接跳转",
-    "- 约会/约定推进：约了晚上八点见面，当前才下午 → 推进到约定时刻",
-    "",
-    "什么时候不要动时间：",
-    "- 只是普通寒暄、连续对话，没有真实的时间流逝 → 保持不动",
-    "- 用户明确说时间照常、或已恢复真实时间 → 不要动",
+    "重要规则：",
+    "- 用户问「几点了 / 现在几点」时，必须直接回答系统标注的当前时间，不要自行推算、不要提前或推后，更不要臆造另一个时间。",
+    "- 只有剧情明确需要「时间流逝」时才推进时间，例如：用户或剧情明确表示过了几小时、天黑了、睡了一觉、第二天、过了几天等。",
+    "- 普通连续对话、寒暄、用户没有表达时间流逝时，一律不要动时间。",
+    "- 用户手动设定的时间是最高优先级，不得擅自改回或覆盖。",
     "",
     "推进后：在回复里自然地体现新时刻（问候语、天色、作息），但不要生硬念出「我把时间推进到了…」。",
     "",
     "执行时必须使用下面的具体动作名，不要输出“虚拟时间”本身。",
     "",
     "动作：查看虚拟时间",
-    "描述：查看当前虚拟时间与流速。",
+    "描述：查看当前系统时间与流速。",
     "参数：无",
     "示例：",
     "[执行动作:查看虚拟时间({})]",
     "",
     "动作：设定虚拟时间",
-    "描述：把虚拟时间设定到某个具体时刻。",
+    "描述：把系统时间设定到某个具体时刻。",
     "参数：",
     "  - datetime (string, 必填): 格式 YYYY-MM-DD HH:mm",
     "示例：",
     '[执行动作:设定虚拟时间({"datetime":"2026-08-13 20:30"})]',
     "",
     "动作：推进虚拟时间",
-    "描述：从当前虚拟时间向前推进（或回退）。",
+    "描述：从当前系统时间向前推进（或回退）。",
     "参数：",
     "  - deltaMinutes (number): 推进的分钟数，负数回退",
     "  - targetTime (string): 推进到今天的某时刻，HH:mm",
@@ -1340,15 +1336,6 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
         createdAt: 0,
         updatedAt: 0,
     },
-    {
-        id: VIRTUAL_TIME_CAPABILITY_ID,
-        name: "虚拟时间",
-        description: "查看、设定、推进这台小手机里的虚拟时间（角色扮演时可随剧情推进或跳转时间线）。",
-        enabled: false,
-        mode: "auto",
-        createdAt: 0,
-        updatedAt: 0,
-    },
 ];
 
 export function loadInternalCapabilities(): InternalCapabilityConfig[] {
@@ -1444,14 +1431,6 @@ export function getInternalCapabilityToolDefinition(capability: InternalCapabili
             usageGuide: TIMED_WAKE_USAGE_GUIDE,
         };
     }
-    if (capability.id === VIRTUAL_TIME_CAPABILITY_ID) {
-        return {
-            name: capability.name,
-            description: capability.description,
-            parameterSchema: "{}",
-            usageGuide: VIRTUAL_TIME_USAGE_GUIDE,
-        };
-    }
     return null;
 }
 
@@ -1474,9 +1453,6 @@ export function getInternalCapabilitySubToolDefinition(
     if (capability.id === TOOLBOX_MANAGEMENT_CAPABILITY_ID) {
         return TOOLBOX_MANAGEMENT_SUBTOOLS.find(tool => tool.name === name) ?? null;
     }
-    if (capability.id === VIRTUAL_TIME_CAPABILITY_ID) {
-        return VIRTUAL_TIME_SUBTOOLS.find(tool => tool.name === name) ?? null;
-    }
     return null;
 }
 
@@ -1497,9 +1473,6 @@ export function getInternalCapabilitySubToolDefinitions(
     }
     if (capability.id === TOOLBOX_MANAGEMENT_CAPABILITY_ID) {
         return TOOLBOX_MANAGEMENT_SUBTOOLS;
-    }
-    if (capability.id === VIRTUAL_TIME_CAPABILITY_ID) {
-        return VIRTUAL_TIME_SUBTOOLS;
     }
     return [];
 }

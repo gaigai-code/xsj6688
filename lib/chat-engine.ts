@@ -502,7 +502,7 @@ export function publishDebugPromptSnapshot(params: {
     const { request, config, preset, meta, options, requestKind, tools } = params;
     const snapshot: DebugPromptSnapshot = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        timestamp: new Date().toISOString(),
+        timestamp: getNow().toISOString(),
         requestKind,
         provider: config.provider,
         providerKind: request.providerKind,
@@ -812,7 +812,7 @@ export async function sendLLMStreamRequest(
             model: config.defaultModel,
             messages: sanitizedMessages,
             rawResponse: rawOutput,
-            timestamp: new Date().toISOString(),
+            timestamp: getNow().toISOString(),
         };
         const logs = _loadLogs();
         logs.push(logEntry);
@@ -954,7 +954,7 @@ export async function sendLLMRequest(
             model: config.defaultModel,
             messages: sanitizedMessages,
             rawResponse: rawOutput,
-            timestamp: new Date().toISOString(),
+            timestamp: getNow().toISOString(),
             usage: parsed.usage,
         };
         const logs = _loadLogs();
@@ -1180,7 +1180,7 @@ export async function sendLLMToolStreamRequest(
             model: config.defaultModel,
             messages: sanitizedMessages,
             rawResponse: JSON.stringify({ content, reasoning, toolCalls, raw: rawResponse }),
-            timestamp: new Date().toISOString(),
+            timestamp: getNow().toISOString(),
         };
         const logs = _loadLogs();
         logs.push(logEntry);
@@ -1292,7 +1292,7 @@ export async function sendLLMToolRequest(
             model: config.defaultModel,
             messages: sanitizedMessages,
             rawResponse,
-            timestamp: new Date().toISOString(),
+            timestamp: getNow().toISOString(),
             usage: parsed.usage,
         };
         const logs = _loadLogs();
@@ -1360,7 +1360,7 @@ export function clearMusicCloudSyncData(): void {
         loggedIn: false,
         playlistSummary: "",
         localSummary: prev?.localSummary ?? "",
-        syncedAt: new Date().toISOString(),
+        syncedAt: getNow().toISOString(),
     });
 }
 
@@ -1426,7 +1426,7 @@ export async function syncMusicData(): Promise<MusicSyncData> {
         loggedIn,
         playlistSummary,
         localSummary,
-        syncedAt: new Date().toISOString(),
+        syncedAt: getNow().toISOString(),
     };
     saveMusicSyncData(data);
     return data;
@@ -1813,7 +1813,7 @@ export async function buildChatPromptMessages(
                 role: "user",
                 content: "",
                 status: "sent",
-                createdAt: new Date().toISOString(),
+                createdAt: getNow().toISOString(),
                 mediaType: "image",
                 mediaUrl: imageUrl,
                 mediaData: { label: "视频通话当前画面" },
@@ -2540,7 +2540,7 @@ export async function previewPromptPayload(
             role: "system",
             content: `[对方没有回复你的消息，距上次回复已过约${finalSilenceSec}秒]`,
             status: "sent",
-            createdAt: new Date().toISOString(),
+            createdAt: getNow().toISOString(),
         });
         effectiveHistory = annotated;
     }
@@ -2602,7 +2602,7 @@ export async function previewPromptRequestSnapshot(
             role: "system",
             content: `[对方没有回复你的消息，距上次回复已过约${finalSilenceSec}秒]`,
             status: "sent",
-            createdAt: new Date().toISOString(),
+            createdAt: getNow().toISOString(),
         });
         effectiveHistory = annotated;
     }

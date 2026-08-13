@@ -179,7 +179,7 @@ export function CheckPhoneSteamPage({ character, onBack }: CheckPhoneSteamPagePr
       debugNormalizeError: nextDebugNormalizeError,
     } = await generateCheckPhoneSteam(character.id, snapshot?.payload ?? null, snapshot?.updatedAt);
     if (payload) {
-      const now = new Date().toISOString();
+      const now = getNow().toISOString();
       const nextSnapshot: CheckPhoneSnapshot<CheckPhoneSteamPayload> = {
         id: `${character.id}:steam`,
         characterId: character.id,

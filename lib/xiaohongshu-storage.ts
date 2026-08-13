@@ -1,3 +1,4 @@
+import { getNow } from "@/lib/virtual-time";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { resolveUserIdentity } from "./settings-storage";
 import {
@@ -189,7 +190,7 @@ function normalizeXiaohongshuAccount(raw: unknown): XiaohongshuAccount | null {
     id,
     name,
     avatar: cleanText(record.avatar, 500) || undefined,
-    followedAt: typeof record.followedAt === "string" ? record.followedAt : new Date().toISOString(),
+    followedAt: typeof record.followedAt === "string" ? record.followedAt : getNow().toISOString(),
   };
 }
 
@@ -225,7 +226,7 @@ export function normalizeXiaohongshuComment(raw: unknown, fallbackNoteId = ""): 
   const authorName = cleanText(record.authorName ?? record.author_name, 60);
   if (!noteId || !text || !authorName) return null;
   const id = cleanText(record.id, 180) || makeId("xhs_comment");
-  const createdAt = typeof record.createdAt === "string" ? record.createdAt : new Date().toISOString();
+  const createdAt = typeof record.createdAt === "string" ? record.createdAt : getNow().toISOString();
   return {
     id,
     noteId,
@@ -255,7 +256,7 @@ export function normalizeXiaohongshuNote(raw: unknown): XiaohongshuNote | null {
   const comments = Array.isArray(record.comments)
     ? record.comments.map(comment => normalizeXiaohongshuComment(comment, id)).filter((comment): comment is XiaohongshuComment => Boolean(comment))
     : [];
-  const createdAt = typeof record.createdAt === "string" ? record.createdAt : new Date().toISOString();
+  const createdAt = typeof record.createdAt === "string" ? record.createdAt : getNow().toISOString();
   return {
     id,
     type: record.type === "video" ? "video" : "post",
@@ -297,7 +298,7 @@ function normalizeNotification(raw: unknown): XiaohongshuNotification | null {
   const type = record.type === "save" || record.type === "comment" || record.type === "dm" || record.type === "follow"
     ? record.type
     : "like";
-  const createdAt = typeof record.createdAt === "string" ? record.createdAt : new Date().toISOString();
+  const createdAt = typeof record.createdAt === "string" ? record.createdAt : getNow().toISOString();
   const parsedCount = numberOr(
     record.count ?? record.actorCount ?? record.actor_count,
     type === "like" || type === "save" ? parseNotificationCountFromText(text) : 1,
@@ -327,7 +328,7 @@ export function createDefaultXiaohongshuState(): XiaohongshuState {
     notifications: [],
     userInteractions: normalizeXiaohongshuUserInteractions(null),
     socialGraph: normalizeXiaohongshuSocialGraph(null),
-    updatedAt: new Date().toISOString(),
+    updatedAt: getNow().toISOString(),
   };
 }
 
@@ -366,7 +367,7 @@ export function loadXiaohongshuState(): XiaohongshuState {
       notifications,
       userInteractions,
       socialGraph: normalizeXiaohongshuSocialGraph(parsed.socialGraph ?? parsed.social_graph),
-      updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : new Date().toISOString(),
+      updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : getNow().toISOString(),
     };
   } catch {
     return createDefaultXiaohongshuState();
@@ -374,13 +375,13 @@ export function loadXiaohongshuState(): XiaohongshuState {
 }
 
 export function saveXiaohongshuState(state: XiaohongshuState): XiaohongshuState {
-  const next = { ...state, updatedAt: new Date().toISOString() };
+  const next = { ...state, updatedAt: getNow().toISOString() };
   kvSet(XHS_STATE_KEY, JSON.stringify(next));
   return next;
 }
 
 export function createUserXiaohongshuNote(input: XiaohongshuUserPostInput, profile: XiaohongshuUserProfile): XiaohongshuNote {
-  const now = new Date().toISOString();
+  const now = getNow().toISOString();
   return {
     id: makeId("xhs_user_note"),
     type: "post",
@@ -432,7 +433,7 @@ export function makeXiaohongshuComment(input: {
     dislikeCount: 0,
     liked: false,
     disliked: false,
-    createdAt: new Date().toISOString(),
+    createdAt: getNow().toISOString(),
     unread: input.unread === true,
   };
 }
@@ -441,7 +442,7 @@ export function makeXiaohongshuNotification(input: Omit<XiaohongshuNotification,
   return {
     ...input,
     id: makeId("xhs_notice"),
-    createdAt: new Date().toISOString(),
+    createdAt: getNow().toISOString(),
   };
 }
 

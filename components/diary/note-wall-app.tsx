@@ -924,7 +924,7 @@ export function NoteWallApp({ onBack, onNotice }: NoteWallAppProps) {
         if (due) {
           await handleGenerateForCharacter(characterId, "timer");
           await handleReplyForCharacter(characterId);
-          const stamp = new Date().toISOString();
+          const stamp = getNow().toISOString();
           setTimerSettings(prev => ({
             ...prev,
             lastRunAtByCharacter: { ...prev.lastRunAtByCharacter, [characterId]: stamp },

@@ -1,3 +1,4 @@
+import { getNow } from "./virtual-time";
 import type { MemoryEntry } from "./memory-types";
 import { DEFAULT_CORE_MEMORY_PROMPT } from "./memory-types";
 import {
@@ -100,7 +101,7 @@ export async function runCoreMemoryPipeline(
         return { success: false, error: "核心记忆总结结果为空" };
     }
 
-    const now = new Date().toISOString();
+    const now = getNow().toISOString();
     const sourceCounts = new Map<string, number>();
     for (const entry of entries) {
         sourceCounts.set(entry.sourceApp, (sourceCounts.get(entry.sourceApp) || 0) + 1);

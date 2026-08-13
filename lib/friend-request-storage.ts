@@ -1,3 +1,4 @@
+import { getNow } from "@/lib/virtual-time";
 import { loadCharacters } from "./character-storage";
 import { loadChatContacts } from "./chat-storage";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
@@ -40,7 +41,7 @@ export function addFriendRequest(characterId: string, message: string, round: nu
         message,
         status: "pending",
         round,
-        createdAt: new Date().toISOString(),
+        createdAt: getNow().toISOString(),
     };
     all.push(req);
     saveFriendRequests(all);

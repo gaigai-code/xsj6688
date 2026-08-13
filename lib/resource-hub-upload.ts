@@ -1,3 +1,4 @@
+import { getNow } from "@/lib/virtual-time";
 // lib/resource-hub-upload.ts
 // 资源集市上传：
 //  A) GitHub Token 直传 —— 有仓库写权限的 token 直接提交 main（立即上架）；
@@ -163,7 +164,7 @@ export async function uploadViaService(endpoint: string, payload: UploadPayload)
         path: data.path || `${RESOURCE_ROOT}/${payload.folder}/${payload.name}`,
         name: payload.name,
         ownerKey,
-        uploadedAt: new Date().toISOString(),
+        uploadedAt: getNow().toISOString(),
     });
     return { merged: false, prUrl: data.prUrl };
 }
@@ -267,7 +268,7 @@ export async function uploadViaToken(token: string, source: ResourceHubSource, p
                 branch,
             });
         }
-        recordMyUpload({ path: dir, name: payload.name, ownerKey, uploadedAt: new Date().toISOString() });
+        recordMyUpload({ path: dir, name: payload.name, ownerKey, uploadedAt: getNow().toISOString() });
         return { merged: true };
     }
 
@@ -308,7 +309,7 @@ export async function uploadViaToken(token: string, source: ResourceHubSource, p
         base: branch,
         body: `来自资源集市 App 的投稿。\n\n- 分类：${payload.folder}\n- 名称：${payload.name}\n- 投稿人：${payload.author || me.login}${payload.description.trim() ? `\n\n${payload.description.trim()}` : ""}`,
     });
-    recordMyUpload({ path: dir, name: payload.name, ownerKey, uploadedAt: new Date().toISOString() });
+    recordMyUpload({ path: dir, name: payload.name, ownerKey, uploadedAt: getNow().toISOString() });
     return { merged: false, prUrl: pr.html_url };
 }
 

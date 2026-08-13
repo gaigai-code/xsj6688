@@ -52,6 +52,7 @@ import {
     advanceVirtualTime,
     formatVirtualTimeShort,
     getNow,
+    getNowMs,
     getVirtualTimeState,
     resumeRealtime,
     setVirtualRate,
@@ -757,7 +758,6 @@ async function executeInternalTool(call: ToolCall, context?: ToolExecutionContex
     if (isToolboxManagementToolName(call.name)) return executeToolboxManagementTool(call);
     if (call.name === "发送文件") return executeSendFileTool(call);
     if (call.name === "稍后主动联系" || call.name === "设置定时醒来") return executeTimedWakeTool(call, context);
-    if (isVirtualTimeToolName(call.name)) return executeVirtualTimeTool(call);
 
     if (call.name !== "写入记忆") return null;
 
@@ -2028,7 +2028,7 @@ function findCalendarItemByArgs(
 function getCalendarSearchWeekStarts(dateHint: string | null): string[] {
     const starts = new Set<string>();
     if (dateHint) starts.add(getWeekStartIso(parseIsoDate(dateHint)));
-    const now = new Date();
+    const now = getNow();
     for (let offset = -4; offset <= 4; offset++) {
         const d = new Date(now);
         d.setDate(d.getDate() + offset * 7);
@@ -2388,7 +2388,7 @@ async function resolveMusicTrackById(source: string, songId: unknown): Promise<M
         coverUrl: detail?.coverUrl,
         lyrics,
         liked: false,
-        addedAt: new Date().toISOString(),
+        addedAt: getNow().toISOString(),
     };
 }
 
@@ -2401,7 +2401,7 @@ function neteaseResultToTrack(result: NeteaseSearchResult): MusicTrack {
         duration: result.duration / 1000,
         coverUrl: result.coverUrl,
         liked: false,
-        addedAt: new Date().toISOString(),
+        addedAt: getNow().toISOString(),
     };
 }
 
@@ -2875,7 +2875,7 @@ async function persistMemoryWriteRequest(
         };
     }
 
-    const now = new Date().toISOString();
+    const now = getNow().toISOString();
     const entry: MemoryEntry = {
         id: `mem_lt_manual_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         characterId: request.characterId,
@@ -4269,7 +4269,7 @@ export async function startMcpOAuth(server: McpServerConfig): Promise<{ success:
             registrationEndpoint,
             authorizationServerUrl: resolvedMetadata.authorizationServerUrl,
             protectedResourceMetadataUrl: resolvedMetadata.protectedResourceMetadataUrl,
-            createdAt: Date.now(),
+            createdAt: getNowMs(),
         } satisfies McpOAuthPendingState);
         removeStorageKey(MCP_OAUTH_CALLBACK_STORAGE_KEY);
 

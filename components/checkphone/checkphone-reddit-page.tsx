@@ -271,7 +271,7 @@ export function CheckPhoneRedditPage({ character, onBack }: CheckPhoneRedditPage
       debugNormalizeError: nextDebugNormalizeError,
     } = await generateCheckPhoneReddit(character.id, previousPayload, snapshot?.updatedAt);
     if (payload) {
-      const now = new Date().toISOString();
+      const now = getNow().toISOString();
       const nextSnapshot: CheckPhoneSnapshot<CheckPhoneRedditPayload> = {
         id: `${character.id}:reddit`,
         characterId: character.id,

@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -436,7 +437,7 @@ export function CheckPhoneWeiboPage({
         snapshot?.updatedAt,
       );
       if (payload) {
-        const now = new Date().toISOString();
+        const now = getNow().toISOString();
         const nextSnapshot: CheckPhoneSnapshot<CheckPhoneWeiboPayload> = {
           id: `${character.id}:weibo`,
           characterId: character.id,

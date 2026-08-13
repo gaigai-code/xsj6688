@@ -1,5 +1,5 @@
 "use client";
-import { getNowMs } from "@/lib/virtual-time";
+import { getNow, getNowMs } from "@/lib/virtual-time";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
@@ -360,7 +360,7 @@ function buildOrderFromCart(
     paymentRequestedAt?: string;
   } = {},
 ): ShoppingOrder {
-  const now = new Date();
+  const now = getNow();
   const id = `shop_order_${now.getTime()}_${Math.random().toString(36).slice(2, 7)}`;
   const summaryTitles = cartItems.slice(0, 3).map(item => normalizeCheckPhoneText(item.title));
   const summary = summaryTitles.join("、") + (cartItems.length > 3 ? ` 等 ${cartItems.length} 件商品` : "");
@@ -646,7 +646,7 @@ export function ShoppingApp({ onClose, visible = true, onIdle, onBusyChange }: S
       persist(current => ({
         ...current,
         catalog: result.catalog!,
-        generatedAt: new Date().toISOString(),
+        generatedAt: getNow().toISOString(),
       }));
       setSelectedProduct(null);
       setSelectedOrderId(null);
@@ -867,7 +867,7 @@ export function ShoppingApp({ onClose, visible = true, onIdle, onBusyChange }: S
       setPaymentRequestError("请选择代付对象。");
       return;
     }
-    const paymentRequestedAt = new Date().toISOString();
+    const paymentRequestedAt = getNow().toISOString();
     const paymentRequestId = createShoppingPaymentRequestId();
     const order = buildOrderFromCart(
       state.cartItems,

@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Bot, ChevronDown, ChevronRight, Languages, Menu, Minus, PenLine, SendHorizontal, X } from "lucide-react";
@@ -1160,7 +1161,7 @@ export function ReadingViewer({ book, onBack }: Props) {
                     characterId: companionId,
                     characterName: companion.name,
                     content: action.content,
-                    createdAt: new Date().toISOString(),
+                    createdAt: getNow().toISOString(),
                 };
                 await saveAnnotation(annotation);
                 nextAnnotations = [...nextAnnotations, annotation];
@@ -1507,7 +1508,7 @@ export function ReadingViewer({ book, onBack }: Props) {
             progressCurrent: isPdf ? Math.max(1, pdfCurrentPage) : chapterPageCurrent,
             progressTotal: isPdf ? Math.max(1, pdfTotalPages || 1) : chapterPageTotal,
             progressScope: isPdf ? "book" : "chapter",
-            lastReadAt: new Date().toISOString(),
+            lastReadAt: getNow().toISOString(),
         };
         saveProgress(progress);
     }, [book.id, chapterIndex, chapters.length, companionId, isPdf, pdfCurrentPage, pdfTotalPages, txtPage, txtTotalPages]);

@@ -1,3 +1,4 @@
+import { getNow } from "@/lib/virtual-time";
 /**
  * Background follow-up service.
  * Runs independently of any React component — fires follow-ups
@@ -313,7 +314,7 @@ async function fireFollowUp(sched: { sessionId: string; count: number; delaySec?
                 role: "system",
                 content: `[对方没有回复你的消息，距上次回复已过约${finalSilenceSec}秒]`,
                 status: "sent",
-                createdAt: new Date().toISOString(),
+                createdAt: getNow().toISOString(),
             },
         ];
 
@@ -542,7 +543,7 @@ function handleFollowUpMediaAction(
         updateMessageMediaData(targetMsg.id, {
             ...targetMsg.mediaData,
             status: newStatus,
-            paymentResolvedAt: new Date().toISOString(),
+            paymentResolvedAt: getNow().toISOString(),
             paymentPayerName: charName,
         });
     } else {

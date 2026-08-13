@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Character } from "@/lib/character-types";
@@ -254,7 +255,7 @@ export function PhoneCharacterApp({ onClose, onNotice }: PhoneCharacterAppProps)
                 const updated: Character = {
                   ...existing,
                   ...data,
-                  updatedAt: new Date().toISOString(),
+                  updatedAt: getNow().toISOString(),
                 };
                 updateChars(characters.map((c) => (c.id === existing.id ? updated : c)));
                 setView({ type: "detail", id: existing.id, isEditing: false });
@@ -1874,7 +1875,7 @@ function CharArchiveView({
         briefPersona: trimmedBrief || undefined,
         // 简介变动才刷新时间戳；未动则保留原值（供「设定已更新」过期提示判断）
         briefPersonaUpdatedAt: trimmedBrief
-          ? (trimmedBrief !== (char.briefPersona || "").trim() ? new Date().toISOString() : char.briefPersonaUpdatedAt)
+          ? (trimmedBrief !== (char.briefPersona || "").trim() ? getNow().toISOString() : char.briefPersonaUpdatedAt)
           : undefined,
         timeZone: normalizedTimeZone,
         tags,

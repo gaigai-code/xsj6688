@@ -1,4 +1,4 @@
-import { getNow } from "./virtual-time";
+import { getNow, getNowMs } from "./virtual-time";
 // lib/moments-engine.ts
 // AI generation engine + background service for Moments (朋友圈).
 // Handles: AI posting (scheduled), AI commenting, AI liking, memory integration.
@@ -523,7 +523,7 @@ async function generateNPCReactionsViaLLM(
                 if (hasSameLike(p.likes, actor)) continue;
                 p.likes.push({
                     ...actor,
-                    createdAt: new Date().toISOString(),
+                    createdAt: getNow().toISOString(),
                 });
             }
             saveMomentPosts(posts);
@@ -614,7 +614,7 @@ async function generateNPCReactionsViaLLM(
         };
 
         const lines = commentBlock.split("\n").map(l => l.trim()).filter(Boolean);
-        const npcCommentBatchStart = Date.now();
+        const npcCommentBatchStart = getNowMs();
         let npcCommentBatchOffset = 0;
         const nextNpcCommentCreatedAt = () => new Date(npcCommentBatchStart + npcCommentBatchOffset++).toISOString();
         for (const line of lines) {

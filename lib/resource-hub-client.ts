@@ -1,3 +1,4 @@
+import { getNow } from "@/lib/virtual-time";
 // lib/resource-hub-client.ts
 // 资源集市客户端：CDN 多镜像拉取 + 目录索引 + 各目的地的导入落库。
 // 浏览走 jsDelivr（国内可达、免限流），失败逐级回退，全程不经过自家服务端。
@@ -531,7 +532,7 @@ export async function importResourceHubFile(
             if (payload?.type !== "ai-phone-game-draft" || !payload.draft || typeof payload.draft !== "object") {
                 throw new Error("不是有效的游戏草稿文件（需要游戏草稿箱「导出文件」生成）");
             }
-            const now = new Date().toISOString();
+            const now = getNow().toISOString();
             const title = (typeof payload.title === "string" && payload.title.trim()) || displayName;
             saveGameDrafts([
                 {
@@ -552,7 +553,7 @@ export async function importResourceHubFile(
             if (payload?.type !== "ai-phone-theater-draft" || !payload.draft || typeof payload.draft !== "object") {
                 throw new Error("不是有效的剧场草稿文件（需要剧场草稿箱「导出文件」生成）");
             }
-            const now = new Date().toISOString();
+            const now = getNow().toISOString();
             const title = (typeof payload.title === "string" && payload.title.trim()) || displayName;
             // 与黑市工作室共用同一 kv 键与记录形状（black-market-app / qa-content-tools 同款）
             const key = "ai_phone_black_market_studio_drafts_v1";

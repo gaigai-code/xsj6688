@@ -157,7 +157,7 @@ export default function MusicApp({ onClose }: Props) {
             if (!file.type.startsWith("audio/") && !audioExts.includes(ext)) continue;
             const { title, artist } = parseFilename(file.name);
             const duration = await getAudioDuration(file);
-            const track: MusicTrack = { id: generateTrackId(), title, artist, duration, liked: false, addedAt: new Date().toISOString() };
+            const track: MusicTrack = { id: generateTrackId(), title, artist, duration, liked: false, addedAt: getNow().toISOString() };
             await saveTrack(track, file);
             newTracks.push(track);
         }
@@ -189,7 +189,7 @@ export default function MusicApp({ onClose }: Props) {
         coverUrl: extra?.coverUrl || r.coverUrl,
         lyrics: extra?.lyrics,
         liked: false,
-        addedAt: new Date().toISOString(),
+        addedAt: getNow().toISOString(),
     }), []);
 
     /** Play a single Netease song — append to queue */

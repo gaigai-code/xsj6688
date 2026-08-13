@@ -1,3 +1,4 @@
+import { getNow } from "@/lib/virtual-time";
 /**
  * Shared rich-media message parser.
  *
@@ -114,7 +115,7 @@ const RICH_PATTERNS: {
                 paymentRequestItemsText: m[2].trim(),
                 label: "代付请求",
                 status: "pending" as const,
-                paymentRequestedAt: new Date().toISOString(),
+                paymentRequestedAt: getNow().toISOString(),
             },
         }),
     },
@@ -132,7 +133,7 @@ const RICH_PATTERNS: {
                     recipientName: m[2].trim(),
                     giftMerchantLabel: "角色赠礼",
                     giftPriceLabel: "心意礼物",
-                    giftSentAt: new Date().toISOString(),
+                    giftSentAt: getNow().toISOString(),
                 },
             };
         },
@@ -150,7 +151,7 @@ const RICH_PATTERNS: {
                     label: giftName,
                     giftMerchantLabel: "角色赠礼",
                     giftPriceLabel: "心意礼物",
-                    giftSentAt: new Date().toISOString(),
+                    giftSentAt: getNow().toISOString(),
                 },
             };
         },

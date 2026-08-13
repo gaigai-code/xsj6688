@@ -1,6 +1,7 @@
 // components/music/music-artist.tsx — Artist profile page
 // Hero portrait, stats, hot songs (playable), album shelf.
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { useCallback, useEffect, useState } from "react";
 import { useMusicPlayer } from "@/lib/music-context";
@@ -86,7 +87,7 @@ export default function MusicArtistPage({ artistId, artistName, onClose }: Props
             coverUrl: detail?.coverUrl || song.coverUrl,
             lyrics,
             liked: false,
-            addedAt: new Date().toISOString(),
+            addedAt: getNow().toISOString(),
         };
         if (!player.queue.some(t => t.id === track.id)) {
             player.setQueue([track, ...player.queue]);

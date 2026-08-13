@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { useState, useRef, useEffect } from "react";
 import { ChevronLeft, Palette } from "lucide-react";
@@ -179,7 +180,7 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
             fileName: file.name,
             fileSize: file.size,
             format: detectedFormat,
-            updatedAt: new Date().toISOString(),
+            updatedAt: getNow().toISOString(),
         });
 
         try {
@@ -196,7 +197,7 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
                     fileName: file.name,
                     fileSize: file.size,
                     format: "txt",
-                    updatedAt: new Date().toISOString(),
+                    updatedAt: getNow().toISOString(),
                 });
                 const { text } = decodeTxtArrayBuffer(await file.arrayBuffer());
                 parsed = parseTxtContent(text, file.name);
@@ -210,7 +211,7 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
                     fileName: file.name,
                     fileSize: file.size,
                     format: "epub",
-                    updatedAt: new Date().toISOString(),
+                    updatedAt: getNow().toISOString(),
                 });
                 const buffer = await file.arrayBuffer();
                 importStage = "解析 EPUB 内容";
@@ -221,7 +222,7 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
                     fileName: file.name,
                     fileSize: file.size,
                     format: "epub",
-                    updatedAt: new Date().toISOString(),
+                    updatedAt: getNow().toISOString(),
                 });
                 parsed = await parseEpubFile(buffer, file.name);
                 format = "epub";
@@ -235,7 +236,7 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
                     fileName: file.name,
                     fileSize: file.size,
                     format: "pdf",
-                    updatedAt: new Date().toISOString(),
+                    updatedAt: getNow().toISOString(),
                 });
                 parsed = {
                     title: file.name.replace(/\.[^.]+$/, "") || "未命名",
@@ -256,7 +257,7 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
                 author: parsed.author,
                 format,
                 totalChapters: parsed.chapters.length,
-                createdAt: new Date().toISOString(),
+                createdAt: getNow().toISOString(),
             };
 
             const chapters: BookChapter[] = parsed.chapters.map((ch, i) => {
@@ -285,7 +286,7 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
                 fileName: file.name,
                 fileSize: file.size,
                 format,
-                updatedAt: new Date().toISOString(),
+                updatedAt: getNow().toISOString(),
             });
             await addBook(book);
             await saveChapters(bookId, chapters);
@@ -299,7 +300,7 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
                         fileName: file.name,
                         fileSize: file.size,
                         format,
-                        updatedAt: new Date().toISOString(),
+                        updatedAt: getNow().toISOString(),
                     });
                     await saveRawFile(bookId, rawFile);
                 } catch (saveErr) {
@@ -313,7 +314,7 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
                         fileSize: file.size,
                         format,
                         detail: built.detail || built.summary,
-                        updatedAt: new Date().toISOString(),
+                        updatedAt: getNow().toISOString(),
                     });
                     return;
                 }
@@ -334,7 +335,7 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
                 fileSize: file.size,
                 format,
                 detail: built.detail || built.summary,
-                updatedAt: new Date().toISOString(),
+                updatedAt: getNow().toISOString(),
             });
         } finally {
             setImporting(false);

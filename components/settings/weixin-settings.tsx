@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { useState, useEffect, useRef } from "react";
 import { Plus, Trash2, Wifi, WifiOff, AlertCircle, MessageSquare, Loader2, RefreshCw, Cloud, CloudUpload, Copy, Download, ChevronDown, PlayCircle, Power, PowerOff } from "lucide-react";
@@ -318,7 +319,7 @@ export function WeixinSettings({ onOpenDataManagement }: { onOpenDataManagement?
                 });
             }
             const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
-            await downloadFile(blob, `ai-phone-weixin-local-assistant-${new Date().toISOString().slice(0, 10)}.zip`);
+            await downloadFile(blob, `ai-phone-weixin-local-assistant-${getNow().toISOString().slice(0, 10)}.zip`);
             const totalBytes = results.reduce((sum, item) => sum + item.bytes, 0);
             setCloudSyncConfig(loadWeixinCloudSyncConfig());
             setCloudSyncNotice({
@@ -379,7 +380,7 @@ export function WeixinSettings({ onOpenDataManagement }: { onOpenDataManagement?
     const refreshCloudHeartbeat = async () => {
         const heartbeat = await fetchWeixinCloudAssistantHeartbeat();
         setCloudHeartbeat(heartbeat);
-        setCloudHeartbeatCheckedAt(new Date().toISOString());
+        setCloudHeartbeatCheckedAt(getNow().toISOString());
         return heartbeat;
     };
 

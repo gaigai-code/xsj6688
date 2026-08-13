@@ -1,3 +1,4 @@
+import { getNow } from "@/lib/virtual-time";
 // lib/music-storage.ts — IndexedDB local music storage (audio blobs + metadata)
 
 import { openIndexedDbAtLeast } from "./idb-open";
@@ -100,7 +101,7 @@ export async function updateTrackMeta(trackId: string, updates: Partial<MusicTra
     });
 }
 
-export async function markTrackPlayed(trackId: string, playedAt = new Date().toISOString()): Promise<void> {
+export async function markTrackPlayed(trackId: string, playedAt = getNow().toISOString()): Promise<void> {
     await updateTrackMeta(trackId, { lastPlayedAt: playedAt });
 }
 

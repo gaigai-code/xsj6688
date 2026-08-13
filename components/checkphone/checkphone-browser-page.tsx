@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { useEffect, useState } from "react";
 import { useCheckPhoneRefresh } from "@/lib/checkphone-refresh-tracker";
@@ -75,7 +76,7 @@ export function CheckPhoneBrowserPage({ character, onBack }: CheckPhoneBrowserPa
       debugParseError: nextDebugParseError,
     } = await generateCheckPhoneBrowser(character.id, snapshot?.payload ?? null, snapshot?.updatedAt);
     if (payload) {
-      const now = new Date().toISOString();
+      const now = getNow().toISOString();
       const nextSnapshot: CheckPhoneSnapshot<CheckPhoneBrowserPayload> = {
         id: `${character.id}:browser`,
         characterId: character.id,

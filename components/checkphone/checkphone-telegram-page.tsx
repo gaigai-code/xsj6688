@@ -203,7 +203,7 @@ export function CheckPhoneTelegramPage({ character, onBack }: CheckPhoneTelegram
       snapshot?.updatedAt,
     );
     if (payload) {
-      const now = new Date().toISOString();
+      const now = getNow().toISOString();
       const nextSnapshot: CheckPhoneSnapshot<CheckPhoneTelegramPayload> = {
         id: `${character.id}:telegram`,
         characterId: character.id,

@@ -1,3 +1,4 @@
+import { getNow } from "@/lib/virtual-time";
 // lib/friend-request-engine.ts
 // Handles AI reaction when a user deletes a friend.
 // The AI can choose to send a friend request (up to 3 rounds) or give up.
@@ -147,7 +148,7 @@ async function generateAndStoreFriendRequest(
             role: "system" as const,
             content: `这是你第${round}次做出反应，你最多有${MAX_ROUNDS}次机会。`,
             status: "sent" as const,
-            createdAt: new Date().toISOString(),
+            createdAt: getNow().toISOString(),
         }];
 
         const aiResponse = flattenCompletionResult(await generateChatCompletion(

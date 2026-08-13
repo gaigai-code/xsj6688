@@ -139,7 +139,7 @@ export function saveCalendarWeekPlan(plan: CalendarWeekPlan): CalendarWeekPlan {
   const store = loadStore();
   const normalized: CalendarWeekPlan = {
     ...plan,
-    updatedAt: new Date().toISOString(),
+    updatedAt: getNow().toISOString(),
     items: sortScheduleItems(plan.items.map(item => ({
       ...item,
       weekday: item.weekday || getWeekdayLabel(item.date),
@@ -167,7 +167,7 @@ export function replaceCalendarWeekItems(
     ownerId,
     weekStart,
     items,
-    updatedAt: new Date().toISOString(),
+    updatedAt: getNow().toISOString(),
   };
   return saveCalendarWeekPlan(plan);
 }
@@ -180,7 +180,7 @@ export function upsertCalendarScheduleItem(
 ): CalendarWeekPlan {
   const plan = loadCalendarWeekPlan(ownerType, ownerId, weekStart);
   const existingItems = plan?.items ?? [];
-  const now = new Date().toISOString();
+  const now = getNow().toISOString();
   const normalized: CalendarScheduleItem = {
     id: item.id ?? `calendar_item_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     date: item.date,
@@ -325,7 +325,7 @@ export function normalizeGeneratedScheduleItems(
     colorKey?: CalendarColorKey;
   }>,
 ): CalendarScheduleItem[] {
-  const now = new Date().toISOString();
+  const now = getNow().toISOString();
   return sortScheduleItems(
     rawItems
       .map(item => ({

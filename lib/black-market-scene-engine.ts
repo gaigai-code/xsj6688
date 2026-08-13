@@ -241,7 +241,7 @@ export async function summarizeAndRecordBlackMarketScene(sessionId: string): Pro
 
   const ended = endBlackMarketSceneSession(sessionId, summary);
   const finalSession = ended ?? session;
-  const timestamp = finalSession.endedAt || new Date().toISOString();
+  const timestamp = finalSession.endedAt || getNow().toISOString();
   recordBlackMarketTheaterProjectionEvent({
     sessionId,
     characterId: finalSession.characterId,

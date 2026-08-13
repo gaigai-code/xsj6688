@@ -752,7 +752,7 @@ export function CheckPhoneChatPage({
       snapshot?.updatedAt,
     );
     if (payload) {
-      const now = new Date().toISOString();
+      const now = getNow().toISOString();
       const nextSnapshot: CheckPhoneSnapshot<CheckPhoneChatPayload> = {
         id: `${character.id}:chat`,
         characterId: character.id,

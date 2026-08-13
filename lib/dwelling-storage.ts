@@ -1,3 +1,4 @@
+import { getNow } from "@/lib/virtual-time";
 import Dexie from "dexie";
 
 // ── Types ──────────────────────────────────────
@@ -124,7 +125,7 @@ export async function loadDwellingLayout(characterId: string): Promise<CachedLay
 }
 
 export async function saveDwellingLayout(characterId: string, layout: DwellingLayout): Promise<void> {
-    const updatedAt = new Date().toISOString();
+    const updatedAt = getNow().toISOString();
     _layoutCache.set(characterId, { layout, updatedAt });
     try {
         await db.layouts.put({

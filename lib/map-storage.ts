@@ -1,3 +1,4 @@
+import { getNow } from "@/lib/virtual-time";
 // lib/map-storage.ts
 // RPG Map Mode — IndexedDB storage
 
@@ -128,7 +129,7 @@ export function deleteSave(id: string): void {
 // ── New Game State ──
 
 export function createInitialSave(worldId: string, startNodeId: string): GameSave {
-  const now = new Date().toISOString();
+  const now = getNow().toISOString();
   return {
     id: `save_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     worldId,

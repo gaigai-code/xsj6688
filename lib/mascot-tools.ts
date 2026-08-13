@@ -15,6 +15,7 @@ import {
     advanceVirtualTime,
     formatVirtualTimeShort,
     getNow,
+    getNowMs,
     getVirtualTimeState,
     resumeRealtime,
     setVirtualRate,
@@ -731,7 +732,7 @@ export const MASCOT_NAVIGATE_TOOL: MascotSubTool = {
 
 export const MASCOT_VIRTUAL_TIME_TOOL: MascotSubTool = {
     name: "虚拟时间",
-    description: "查看、设定、推进这台小手机里的虚拟时间。角色扮演时你是「时间导演」：场景转场、睡觉醒来、剧情跳跃（过了几天/到了晚上）时主动推进时间，不必等用户要求；普通寒暄则不要动。",
+    description: "查看、设定、推进这台小手机的系统时间。系统标注的时间就是这个世界的绝对真实时间；用户问时间时直接照实回答。只有用户明确要求（如「把时间推进到晚上8点」「过三天」）时才推进或设定，不要自行改变时间。",
     parameterSchema: MASCOT_VIRTUAL_TIME_SCHEMA,
 };
 
@@ -752,7 +753,7 @@ export function buildMascotToolsListPrompt(): string {
     lines.push("    · page (必填) — 页面名。可选值：chat / characters / story / vnmode / moments / calendar / music / resources / settings");
     lines.push("    · subpage (可选) — 子页面（仅 page=settings 时有效）。可选值：presets / worldbook / regex / api / voice / binding / data / identity");
     lines.push("  调用：[执行动作:导航({\"page\":\"chat\"})] 或 [执行动作:导航({\"page\":\"settings\",\"subpage\":\"presets\"})]");
-    lines.push("【独立工具】虚拟时间 — 查看/设定/推进小手机里的虚拟时间，可直接调用。角色扮演时你是「时间导演」：场景转场、睡觉醒来、剧情跳跃（过了几天/到了晚上）时主动推进，普通寒暄则不要动。");
+    lines.push("【独立工具】虚拟时间 — 查看/设定/推进小手机的系统时间，可直接调用。系统标注的时间就是这个世界的绝对真实时间；用户问时间时照实回答。只有用户明确要求（如「把时间推进到晚上8点」「过三天」）时才推进或设定，不要自行改变时间。");
     lines.push("  参数：");
     lines.push("    · action (必填) — 查看 / 设定 / 推进 / 流速 / 恢复");
     lines.push("    · datetime (设定时用) — YYYY-MM-DD HH:mm");
@@ -1445,7 +1446,7 @@ async function handleCreateCharacter(args: Record<string, unknown>): Promise<Too
     const { loadCharacters, saveCharacters } = await import("./character-storage");
     const chars = loadCharacters();
     if (chars.find((c) => c.name === args.name)) return { name: "创建角色", success: false, error: "已存在同名角色" };
-    const now = new Date().toISOString();
+    const now = getNow().toISOString();
     const newChar = {
         id: `char_${Date.now()}`,
         name: args.name as string,
@@ -1473,7 +1474,7 @@ async function handleUpdateCharacterField(args: Record<string, unknown>): Promis
     } else {
         return { name: "更新角色字段", success: false, error: `不支持的字段：${field}` };
     }
-    char.updatedAt = new Date().toISOString();
+    char.updatedAt = getNow().toISOString();
     chars[idx] = char as typeof chars[number];
     saveCharacters(chars);
     return { name: "更新角色字段", success: true, data: `已更新 ${args.name} 的 ${field}` };
@@ -1752,7 +1753,7 @@ async function handleCloneBuiltinPreset(args: Record<string, unknown>): Promise<
     copy.description = (args.description as string) || "";
     copy.builtIn = false;
     (copy as Record<string, unknown>).builtInVersion = undefined;
-    copy.createdAt = Date.now();
+    copy.createdAt = getNowMs();
     copy.updatedAt = Date.now();
     presets.push(copy);
     await savePresetsAsync(presets);
@@ -1772,7 +1773,7 @@ async function handleDuplicatePreset(args: Record<string, unknown>): Promise<Too
     if (args.newDescription !== undefined) copy.description = args.newDescription as string;
     copy.builtIn = false;
     (copy as Record<string, unknown>).builtInVersion = undefined;
-    copy.createdAt = Date.now();
+    copy.createdAt = getNowMs();
     copy.updatedAt = Date.now();
     presets.push(copy);
     await savePresetsAsync(presets);

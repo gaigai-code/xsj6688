@@ -347,7 +347,7 @@ function normalizeManifest(characterId: string, payload: unknown): CheckPhoneMan
   const normalizedTop = dedupedTop.slice(0, CHECKPHONE_TOP_APP_COUNT);
   if (normalizedTop.length !== CHECKPHONE_TOP_APP_COUNT) return null;
 
-  const now = new Date().toISOString();
+  const now = getNow().toISOString();
   return {
     characterId,
     dockAppIds: [...CHECKPHONE_DOCK_APP_IDS],
@@ -4601,7 +4601,7 @@ function parseBrowserBlockPayload(text: string): PhoneBlockParseResult {
       id: `history${order}`,
       title: fields["标题"] || "",
       urlLabel: fields["网址"] || "",
-      createdAt: fields["时间"] || new Date().toISOString(),
+      createdAt: fields["时间"] || getNow().toISOString(),
       content: fields["内容"] || "",
       context: fields["情境"] || "",
       innerThought: fields["内心"] || "",

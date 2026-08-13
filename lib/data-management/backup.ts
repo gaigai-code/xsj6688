@@ -1,3 +1,4 @@
+import { getNow } from "@/lib/virtual-time";
 import JSZip from "jszip";
 import { downloadFile, type DownloadFileOptions } from "../download-utils";
 import { DATA_MODULES } from "./modules";
@@ -84,7 +85,7 @@ export async function inspectData(): Promise<DataSnapshot> {
     totalRecords,
     modules: moduleStats,
     storage,
-    createdAt: new Date().toISOString(),
+    createdAt: getNow().toISOString(),
   };
 }
 
@@ -221,7 +222,7 @@ async function buildEnvelope(moduleIds?: DataModuleId[], options: BackupOptions 
     format: "ai-phone-backup",
     // v2 only when media was actually extracted to binary entries (collector present).
     version: collector ? 2 : 1,
-    createdAt: new Date().toISOString(),
+    createdAt: getNow().toISOString(),
     origin: typeof window !== "undefined" ? window.location.origin : "",
     modules: manifestModules,
     totalBytes: manifestModules.reduce((sum, item) => sum + item.bytes, 0),
