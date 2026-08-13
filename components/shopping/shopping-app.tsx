@@ -1,4 +1,5 @@
 "use client";
+import { getNowMs } from "@/lib/virtual-time";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
@@ -412,7 +413,7 @@ export function ShoppingApp({ onClose, visible = true, onIdle, onBusyChange }: S
     deliveryMinMinutes: DEFAULT_DELIVERY_MIN_MINUTES,
     deliveryMaxMinutes: DEFAULT_DELIVERY_MAX_MINUTES,
   });
-  const [nowTick, setNowTick] = useState(() => Date.now());
+  const [nowTick, setNowTick] = useState(() => getNowMs());
   const [searchInput, setSearchInput] = useState("");
   const [sectionSearchInputs, setSectionSearchInputs] = useState<Record<ShoppingSectionSearchTabId, string>>({
     orders: "",
@@ -499,8 +500,8 @@ export function ShoppingApp({ onClose, visible = true, onIdle, onBusyChange }: S
 
   useEffect(() => {
     if (state.orders.length === 0) return;
-    setNowTick(Date.now());
-    const timer = window.setInterval(() => setNowTick(Date.now()), 30000);
+    setNowTick(getNowMs());
+    const timer = window.setInterval(() => setNowTick(getNowMs()), 30000);
     return () => window.clearInterval(timer);
   }, [state.orders.length]);
 

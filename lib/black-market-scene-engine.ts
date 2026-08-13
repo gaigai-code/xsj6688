@@ -1,3 +1,4 @@
+import { getNow } from "./virtual-time";
 import { loadCharacters } from "./character-storage";
 import type { Character } from "./character-types";
 import type { ChatMessage } from "./chat-storage";
@@ -145,7 +146,7 @@ async function buildScenePromptMessages(session: BlackMarketSceneSession, templa
     userIdentity,
     appId: BLACK_MARKET_PROMPT_APP_ID,
     appTags: BLACK_MARKET_PROMPT_TAGS,
-    scheduleSummary: buildCalendarScheduleMarker("character", session.characterId, getWeekStartIso(new Date())),
+    scheduleSummary: buildCalendarScheduleMarker("character", session.characterId, getWeekStartIso(getNow())),
     coreMemories: coreMemories ? formatCoreMemories(coreMemories) : "",
     longTermMemories: memories ? formatLongTermMemories(memories) : "",
     worldBookActivationContext: wbActivationContext,

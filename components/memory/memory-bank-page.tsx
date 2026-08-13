@@ -6,6 +6,7 @@ import { ConfirmDialog } from "@/components/ui/modal";
 import { MemoryTimeline } from "./memory-timeline";
 import { Toggle } from "@/components/ui/form";
 import { loadCharacters } from "@/lib/character-storage";
+import { getNow, getNowMs } from "@/lib/virtual-time";
 import type { Character } from "@/lib/character-types";
 import type { MemoryEntry, MemoryConfig } from "@/lib/memory-types";
 import { DEFAULT_CORE_MEMORY_PROMPT, DEFAULT_SUMMARIZATION_PROMPT } from "@/lib/memory-types";
@@ -138,7 +139,7 @@ function MemorySettingsSliderItem({
 }
 
 function relativeTime(isoStr: string): string {
-    const diff = Date.now() - new Date(isoStr).getTime();
+    const diff = getNowMs() - new Date(isoStr).getTime();
     const mins = Math.floor(diff / 60000);
     if (mins < 1) return "刚刚";
     if (mins < 60) return `${mins}分钟前`;
@@ -322,7 +323,7 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
         setSummarizing(true);
         try {
             const sinceTimestamp = typeof range === "number"
-                ? new Date(Date.now() - range * 86400000).toISOString()
+                ? new Date(getNowMs() - range * 86400000).toISOString()
                 : undefined;
             const afterTimestamp = range === "all"
                 ? undefined
@@ -1129,7 +1130,7 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
                     <div className="mem-picker-footer">
                         <span>OBSERVER · 记忆观察员</span>
                         <span>{characters.length} PROFILES · {characters.reduce((s, c) => s + c.shortTermCount + c.coreCount + c.longTermCount, 0)} RECORDS</span>
-                        <span>{new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" })}</span>
+                        <span>{getNow().toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" })}</span>
                     </div>
                 </div>
             </div>

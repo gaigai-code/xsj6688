@@ -1,3 +1,4 @@
+import { getNow } from "./virtual-time";
 import { loadCharacters } from "./character-storage";
 import { previewMessagesForApi, sendLLMRequest, sendLLMStreamRequest, sendLLMToolRequest, sendLLMToolStreamRequest, ChatEngineError } from "./chat-engine";
 import type { ChatMessage } from "./chat-storage";
@@ -513,7 +514,7 @@ export async function generateCoCreateReply(
     appTags,
     longTermMemories: memories ? formatLongTermMemories(memories) : "",
     coreMemories: coreMemories ? formatCoreMemories(coreMemories) : "",
-    scheduleSummary: buildCalendarScheduleMarker("character", runtime.character.id, getWeekStartIso(new Date())),
+    scheduleSummary: buildCalendarScheduleMarker("character", runtime.character.id, getWeekStartIso(getNow())),
     worldBookActivationContext: cocreateActivationContext,
     recentBlocks,
     unifiedRecentItems,
@@ -795,7 +796,7 @@ export async function previewCoCreatePromptPayload(
     appTags,
     longTermMemories: memories ? formatLongTermMemories(memories) : "",
     coreMemories: coreMemories ? formatCoreMemories(coreMemories) : "",
-    scheduleSummary: buildCalendarScheduleMarker("character", runtime.character.id, getWeekStartIso(new Date())),
+    scheduleSummary: buildCalendarScheduleMarker("character", runtime.character.id, getWeekStartIso(getNow())),
     worldBookActivationContext: cocreateActivationContext,
     recentBlocks,
     unifiedRecentItems,

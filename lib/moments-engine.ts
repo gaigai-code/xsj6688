@@ -1,3 +1,4 @@
+import { getNow } from "./virtual-time";
 // lib/moments-engine.ts
 // AI generation engine + background service for Moments (朋友圈).
 // Handles: AI posting (scheduled), AI commenting, AI liking, memory integration.
@@ -259,7 +260,7 @@ async function resolveAssemblerInput(
     const { recentBlocks, wbActivationContext, unifiedRecentItems } = prepareShortTermContext(characterId, "moments");
 
     // Calendar schedule (NPC doesn't get character's schedule)
-    const scheduleSummary = isNPC ? undefined : buildCalendarScheduleMarker("character", characterId, getWeekStartIso(new Date()));
+    const scheduleSummary = isNPC ? undefined : buildCalendarScheduleMarker("character", characterId, getWeekStartIso(getNow()));
 
     const input: AssemblerInput = {
         character,

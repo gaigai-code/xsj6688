@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -291,8 +292,8 @@ export function CheckPhoneApp({ onClose }: CheckPhoneAppProps) {
   // Real Date State
   const [currentDate, setCurrentDate] = useState<Date | null>(null);
   useEffect(() => {
-    setCurrentDate(new Date());
-    const timer = setInterval(() => setCurrentDate(new Date()), 60000);
+    setCurrentDate(getNow());
+    const timer = setInterval(() => setCurrentDate(getNow()), 60000);
     return () => clearInterval(timer);
   }, []);
 

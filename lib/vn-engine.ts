@@ -1,3 +1,4 @@
+import { getNow } from "./virtual-time";
 import { loadCharacters } from "./character-storage";
 import {
   loadBindingConfig,
@@ -166,7 +167,7 @@ async function buildVnPromptMessages(
     regexes,
     userIdentity,
     appId: "vn",
-    scheduleSummary: buildCalendarScheduleMarker("character", characterId, getWeekStartIso(new Date())),
+    scheduleSummary: buildCalendarScheduleMarker("character", characterId, getWeekStartIso(getNow())),
     coreMemories: coreMemories ? formatCoreMemories(coreMemories) : "",
     longTermMemories: memories ? formatLongTermMemories(memories) : "",
     worldBookActivationContext: wbActivationContext,

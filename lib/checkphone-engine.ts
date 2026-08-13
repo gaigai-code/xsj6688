@@ -1,3 +1,4 @@
+import { getNow } from "./virtual-time";
 import { loadCharacters } from "./character-storage";
 import { normalizeBilingualTextInput, splitBilingualText } from "./bilingual-text";
 import { previewMessagesForApi, sendLLMRequest } from "./chat-engine";
@@ -144,7 +145,7 @@ async function buildCheckPhoneManifestMessages(
     userIdentity,
     appId: "checkphone",
     appTags: getCheckPhonePromptTags("manifest"),
-    scheduleSummary: buildCalendarScheduleMarker("character", characterId, getWeekStartIso(new Date())),
+    scheduleSummary: buildCalendarScheduleMarker("character", characterId, getWeekStartIso(getNow())),
     coreMemories: coreMemories ? formatCoreMemories(coreMemories) : "",
     longTermMemories: memories ? formatLongTermMemories(memories) : "",
     worldBookActivationContext: wbActivationContext,
@@ -1201,7 +1202,7 @@ async function buildCheckPhoneAppMessages(
     userIdentity,
     appId: "checkphone",
     appTags: getCheckPhonePromptTags(appId),
-    scheduleSummary: buildCalendarScheduleMarker("character", characterId, getWeekStartIso(new Date())),
+    scheduleSummary: buildCalendarScheduleMarker("character", characterId, getWeekStartIso(getNow())),
     coreMemories: coreMemories ? formatCoreMemories(coreMemories) : "",
     longTermMemories: memories ? formatLongTermMemories(memories) : "",
     worldBookActivationContext: wbActivationContext,

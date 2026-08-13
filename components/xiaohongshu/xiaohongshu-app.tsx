@@ -1,4 +1,5 @@
 "use client";
+import { getNowMs } from "@/lib/virtual-time";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent, type TouchEvent, type UIEvent, type WheelEvent } from "react";
 import { ShareFat } from "@phosphor-icons/react";
@@ -186,7 +187,7 @@ function parseNotificationCountFromText(text: string): number {
 function formatTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  const diffMinutes = Math.max(1, Math.round((Date.now() - date.getTime()) / 60000));
+  const diffMinutes = Math.max(1, Math.round((getNowMs() - date.getTime()) / 60000));
   if (diffMinutes < 60) return `${diffMinutes}分钟前`;
   if (diffMinutes < 1440) return `${Math.round(diffMinutes / 60)}小时前`;
   return `${Math.round(diffMinutes / 1440)}天前`;

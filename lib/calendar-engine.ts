@@ -1,3 +1,4 @@
+import { getNow } from "./virtual-time";
 import type { Character } from "./character-types";
 import type { ApiConfig, PresetConfig, RegexConfig, WorldBookConfig } from "./settings-types";
 import type { UserIdentity } from "@/components/settings/user-identity";
@@ -321,5 +322,5 @@ export function createDefaultScheduleDraft(date: string) {
 }
 
 export function getCurrentWeekStart(): string {
-  return getWeekStartIso(new Date());
+  return getWeekStartIso(getNow());
 }

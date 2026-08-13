@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
@@ -471,7 +472,7 @@ function BlackMarketTerminalClock() {
   const [time, setTime] = useState("00:00:00");
   useEffect(() => {
     const tick = () => {
-      const date = new Date();
+      const date = getNow();
       const pad = (value: number) => String(value).padStart(2, "0");
       setTime(`${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`);
     };

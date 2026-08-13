@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useCheckPhoneRefresh } from "@/lib/checkphone-refresh-tracker";
@@ -40,7 +41,7 @@ const GAME_LIBRARY_ACCENTS = ["#f5a25b", "#e96b8f", "#5b9eff", "#5fd4a4", "#ef6c
 function formatSteamRelativeTime(iso: string): string {
   const value = new Date(iso);
   if (Number.isNaN(value.getTime())) return iso;
-  const now = new Date();
+  const now = getNow();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterdayStart = new Date(todayStart);
   yesterdayStart.setDate(yesterdayStart.getDate() - 1);
@@ -60,7 +61,7 @@ function formatSteamRelativeTime(iso: string): string {
 function formatSteamDaysAgo(iso: string): string {
   const value = new Date(iso);
   if (Number.isNaN(value.getTime())) return iso;
-  const now = new Date();
+  const now = getNow();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const valueStart = new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
   const diffDays = Math.max(0, Math.floor((todayStart - valueStart) / 86400000));

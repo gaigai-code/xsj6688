@@ -22,7 +22,7 @@ import {
     toolNameMatches,
 } from "./tool-storage";
 import { executeCustomAppToolCall } from "./custom-app-tool-runtime";
-import { CALENDAR_MANAGEMENT_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, getInternalCapability } from "./internal-capability-storage";
+import { CALENDAR_MANAGEMENT_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, VIRTUAL_TIME_CAPABILITY_ID, getInternalCapability } from "./internal-capability-storage";
 import { loadMemoryEntriesByType, saveMemoryEntry } from "./memory-storage";
 import type { MemoryEntry } from "./memory-types";
 import { loadCharacters } from "./character-storage";
@@ -48,6 +48,15 @@ import type { NoteWallBoard, NoteWallComment, NoteWallNote, NoteWallSize } from 
 import { findNoteWallPlacement, normalizeNoteWallSize } from "./notewall-utils";
 import { recordNoteWallCommentEvent, recordNoteWallNoteEvent } from "./notewall-memory";
 import { getMusicControlBridge } from "./music-control-bridge";
+import {
+    advanceVirtualTime,
+    formatVirtualTimeShort,
+    getNow,
+    getVirtualTimeState,
+    resumeRealtime,
+    setVirtualRate,
+    setVirtualTime,
+} from "./virtual-time";
 import { loadAllTracks, type MusicTrack } from "./music-storage";
 import {
     checkLoginStatus,
@@ -748,6 +757,7 @@ async function executeInternalTool(call: ToolCall, context?: ToolExecutionContex
     if (isToolboxManagementToolName(call.name)) return executeToolboxManagementTool(call);
     if (call.name === "发送文件") return executeSendFileTool(call);
     if (call.name === "稍后主动联系" || call.name === "设置定时醒来") return executeTimedWakeTool(call, context);
+    if (isVirtualTimeToolName(call.name)) return executeVirtualTimeTool(call);
 
     if (call.name !== "写入记忆") return null;
 
@@ -815,6 +825,159 @@ function isToolboxManagementToolName(name: string): boolean {
         || name === "更新组合工具"
         || name === "设置组合工具启用"
         || name === "删除组合工具";
+}
+
+function isVirtualTimeToolName(name: string): boolean {
+    return name === "查看虚拟时间"
+        || name === "设定虚拟时间"
+        || name === "推进虚拟时间"
+        || name === "调整时间流速"
+        || name === "恢复真实时间";
+}
+
+function executeVirtualTimeTool(call: ToolCall): ToolResult {
+    const capability = getInternalCapability(VIRTUAL_TIME_CAPABILITY_ID);
+    if (!capability || !capability.enabled || capability.mode === "off") {
+        return {
+            name: call.name,
+            success: false,
+            error: "虚拟时间能力未启用",
+            continueConversation: false,
+            persistToHistory: false,
+            userNotice: "虚拟时间能力未启用",
+        };
+    }
+
+    try {
+        switch (call.name) {
+            case "查看虚拟时间": {
+                const now = getNow();
+                const state = getVirtualTimeState();
+                const rateLabel = state.mode === "realtime" ? "真实时间同步" : (state.rate === 0 ? "已暂停" : `${state.rate}x`);
+                return {
+                    name: call.name,
+                    success: true,
+                    data: `当前虚拟时间：${formatVirtualTimeShort(now)}（模式：${state.mode === "realtime" ? "真实时间" : "虚拟时间"}，流速：${rateLabel}）`,
+                    continueConversation: true,
+                    persistToHistory: true,
+                    userNotice: "已查看虚拟时间",
+                };
+            }
+            case "设定虚拟时间": {
+                const date = parseVirtualDateTime(call.args.datetime);
+                if (!date) return virtualTimeFailure("设定虚拟时间", "时间格式无效，请使用 YYYY-MM-DD HH:mm");
+                setVirtualTime(date);
+                return {
+                    name: call.name,
+                    success: true,
+                    data: `虚拟时间已设定为 ${formatVirtualTimeShort(getNow())}`,
+                    continueConversation: false,
+                    persistToHistory: false,
+                    userNotice: "已设定虚拟时间",
+                };
+            }
+            case "推进虚拟时间": {
+                const targetTime = typeof call.args.targetTime === "string" ? call.args.targetTime : undefined;
+                const deltaMinutes = typeof call.args.deltaMinutes === "number" ? call.args.deltaMinutes : undefined;
+                if (targetTime) {
+                    const target = parseTargetTime(targetTime);
+                    if (!target) return virtualTimeFailure("推进虚拟时间", "targetTime 格式无效，请使用 HH:mm");
+                    const now = getNow();
+                    const targetMs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), target.hour, target.minute, 0, 0).getTime();
+                    advanceVirtualTime(targetMs - now.getTime());
+                } else if (typeof deltaMinutes === "number" && Number.isFinite(deltaMinutes)) {
+                    advanceVirtualTime(deltaMinutes * 60_000);
+                } else {
+                    return virtualTimeFailure("推进虚拟时间", "缺少参数 deltaMinutes 或 targetTime");
+                }
+                return {
+                    name: call.name,
+                    success: true,
+                    data: `虚拟时间已推进到 ${formatVirtualTimeShort(getNow())}`,
+                    continueConversation: false,
+                    persistToHistory: false,
+                    userNotice: "已推进虚拟时间",
+                };
+            }
+            case "调整时间流速": {
+                const rawRate = typeof call.args.rate === "number" ? call.args.rate : Number(call.args.rate);
+                if (!Number.isFinite(rawRate) || rawRate < 0) return virtualTimeFailure("调整时间流速", "rate 必须是非负数");
+                setVirtualRate(rawRate);
+                return {
+                    name: call.name,
+                    success: true,
+                    data: rawRate === 0 ? "虚拟时间已暂停" : `虚拟时间流速已调整为 ${rawRate}x`,
+                    continueConversation: false,
+                    persistToHistory: false,
+                    userNotice: "已调整时间流速",
+                };
+            }
+            case "恢复真实时间": {
+                resumeRealtime();
+                return {
+                    name: call.name,
+                    success: true,
+                    data: "已恢复真实时间",
+                    continueConversation: false,
+                    persistToHistory: false,
+                    userNotice: "已恢复真实时间",
+                };
+            }
+        }
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+            name: call.name,
+            success: false,
+            error: message,
+            continueConversation: false,
+            persistToHistory: false,
+            userNotice: `${call.name}失败：${message}`,
+        };
+    }
+
+    return {
+        name: call.name,
+        success: false,
+        error: "未知虚拟时间动作",
+        continueConversation: false,
+        persistToHistory: false,
+        userNotice: "未知虚拟时间动作",
+    };
+}
+
+function virtualTimeFailure(name: string, error: string): ToolResult {
+    return {
+        name,
+        success: false,
+        error,
+        continueConversation: false,
+        persistToHistory: false,
+        userNotice: error,
+    };
+}
+
+function parseVirtualDateTime(value: unknown): Date | null {
+    if (typeof value !== "string") return null;
+    const match = /^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})$/.exec(value.trim());
+    if (!match) return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const hour = Number(match[4]);
+    const minute = Number(match[5]);
+    const date = new Date(year, month - 1, day, hour, minute, 0, 0);
+    if (Number.isNaN(date.getTime())) return null;
+    return date;
+}
+
+function parseTargetTime(value: string): { hour: number; minute: number } | null {
+    const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+    if (!match) return null;
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    return { hour, minute };
 }
 
 const MAX_LOCAL_DATA_RESULT_LENGTH = 12000;

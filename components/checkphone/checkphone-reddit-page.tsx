@@ -1,4 +1,5 @@
 "use client";
+import { getNowMs } from "@/lib/virtual-time";
 
 import { useEffect, useMemo, useState, type UIEvent } from "react";
 import { useCheckPhoneRefresh } from "@/lib/checkphone-refresh-tracker";
@@ -54,7 +55,7 @@ function formatCompactCount(value: number): string {
 function formatRedditTime(iso: string): string {
   const value = new Date(iso);
   if (Number.isNaN(value.getTime())) return iso;
-  const diffMs = Math.max(0, Date.now() - value.getTime());
+  const diffMs = Math.max(0, getNowMs() - value.getTime());
   const minute = 60 * 1000;
   const hour = 60 * minute;
   const day = 24 * hour;
@@ -74,7 +75,7 @@ function formatCakeDay(iso: string): string {
 function getAccountAgeLabel(iso: string): string {
   const value = new Date(iso);
   if (Number.isNaN(value.getTime())) return "-";
-  const diffDays = Math.max(1, Math.floor((Date.now() - value.getTime()) / (24 * 60 * 60 * 1000)));
+  const diffDays = Math.max(1, Math.floor((getNowMs() - value.getTime()) / (24 * 60 * 60 * 1000)));
   if (diffDays < 60) return `${diffDays}d`;
   const months = Math.max(1, Math.floor(diffDays / 30));
   if (months < 24) return `${months}mo`;

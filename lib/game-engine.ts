@@ -1,3 +1,4 @@
+import { getNow } from "./virtual-time";
 import { loadCharacters } from "./character-storage";
 import type { Character } from "./character-types";
 import { ChatEngineError, sendLLMRequest } from "./chat-engine";
@@ -108,7 +109,7 @@ export async function buildGameRolePackage(input: {
     appId: GAME_PROMPT_APP_ID,
     appTags: GAME_PROMPT_TAGS,
     scheduleSummary: input.mode === "full"
-      ? buildCalendarScheduleMarker("character", input.characterId, getWeekStartIso(new Date()))
+      ? buildCalendarScheduleMarker("character", input.characterId, getWeekStartIso(getNow()))
       : "",
     coreMemories: coreMemories ? formatCoreMemories(coreMemories) : "",
     longTermMemories: memories ? formatLongTermMemories(memories) : "",

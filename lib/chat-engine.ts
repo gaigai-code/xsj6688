@@ -68,6 +68,7 @@ import { isNeteaseConfigured, getUserPlaylists, getPlaylistTracks, checkLoginSta
 import { buildCalendarScheduleMarker, getCurrentCalendarScheduleForPrompt } from "./calendar-storage";
 import { getWeekStartIso } from "./calendar-utils";
 import { buildCharacterTimeContext } from "./character-time";
+import { getNow } from "./virtual-time";
 import { getPromptTimestampOptionsForTimeContext } from "./prompt-time";
 import { kvGet, kvSet, kvRemove, registerKvMigration } from "./kv-db";
 import { stripStateAndInnerForPrompt } from "./prompt-sanitizer";
@@ -1820,7 +1821,7 @@ export async function buildChatPromptMessages(
         ]
         : history;
 
-    const now = new Date();
+    const now = getNow();
     const promptTimeContext = buildCharacterTimeContext(character.timeZone, now);
     const promptTimestampOptions = getPromptTimestampOptionsForTimeContext(promptTimeContext);
     const memConfig = loadMemoryConfig();

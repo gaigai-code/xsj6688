@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { useEffect, useMemo, useState } from "react";
 import { useCheckPhoneRefresh } from "@/lib/checkphone-refresh-tracker";
@@ -196,7 +197,7 @@ function parseCheckPhoneTimeRank(timeLabel: string): number {
   const label = timeLabel.trim();
   if (!label) return 0;
 
-  const now = new Date();
+  const now = getNow();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const minuteAgo = label.match(/^(\d+)\s*(?:分钟|分)前$/);
   if (minuteAgo) return now.getTime() - Number(minuteAgo[1]) * 60_000;
@@ -285,7 +286,7 @@ function formatCheckPhoneDisplayTime(timeLabel: string): string {
   if (timestamp <= 0) return label;
 
   const date = new Date(timestamp);
-  const now = new Date();
+  const now = getNow();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const dayMs = 86_400_000;
   const hhmm = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
@@ -309,7 +310,7 @@ function formatCheckPhoneRelativeTime(timeLabel: string): string {
   const timestamp = parseCheckPhoneTimeRank(label);
   if (timestamp <= 0) return label;
 
-  const now = new Date();
+  const now = getNow();
   const diffMs = Math.max(0, now.getTime() - timestamp);
   const minuteMs = 60_000;
   const hourMs = 3_600_000;
@@ -341,7 +342,7 @@ function formatCheckPhoneDisplayDate(dateLabel: string): string {
   if (!match) return label;
 
   const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-  const now = new Date();
+  const now = getNow();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
   const dayMs = 86_400_000;

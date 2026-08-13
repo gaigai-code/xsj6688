@@ -7,6 +7,7 @@ import { SessionCustomCSS } from "@/components/ui/session-custom-css";
 import CSSSchemeBar from "@/components/ui/css-scheme-picker";
 import { CALENDAR_CSS_EXAMPLE } from "@/lib/css-examples";
 import { kvGet, kvSet, kvRemove } from "@/lib/kv-db";
+import { getNow } from "@/lib/virtual-time";
 import { Input } from "./ui/form";
 import type { CalendarOwnerType, CalendarScheduleItem, CalendarWeekPlan } from "@/lib/calendar-types";
 import {
@@ -131,7 +132,7 @@ export function PhoneCalendarApp({
   onClose: () => void;
   onNotice?: (text: string) => void;
 }) {
-  const todayIso = formatIsoDate(new Date());
+  const todayIso = formatIsoDate(getNow());
   const [owners, setOwners] = useState<OwnerOption[]>(() => buildOwnerOptions());
   const [selectedKey, setSelectedKey] = useState<string>(() => owners[0]?.key ?? "user:me");
   const [view, setView] = useState<"month" | "detail">("month");

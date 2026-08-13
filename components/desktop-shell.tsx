@@ -29,6 +29,9 @@ import ReadingApp from "@/components/reading/reading-app";
 import MapApp from "@/components/map/map-app";
 import { DwellingApp } from "@/components/dwelling/dwelling-app";
 import { MascotFloat } from "@/components/mascot/mascot-float";
+import { useVirtualNow } from "@/lib/virtual-time-hooks";
+import { isVirtualTimeMode } from "@/lib/virtual-time";
+import { VirtualTimeFloat } from "@/components/virtual-time-float";
 import { useMusicControlsOptional } from "@/lib/music-context";
 import { PhoneResourcesApp, type ResourceSubPage } from "@/components/phone-resources-app";
 import { CheckPhoneApp } from "@/components/checkphone/checkphone-app";
@@ -520,20 +523,29 @@ function normalizeLayout(raw: unknown, widgets: WidgetInstance[], dockIds: Set<D
 }
 
 function StatusClock() {
-  const [label, setLabel] = useState("--:--");
+  const now = useVirtualNow(10000);
+  const virtual = isVirtualTimeMode();
 
-  useEffect(() => {
-    const update = () => {
-      setLabel(
-        new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })
-      );
-    };
-    update();
-    const timer = window.setInterval(update, 10000);
-    return () => window.clearInterval(timer);
-  }, []);
+  const label = now.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
 
-  return <span className="status-time">{label}</span>;
+  return (
+    <span className="status-time">
+      {virtual ? (
+        <span
+          style={{
+            display: "inline-block",
+            width: 6,
+            height: 6,
+            borderRadius: 999,
+            background: "#7c3aed",
+            marginRight: 4,
+            verticalAlign: "middle",
+          }}
+        />
+      ) : null}
+      {label}
+    </span>
+  );
 }
 
 function collectCssOverrides(profile: ThemeProfile): Record<string, string> {
@@ -4160,6 +4172,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
               <DebugPromptPanel />
               <QuickActionFloat />
               <MascotFloat />
+              <VirtualTimeFloat />
 
               {/* Widget Picker Bottom Sheet */}
               {showWidgetPicker && (

@@ -1,4 +1,5 @@
 "use client";
+import { getNowMs } from "@/lib/virtual-time";
 
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -877,7 +878,7 @@ export function GameHubApp({ onClose, autoOpenLocalId }: { onClose: () => void; 
   }, []);
 
   useEffect(() => {
-    const updateRelativeNow = () => setRelativeNow(Date.now());
+    const updateRelativeNow = () => setRelativeNow(getNowMs());
     updateRelativeNow();
     const timer = window.setInterval(updateRelativeNow, 60000);
     return () => window.clearInterval(timer);

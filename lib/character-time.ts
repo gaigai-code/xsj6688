@@ -1,3 +1,5 @@
+import { getNow, isVirtualTimeMode } from "./virtual-time";
+
 export type CharacterTimeContext = {
   systemTime: string;
   systemWeekday: string;
@@ -112,12 +114,15 @@ export function hasTimeZoneDifference(date: Date, characterTimeZone: string, sys
     || systemParts.minute !== characterParts.minute;
 }
 
-export function buildCharacterTimeContext(timeZone?: string | null, now = new Date()): CharacterTimeContext {
+export function buildCharacterTimeContext(timeZone?: string | null, now = getNow()): CharacterTimeContext {
   const systemTimeZone = getSystemTimeZone();
   const systemTime = formatZonedChineseDateTime(now, systemTimeZone);
   const systemWeekday = getZonedWeekday(now, systemTimeZone);
   const normalizedTimeZone = normalizeTimeZone(timeZone);
   const hasDifference = normalizedTimeZone ? hasTimeZoneDifference(now, normalizedTimeZone, systemTimeZone) : false;
+  const virtualHint = isVirtualTimeMode()
+    ? "\n（当前处于角色扮演虚拟时间：时间线会随剧情推进或跳转，不必等待真实时间流逝。）"
+    : "";
 
   if (!normalizedTimeZone || !hasDifference) {
     return {
@@ -127,7 +132,7 @@ export function buildCharacterTimeContext(timeZone?: string | null, now = new Da
       characterTime: "",
       characterWeekday: "",
       characterTimeZone: "",
-      timeContext: `当前系统时间：${systemTime}，${systemWeekday}`,
+      timeContext: `当前系统时间：${systemTime}，${systemWeekday}${virtualHint}`,
       hasDifference: false,
     };
   }
@@ -145,15 +150,18 @@ export function buildCharacterTimeContext(timeZone?: string | null, now = new Da
       `当前系统时间：${systemTime} ${systemTimeZone}，${systemWeekday}`,
       `角色本地时间：${characterTime} ${normalizedTimeZone}，${characterWeekday}`,
       "判断角色作息、问候、深夜/清晨/工作时间时，优先使用角色本地时间。",
-    ].join("\n"),
+    ].join("\n") + virtualHint,
     hasDifference: true,
   };
 }
 
-export function buildGroupTimeContext(members: GroupTimeMember[], now = new Date()): CharacterTimeContext {
+export function buildGroupTimeContext(members: GroupTimeMember[], now = getNow()): CharacterTimeContext {
   const systemTimeZone = getSystemTimeZone();
   const systemTime = formatZonedChineseDateTime(now, systemTimeZone);
   const systemWeekday = getZonedWeekday(now, systemTimeZone);
+  const virtualHint = isVirtualTimeMode()
+    ? "\n（当前处于角色扮演虚拟时间：时间线会随剧情推进或跳转，不必等待真实时间流逝。）"
+    : "";
   const rows = members
     .map(member => {
       const timeZone = normalizeTimeZone(member.timeZone);
@@ -170,7 +178,7 @@ export function buildGroupTimeContext(members: GroupTimeMember[], now = new Date
       characterTime: "",
       characterWeekday: "",
       characterTimeZone: "",
-      timeContext: `当前系统时间：${systemTime}，${systemWeekday}`,
+      timeContext: `当前系统时间：${systemTime}，${systemWeekday}${virtualHint}`,
       hasDifference: false,
     };
   }
@@ -187,7 +195,7 @@ export function buildGroupTimeContext(members: GroupTimeMember[], now = new Date
       "群成员本地时间：",
       ...rows,
       "判断每个角色作息、问候、深夜/清晨/工作时间时，优先使用该角色自己的本地时间。",
-    ].join("\n"),
+    ].join("\n") + virtualHint,
     hasDifference: true,
   };
 }

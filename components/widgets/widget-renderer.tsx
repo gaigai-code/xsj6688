@@ -8,6 +8,8 @@ import { useMusicPlayerOptional } from "@/lib/music-context";
 import { resolveUserIdentity } from "@/lib/settings-storage";
 import { ContentDialog } from "@/components/ui/modal";
 import { getMascotState, activateMascot, subscribeMascot } from "@/lib/mascot-state";
+import { useVirtualNow } from "@/lib/virtual-time-hooks";
+import { getNow } from "@/lib/virtual-time";
 import { getMascotSettingsSnapshot, resolveMascotImageRef, subscribeMascotSettings } from "@/lib/mascot-settings";
 import { loadDIYTemplates } from "@/lib/widget-storage";
 import { DIYWidgetRenderer } from "@/components/widgets/diy-widget-renderer";
@@ -1087,7 +1089,7 @@ function MusicWidget({
    3. Calendar — 日历 (2x2)
    ══════════════════════════════════════════ */
 function CalendarWidget() {
-  const now = new Date();
+  const now = getNow();
   const year = now.getFullYear();
   const monthNum = now.getMonth() + 1;
   const day = now.getDate();
@@ -1128,12 +1130,7 @@ function CalendarWidget() {
    4. Clock + Date — 时钟+日期 (2x2)
    ══════════════════════════════════════════ */
 function ClockWidget() {
-  const [time, setTime] = useState(() => new Date());
-
-  useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+  const time = useVirtualNow(1000);
 
   const h = String(time.getHours()).padStart(2, "0");
   const m = String(time.getMinutes()).padStart(2, "0");
@@ -1166,12 +1163,7 @@ function ClockWidget() {
    5.5. Large Time — 极简大屏数字时钟 (4x2)
    ══════════════════════════════════════════ */
 function LargeTimeWidget() {
-  const [time, setTime] = useState(() => new Date());
-
-  useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+  const time = useVirtualNow(1000);
 
   const h = String(time.getHours()).padStart(2, "0");
   const m = String(time.getMinutes()).padStart(2, "0");
@@ -1254,7 +1246,7 @@ function LoveNoteWidget({
   const customText = typeof config?.text === "string" ? config.text : "";
   const noteText = customText || LOVE_NOTES_DEFAULT[noteIdx];
 
-  const now = new Date();
+  const now = getNow();
   const month = now.getMonth() + 1;
   const day = now.getDate();
 
@@ -1347,7 +1339,7 @@ function InterviewMagazineWidget({
   const [lineIdx] = useState(() => Math.floor(Math.random() * INTERVIEW_MAGAZINE_LINES.length));
   const line = INTERVIEW_MAGAZINE_LINES[lineIdx];
   const quote = INTERVIEW_MAGAZINE_QUOTES[lineIdx];
-  const now = new Date();
+  const now = getNow();
   const month = now.getMonth() + 1;
   const day = now.getDate();
   const imageDataUrl = typeof config?.imageDataUrl === "string" ? config.imageDataUrl : undefined;
@@ -1406,7 +1398,7 @@ function KaomojiWidget({
   widgetId: string;
   onConfigChange?: (widgetId: string, config: Record<string, unknown>) => void;
 }) {
-  const [time, setTime] = useState(() => new Date());
+  const time = useVirtualNow(1000);
   const [kaomojiIdx] = useState(() => Math.floor(Math.random() * KAOMOJI_SETS.length));
   const [identity] = useState(() => resolveUserIdentity());
 
@@ -1415,11 +1407,6 @@ function KaomojiWidget({
 
   const [showEdit, setShowEdit] = useState(false);
   const [editGreeting, setEditGreeting] = useState(customGreeting);
-
-  useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   const month = String(time.getMonth() + 1).padStart(2, "0");
   const day = String(time.getDate()).padStart(2, "0");
@@ -1980,7 +1967,7 @@ function ReceiptWidget({ config, widgetId, onConfigChange, preview }: any) {
       <div className="wg-receipt-paper">
         <div className="wg-receipt-meta">
           <span>STORE #042</span>
-          <span>{new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short' })}</span>
+          <span>{getNow().toLocaleDateString('en-US', { day: '2-digit', month: 'short' })}</span>
         </div>
         <div className="wg-receipt-header">SOUL MART</div>
         <div className="wg-receipt-divider" />
@@ -2103,7 +2090,7 @@ function PostcardWidget({ config, widgetId, onConfigChange, preview }: any) {
         <div className="wg-pc-bottom-layout">
           <div className="wg-pc-badge">
             <span>EST.</span>
-            <span>{new Date().getFullYear()}</span>
+            <span>{getNow().getFullYear()}</span>
             <div className="wg-pc-micro-divider" />
             <span className="wg-pc-micro-jp">記憶の破片</span>
           </div>

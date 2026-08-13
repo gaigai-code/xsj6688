@@ -1,4 +1,5 @@
 // components/music/music-comments.tsx — Song comment page (Netease comments)
+import { getNow } from "@/lib/virtual-time";
 // Hot / latest sorting, floor replies, pagination, posting (requires login).
 "use client";
 
@@ -31,7 +32,7 @@ function formatLikes(value: number): string {
 function formatCommentTime(ts: number): string {
     if (!ts) return "";
     const date = new Date(ts);
-    const now = new Date();
+    const now = getNow();
     const diff = now.getTime() - ts;
     const minutes = Math.floor(diff / 60000);
     if (minutes < 1) return "刚刚";

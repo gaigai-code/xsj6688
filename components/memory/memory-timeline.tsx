@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { useEffect, useState, useMemo } from "react";
 import type { NativeTimelineEntry } from "@/lib/short-term-assembler";
@@ -402,7 +403,7 @@ function fmtMomentCommentTime(comment: MomentComment): string {
 
 function fmtDate(ts: string): string {
     const d = new Date(ts);
-    const now = new Date();
+    const now = getNow();
     const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
     const pad = (n: number) => String(n).padStart(2, "0");
     if (d.toDateString() === now.toDateString()) return "今天";

@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { useEffect, useMemo, useState } from "react";
 import { useCheckPhoneRefresh } from "@/lib/checkphone-refresh-tracker";
@@ -35,7 +36,7 @@ type CheckPhoneInstagramPageProps = {
 function formatInstagramRelativeTime(iso: string): string {
   const value = new Date(iso);
   if (Number.isNaN(value.getTime())) return iso;
-  const now = new Date();
+  const now = getNow();
   const diffMs = Math.max(0, now.getTime() - value.getTime());
   const minutes = Math.floor(diffMs / 60000);
   if (minutes < 1) return "now";

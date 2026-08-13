@@ -1,3 +1,4 @@
+import { getNow } from "./virtual-time";
 // lib/map-rpg-engine.ts
 // RPG Map Mode — LLM integration for world generation + event expansion
 
@@ -1045,7 +1046,7 @@ async function buildCompanionDeclarePromptPayload(
   ]);
   const longTermMemories = memResults ? formatLongTermMemories(memResults) : "";
   const coreMemories = coreResults ? formatCoreMemories(coreResults) : "";
-  const scheduleSummary = buildCalendarScheduleMarker("character", characterId, getWeekStartIso(new Date()));
+  const scheduleSummary = buildCalendarScheduleMarker("character", characterId, getWeekStartIso(getNow()));
 
   const llmMessages = assemblePromptPayload({
     character, history: truncatedHistory, preset, worldBooks, regexes, userIdentity, appId: "adventure",

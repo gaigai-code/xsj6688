@@ -11,6 +11,15 @@
 //   - 导航工具 (navigate)             — 1 个独立工具（直接暴露）
 
 import type { LlmToolDefinition } from "./llm-provider-adapter";
+import {
+    advanceVirtualTime,
+    formatVirtualTimeShort,
+    getNow,
+    getVirtualTimeState,
+    resumeRealtime,
+    setVirtualRate,
+    setVirtualTime,
+} from "./virtual-time";
 import type { ToolCall, ToolResult } from "./tool-executor";
 import type { MascotPageContext } from "./mascot-context";
 import type { Prompt } from "./settings-types";
@@ -582,6 +591,19 @@ const NAVIGATE_SCHEMA = {
     additionalProperties: false,
 };
 
+const MASCOT_VIRTUAL_TIME_SCHEMA = {
+    type: "object",
+    properties: {
+        action: { type: "string", enum: ["查看", "设定", "推进", "流速", "恢复"], description: "动作：查看=看当前虚拟时间；设定=设定到具体时刻（用 datetime）；推进=前进/回退（用 deltaMinutes 或 targetTime）；流速=调整流速（用 rate）；恢复=恢复真实时间" },
+        datetime: { type: "string", description: "设定动作使用，格式 YYYY-MM-DD HH:mm" },
+        deltaMinutes: { type: "number", description: "推进动作使用，前进的分钟数（负数回退）" },
+        targetTime: { type: "string", description: "推进动作使用，推进到今天的 HH:mm" },
+        rate: { type: "number", description: "流速动作使用，0=暂停，1=真实同步，大于 1=倍速" },
+    },
+    required: ["action"],
+    additionalProperties: false,
+};
+
 const IMAGE_ASSET_USAGE_GUIDE = [
     "图像处理套件用于给 CSS 主题制作可复用素材。推荐工作流：",
     "1. 先用「生成图像素材」得到素材 id 和预览。制作气泡/图标时，生图提示词里要写 plain solid white background / no checkerboard background / no sample text / no watermark / subject centered with margin，不要写 transparent background。",
@@ -707,6 +729,12 @@ export const MASCOT_NAVIGATE_TOOL: MascotSubTool = {
     parameterSchema: NAVIGATE_SCHEMA,
 };
 
+export const MASCOT_VIRTUAL_TIME_TOOL: MascotSubTool = {
+    name: "虚拟时间",
+    description: "查看、设定、推进这台小手机里的虚拟时间。角色扮演时你是「时间导演」：场景转场、睡觉醒来、剧情跳跃（过了几天/到了晚上）时主动推进时间，不必等用户要求；普通寒暄则不要动。",
+    parameterSchema: MASCOT_VIRTUAL_TIME_SCHEMA,
+};
+
 // ── 文本协议下的工具列表渲染 ─────────────────────────────
 
 /** 紧凑工具列表（每轮都注入到 system prompt） */
@@ -724,6 +752,14 @@ export function buildMascotToolsListPrompt(): string {
     lines.push("    · page (必填) — 页面名。可选值：chat / characters / story / vnmode / moments / calendar / music / resources / settings");
     lines.push("    · subpage (可选) — 子页面（仅 page=settings 时有效）。可选值：presets / worldbook / regex / api / voice / binding / data / identity");
     lines.push("  调用：[执行动作:导航({\"page\":\"chat\"})] 或 [执行动作:导航({\"page\":\"settings\",\"subpage\":\"presets\"})]");
+    lines.push("【独立工具】虚拟时间 — 查看/设定/推进小手机里的虚拟时间，可直接调用。角色扮演时你是「时间导演」：场景转场、睡觉醒来、剧情跳跃（过了几天/到了晚上）时主动推进，普通寒暄则不要动。");
+    lines.push("  参数：");
+    lines.push("    · action (必填) — 查看 / 设定 / 推进 / 流速 / 恢复");
+    lines.push("    · datetime (设定时用) — YYYY-MM-DD HH:mm");
+    lines.push("    · deltaMinutes (推进时用) — 前进的分钟数，负数回退");
+    lines.push("    · targetTime (推进时用) — 推进到今天的 HH:mm");
+    lines.push("    · rate (流速时用) — 0=暂停，1=真实同步，>1=倍速");
+    lines.push("  调用：[执行动作:虚拟时间({\"action\":\"推进\",\"targetTime\":\"20:00\"})]");
     lines.push("");
     lines.push("===== 调用规则 =====");
     lines.push("· 展开套件：使用 [获取指令:套件名] 格式，例如 [获取指令:CSS样式套件]");
@@ -799,6 +835,7 @@ function numberOption(value: unknown, fallback: number): number {
 
 const MASCOT_NATIVE_TOOL_NAMES: Record<string, string> = {
     "导航": "mascot_navigate",
+    "虚拟时间": "mascot_virtual_time",
     "读取CSS": "mascot_read_css",
     "覆写CSS": "mascot_write_css",
     "清除CSS": "mascot_clear_css",
@@ -876,6 +913,13 @@ export function getMascotNativeToolDefinitions(expandedPackageIds: string[] = []
         parameters: MASCOT_NAVIGATE_TOOL.parameterSchema,
     });
 
+    // 虚拟时间工具：始终暴露
+    defs.push({
+        name: getMascotNativeToolName(MASCOT_VIRTUAL_TIME_TOOL.name),
+        description: MASCOT_VIRTUAL_TIME_TOOL.description,
+        parameters: MASCOT_VIRTUAL_TIME_TOOL.parameterSchema,
+    });
+
     // 每个套件先暴露一个 loader（除非已展开）
     const expanded = new Set(expandedPackageIds);
     for (const pkg of MASCOT_TOOL_PACKAGES) {
@@ -911,6 +955,7 @@ export function getMascotNativeToolDefinitions(expandedPackageIds: string[] = []
 export function buildMascotNativeNameMap(): Map<string, string> {
     const map = new Map<string, string>();
     map.set(getMascotNativeToolName(MASCOT_NAVIGATE_TOOL.name), MASCOT_NAVIGATE_TOOL.name);
+    map.set(getMascotNativeToolName(MASCOT_VIRTUAL_TIME_TOOL.name), MASCOT_VIRTUAL_TIME_TOOL.name);
     for (const pkg of MASCOT_TOOL_PACKAGES) {
         map.set(getMascotNativeLoaderName(pkg.id), `_loader:${pkg.id}`);
         for (const tool of pkg.subTools) {
@@ -989,6 +1034,9 @@ export async function executeMascotToolCall(call: ToolCall, ctx: MascotToolConte
 
             // ─── 导航 ───
             case "导航": return await handleNavigate(call.args);
+
+            // ─── 虚拟时间 ───
+            case "虚拟时间": return await handleVirtualTime(call.args);
 
             default:
                 return { name: call.name, success: false, error: `未知工具：${call.name}` };
@@ -2201,6 +2249,67 @@ async function handleNavigate(args: Record<string, unknown>): Promise<ToolResult
     const { mascotNavigate } = await import("./mascot-events");
     mascotNavigate(page, subpage);
     return { name: "导航", success: true, data: `已跳转到 ${page}${subpage ? `:${subpage}` : ""}` };
+}
+
+async function handleVirtualTime(args: Record<string, unknown>): Promise<ToolResult> {
+    const action = typeof args.action === "string" ? args.action : "";
+
+    try {
+        switch (action) {
+            case "查看": {
+                const now = getNow();
+                const state = getVirtualTimeState();
+                const rateLabel = state.mode === "realtime" ? "真实时间同步" : (state.rate === 0 ? "已暂停" : `${state.rate}x`);
+                return {
+                    name: "虚拟时间",
+                    success: true,
+                    data: `当前虚拟时间：${formatVirtualTimeShort(now)}（模式：${state.mode === "realtime" ? "真实时间" : "虚拟时间"}，流速：${rateLabel}）`,
+                };
+            }
+            case "设定": {
+                const datetime = typeof args.datetime === "string" ? args.datetime : "";
+                const match = /^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})$/.exec(datetime.trim());
+                if (!match) return { name: "虚拟时间", success: false, error: "datetime 格式无效，请使用 YYYY-MM-DD HH:mm" };
+                const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]), 0, 0);
+                if (Number.isNaN(date.getTime())) return { name: "虚拟时间", success: false, error: "datetime 解析失败" };
+                setVirtualTime(date);
+                return { name: "虚拟时间", success: true, data: `虚拟时间已设定为 ${formatVirtualTimeShort(getNow())}` };
+            }
+            case "推进": {
+                const targetTime = typeof args.targetTime === "string" ? args.targetTime.trim() : "";
+                const deltaMinutes = typeof args.deltaMinutes === "number" ? args.deltaMinutes : undefined;
+                if (targetTime) {
+                    const tm = /^(\d{1,2}):(\d{2})$/.exec(targetTime);
+                    if (!tm) return { name: "虚拟时间", success: false, error: "targetTime 格式无效，请使用 HH:mm" };
+                    const hour = Number(tm[1]);
+                    const minute = Number(tm[2]);
+                    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return { name: "虚拟时间", success: false, error: "targetTime 超出范围" };
+                    const now = getNow();
+                    const targetMs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute, 0, 0).getTime();
+                    advanceVirtualTime(targetMs - now.getTime());
+                } else if (typeof deltaMinutes === "number" && Number.isFinite(deltaMinutes)) {
+                    advanceVirtualTime(deltaMinutes * 60_000);
+                } else {
+                    return { name: "虚拟时间", success: false, error: "推进需要 deltaMinutes 或 targetTime" };
+                }
+                return { name: "虚拟时间", success: true, data: `虚拟时间已推进到 ${formatVirtualTimeShort(getNow())}` };
+            }
+            case "流速": {
+                const rawRate = typeof args.rate === "number" ? args.rate : Number(args.rate);
+                if (!Number.isFinite(rawRate) || rawRate < 0) return { name: "虚拟时间", success: false, error: "rate 必须是非负数" };
+                setVirtualRate(rawRate);
+                return { name: "虚拟时间", success: true, data: rawRate === 0 ? "虚拟时间已暂停" : `虚拟时间流速已调整为 ${rawRate}x` };
+            }
+            case "恢复": {
+                resumeRealtime();
+                return { name: "虚拟时间", success: true, data: "已恢复真实时间" };
+            }
+            default:
+                return { name: "虚拟时间", success: false, error: "action 无效，可选：查看/设定/推进/流速/恢复" };
+        }
+    } catch (err) {
+        return { name: "虚拟时间", success: false, error: (err as Error).message };
+    }
 }
 
 // ── 套件展开管理 ─────────────────────────────

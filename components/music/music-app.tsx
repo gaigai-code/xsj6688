@@ -8,6 +8,7 @@ import {
     type MusicTrack,
 } from "@/lib/music-storage";
 import { useMusicControls, type MusicControlsValue } from "@/lib/music-context";
+import { getNow } from "@/lib/virtual-time";
 import { SessionCustomCSS } from "@/components/ui/session-custom-css";
 import {
     isNeteaseConfigured, loadMusicApiConfig, saveMusicApiConfig,
@@ -503,7 +504,7 @@ export default function MusicApp({ onClose }: Props) {
 // ── Recommend Tab (home) ──
 
 function greetingByHour(): { hello: string; sub: string } {
-    const h = new Date().getHours();
+    const h = getNow().getHours();
     if (h < 5) return { hello: "夜深了", sub: "适合戴上耳机的时刻" };
     if (h < 11) return { hello: "早上好", sub: "用一首歌开启今天" };
     if (h < 14) return { hello: "中午好", sub: "午后小憩，来点轻音乐" };
@@ -552,7 +553,7 @@ function RecommendTab({ formatTime, onPlayNetease, onPlayAll, onGoSearch, onOpen
 
     const hasRecommendContent = dailySongs.length + playlists.length + hotSearches.length + toplists.length > 0;
     const greeting = greetingByHour();
-    const today = new Date();
+    const today = getNow();
     const dailyCover = dailySongs[0]?.coverUrl;
 
     return (
@@ -662,7 +663,7 @@ function DailySongsPage({ songs, player, formatTime, onPlayNetease, onPlayAll }:
     onPlayNetease: (r: NeteaseSearchResult) => void;
     onPlayAll: (results: NeteaseSearchResult[]) => void;
 }) {
-    const today = new Date();
+    const today = getNow();
     return (
         <div className="music-playlist-detail">
             <div className="music-pl-hero">

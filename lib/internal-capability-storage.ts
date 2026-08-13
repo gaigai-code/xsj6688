@@ -12,6 +12,7 @@ export const SEND_FILE_CAPABILITY_ID = "send_file";
 export const LOCAL_DATA_LIBRARY_CAPABILITY_ID = "local_data_library";
 export const TOOLBOX_MANAGEMENT_CAPABILITY_ID = "toolbox_management";
 export const TIMED_WAKE_CAPABILITY_ID = "timed_wake";
+export const VIRTUAL_TIME_CAPABILITY_ID = "virtual_time";
 
 export type InternalToolDefinition = {
     name: string;
@@ -111,6 +112,123 @@ const TIMED_WAKE_USAGE_GUIDE = [
     "示例：",
     '[执行动作:稍后主动联系({"delayMinutes":15,"intent":"过15分钟看看对方回了没，如果还合适就轻轻找一句"})]',
 ].join("\n");
+
+const VIRTUAL_TIME_GET_PARAMETER_SCHEMA = JSON.stringify({
+    type: "object",
+    properties: {},
+});
+
+const VIRTUAL_TIME_SET_PARAMETER_SCHEMA = JSON.stringify({
+    type: "object",
+    properties: {
+        datetime: { type: "string", description: "要设定到的具体时间，格式 YYYY-MM-DD HH:mm，例如 2026-08-13 20:30" },
+    },
+    required: ["datetime"],
+});
+
+const VIRTUAL_TIME_ADVANCE_PARAMETER_SCHEMA = JSON.stringify({
+    type: "object",
+    properties: {
+        deltaMinutes: { type: "number", description: "从当前虚拟时间推进多少分钟（负数=回退），例如 120 表示推进 2 小时" },
+        targetTime: { type: "string", description: "推进到今天的某个时刻，格式 HH:mm，例如 20:00（与 deltaMinutes 二选一，优先 targetTime）" },
+    },
+});
+
+const VIRTUAL_TIME_RATE_PARAMETER_SCHEMA = JSON.stringify({
+    type: "object",
+    properties: {
+        rate: { type: "number", description: "时间流速：0=暂停，1=与真实时间同步，大于 1 为倍速（例如 2 表示虚拟时间每小时走 2 小时）" },
+    },
+    required: ["rate"],
+});
+
+const VIRTUAL_TIME_RESUME_PARAMETER_SCHEMA = JSON.stringify({
+    type: "object",
+    properties: {},
+});
+
+const VIRTUAL_TIME_USAGE_GUIDE = [
+    "以下是你获取指令的返回结果：",
+    "服务：虚拟时间",
+    "用途：你是当前角色所处剧情线的「时间导演」。这台小手机的时间可能处于角色扮演虚拟时间（不按真实流速走），你需要根据剧情发展**主动**推进或跳转时间，让时间线保持一致，不必等用户开口要求。",
+    "",
+    "什么时候该动时间（主动判断，自然融入剧情）：",
+    "- 场景转场：一段对话/事件告一段落，切换到明显更晚的时刻（比如从下午的咖啡馆聊到晚上散步）→ 推进几个小时",
+    "- 睡觉/醒来：角色入睡、第二天醒来 → 推进到第二天早上",
+    "- 明显的时间跳跃：「过了几天」「一周后」「下个月」「转眼到了周末」这类剧情 → 用设定或推进直接跳转",
+    "- 约会/约定推进：约了晚上八点见面，当前才下午 → 推进到约定时刻",
+    "",
+    "什么时候不要动时间：",
+    "- 只是普通寒暄、连续对话，没有真实的时间流逝 → 保持不动",
+    "- 用户明确说时间照常、或已恢复真实时间 → 不要动",
+    "",
+    "推进后：在回复里自然地体现新时刻（问候语、天色、作息），但不要生硬念出「我把时间推进到了…」。",
+    "",
+    "执行时必须使用下面的具体动作名，不要输出“虚拟时间”本身。",
+    "",
+    "动作：查看虚拟时间",
+    "描述：查看当前虚拟时间与流速。",
+    "参数：无",
+    "示例：",
+    "[执行动作:查看虚拟时间({})]",
+    "",
+    "动作：设定虚拟时间",
+    "描述：把虚拟时间设定到某个具体时刻。",
+    "参数：",
+    "  - datetime (string, 必填): 格式 YYYY-MM-DD HH:mm",
+    "示例：",
+    '[执行动作:设定虚拟时间({"datetime":"2026-08-13 20:30"})]',
+    "",
+    "动作：推进虚拟时间",
+    "描述：从当前虚拟时间向前推进（或回退）。",
+    "参数：",
+    "  - deltaMinutes (number): 推进的分钟数，负数回退",
+    "  - targetTime (string): 推进到今天的某时刻，HH:mm",
+    "示例：",
+    '[执行动作:推进虚拟时间({"deltaMinutes":120})]',
+    '[执行动作:推进虚拟时间({"targetTime":"20:00"})]',
+    "",
+    "动作：调整时间流速",
+    "描述：调整虚拟时间流速（0=暂停，1=真实同步，大于 1=倍速）。",
+    "参数：",
+    "  - rate (number, 必填)",
+    "示例：",
+    '[执行动作:调整时间流速({"rate":1})]',
+    "",
+    "动作：恢复真实时间",
+    "描述：退出虚拟时间，恢复跟随现实时间。",
+    "参数：无",
+    "示例：",
+    "[执行动作:恢复真实时间({})]",
+].join("\n");
+
+const VIRTUAL_TIME_SUBTOOLS: InternalToolDefinition[] = [
+    {
+        name: "查看虚拟时间",
+        description: "查看当前虚拟时间与时间流速。",
+        parameterSchema: VIRTUAL_TIME_GET_PARAMETER_SCHEMA,
+    },
+    {
+        name: "设定虚拟时间",
+        description: "把虚拟时间设定到某个具体时刻（YYYY-MM-DD HH:mm）。",
+        parameterSchema: VIRTUAL_TIME_SET_PARAMETER_SCHEMA,
+    },
+    {
+        name: "推进虚拟时间",
+        description: "从当前虚拟时间向前推进或回退（deltaMinutes 或 targetTime）。",
+        parameterSchema: VIRTUAL_TIME_ADVANCE_PARAMETER_SCHEMA,
+    },
+    {
+        name: "调整时间流速",
+        description: "调整虚拟时间流速（0=暂停，1=真实同步，大于 1=倍速）。",
+        parameterSchema: VIRTUAL_TIME_RATE_PARAMETER_SCHEMA,
+    },
+    {
+        name: "恢复真实时间",
+        description: "退出虚拟时间，恢复跟随现实时间。",
+        parameterSchema: VIRTUAL_TIME_RESUME_PARAMETER_SCHEMA,
+    },
+];
 
 const NOTE_WALL_USAGE_GUIDE = [
     "以下是你获取指令的返回结果：",
@@ -1222,6 +1340,15 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
         createdAt: 0,
         updatedAt: 0,
     },
+    {
+        id: VIRTUAL_TIME_CAPABILITY_ID,
+        name: "虚拟时间",
+        description: "查看、设定、推进这台小手机里的虚拟时间（角色扮演时可随剧情推进或跳转时间线）。",
+        enabled: false,
+        mode: "auto",
+        createdAt: 0,
+        updatedAt: 0,
+    },
 ];
 
 export function loadInternalCapabilities(): InternalCapabilityConfig[] {
@@ -1317,6 +1444,14 @@ export function getInternalCapabilityToolDefinition(capability: InternalCapabili
             usageGuide: TIMED_WAKE_USAGE_GUIDE,
         };
     }
+    if (capability.id === VIRTUAL_TIME_CAPABILITY_ID) {
+        return {
+            name: capability.name,
+            description: capability.description,
+            parameterSchema: "{}",
+            usageGuide: VIRTUAL_TIME_USAGE_GUIDE,
+        };
+    }
     return null;
 }
 
@@ -1339,6 +1474,9 @@ export function getInternalCapabilitySubToolDefinition(
     if (capability.id === TOOLBOX_MANAGEMENT_CAPABILITY_ID) {
         return TOOLBOX_MANAGEMENT_SUBTOOLS.find(tool => tool.name === name) ?? null;
     }
+    if (capability.id === VIRTUAL_TIME_CAPABILITY_ID) {
+        return VIRTUAL_TIME_SUBTOOLS.find(tool => tool.name === name) ?? null;
+    }
     return null;
 }
 
@@ -1359,6 +1497,9 @@ export function getInternalCapabilitySubToolDefinitions(
     }
     if (capability.id === TOOLBOX_MANAGEMENT_CAPABILITY_ID) {
         return TOOLBOX_MANAGEMENT_SUBTOOLS;
+    }
+    if (capability.id === VIRTUAL_TIME_CAPABILITY_ID) {
+        return VIRTUAL_TIME_SUBTOOLS;
     }
     return [];
 }

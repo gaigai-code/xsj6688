@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { useEffect, useMemo, useState } from "react";
 import { useCheckPhoneRefresh } from "@/lib/checkphone-refresh-tracker";
@@ -55,7 +56,7 @@ const TELEGRAM_BUBBLE_TAIL_PATH = "M2.3 25.1L23.1 0l0.5 17.1c0 0-0.3 0.3 0.1 2.5
 function formatTelegramTime(iso: string): string {
   const value = new Date(iso);
   if (Number.isNaN(value.getTime())) return iso;
-  const now = new Date();
+  const now = getNow();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterdayStart = new Date(todayStart);
   yesterdayStart.setDate(yesterdayStart.getDate() - 1);

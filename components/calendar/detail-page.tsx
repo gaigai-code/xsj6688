@@ -5,6 +5,7 @@ import { Columns2, Settings2 } from "lucide-react";
 import type { CalendarScheduleItem } from "@/lib/calendar-types";
 import type { MenstrualDayState } from "@/lib/menstrual-storage";
 import { formatIsoDate, parseIsoDate, timeToMinutes } from "@/lib/calendar-utils";
+import { useVirtualNow } from "@/lib/virtual-time-hooks";
 import { getLunarInfoByIso } from "@/lib/lunar";
 
 const WEEKDAY_CN = ["日", "一", "二", "三", "四", "五", "六"];
@@ -286,18 +287,9 @@ export function CalendarDetailPage({
     }
   };
 
-  // 当前时间红线（每分钟刷新）
-  const [nowMinutes, setNowMinutes] = useState(() => {
-    const now = new Date();
-    return now.getHours() * 60 + now.getMinutes();
-  });
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      const now = new Date();
-      setNowMinutes(now.getHours() * 60 + now.getMinutes());
-    }, 60_000);
-    return () => window.clearInterval(timer);
-  }, []);
+  // 当前时间红线（每分钟刷新，跟随虚拟时间）
+  const nowDate = useVirtualNow(60_000);
+  const nowMinutes = nowDate.getHours() * 60 + nowDate.getMinutes();
   const nowTop = (nowMinutes / 60) * HOUR_H;
   const nowLabel = `${String(Math.floor(nowMinutes / 60)).padStart(2, "0")}:${String(nowMinutes % 60).padStart(2, "0")}`;
 

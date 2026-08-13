@@ -1,3 +1,4 @@
+import { getNow } from "./virtual-time";
 import type { DwellingFurniture, DwellingLayout, DwellingMarker, DwellingPosition } from "./dwelling-storage";
 import { loadDwellingLayout } from "./dwelling-storage";
 import type { ApiConfig, PresetConfig, RegexConfig, WorldBookConfig } from "./settings-types";
@@ -77,7 +78,7 @@ async function buildDwellingMessages(
         userIdentity,
         appId: "dwelling",
         appTags,
-        scheduleSummary: buildCalendarScheduleMarker("character", characterId, getWeekStartIso(new Date())),
+        scheduleSummary: buildCalendarScheduleMarker("character", characterId, getWeekStartIso(getNow())),
         coreMemories: coreMemories ? formatCoreMemories(coreMemories) : "",
         longTermMemories: memories ? formatLongTermMemories(memories) : "",
         worldBookActivationContext: wbActivationContext,

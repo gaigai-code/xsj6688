@@ -14,6 +14,7 @@ import {
   timeToMinutes,
 } from "./calendar-utils";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
+import { getNow } from "./virtual-time";
 
 const STORAGE_KEY = "ai_phone_calendar_plans_v1";
 const CALENDAR_CONFIG_KEY = "ai_phone_calendar_config_v1";
@@ -247,7 +248,7 @@ export function formatCalendarScheduleItemForPrompt(item: Pick<CalendarScheduleI
 export function getCurrentCalendarScheduleForPrompt(
   ownerType: CalendarOwnerType,
   ownerId: string,
-  now = new Date(),
+  now = getNow(),
 ): string {
   const date = formatIsoDate(now);
   const weekStart = getWeekStartIso(now);

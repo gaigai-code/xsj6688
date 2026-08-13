@@ -19,6 +19,7 @@ import { buildTwoLevelMomentThreads } from "@/lib/moments-comment-threading";
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
 import { splitBilingualText } from "@/lib/bilingual-text";
 import { retryMomentGeneratedPhoto } from "@/lib/generated-image-retry";
+import { getNowMs } from "@/lib/virtual-time";
 import { Trash2, MoreHorizontal, MapPin, Heart, MessageCircle, Pencil } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui";
 
@@ -789,7 +790,7 @@ function MomentInlineBilingualText({
 // ── Time formatting helper ──
 
 function formatTimeAgo(isoStr: string): string {
-    const now = Date.now();
+    const now = getNowMs();
     const then = new Date(isoStr).getTime();
     const diff = Math.floor((now - then) / 1000);
 

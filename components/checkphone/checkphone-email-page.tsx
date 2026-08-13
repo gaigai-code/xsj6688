@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { useEffect, useMemo, useState } from "react";
 import { useCheckPhoneRefresh } from "@/lib/checkphone-refresh-tracker";
@@ -25,7 +26,7 @@ function parseEmailTimeLabel(label: string): Date | null {
   const match = label.match(/^(\d{1,2})月(\d{1,2})日\s+(\d{1,2}):(\d{2})$/);
   if (!match) return null;
   const [, monthRaw, dayRaw, hourRaw, minuteRaw] = match;
-  const now = new Date();
+  const now = getNow();
   let year = now.getFullYear();
   const month = Number(monthRaw);
   const day = Number(dayRaw);
@@ -43,7 +44,7 @@ function parseEmailTimeLabel(label: string): Date | null {
 function formatEmailTimeLabel(label: string): string {
   const parsed = parseEmailTimeLabel(label);
   if (!parsed) return label;
-  const now = new Date();
+  const now = getNow();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterdayStart = new Date(todayStart);
   yesterdayStart.setDate(todayStart.getDate() - 1);

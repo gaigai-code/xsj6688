@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useCheckPhoneRefresh } from "@/lib/checkphone-refresh-tracker";
@@ -237,7 +238,7 @@ export function CheckPhoneAssetsPage({ character, onBack }: CheckPhoneAssetsPage
     [activities, activeAccount],
   );
   const todayDelta = useMemo(() => {
-    const today = new Date();
+    const today = getNow();
     return activities.reduce((sum, activity) => {
       const createdAt = new Date(activity.createdAt);
       if (Number.isNaN(createdAt.getTime()) || !isSameLocalDay(createdAt, today)) return sum;
@@ -511,7 +512,7 @@ export function CheckPhoneAssetsPage({ character, onBack }: CheckPhoneAssetsPage
                   let currentLabel = "";
                   let currentGroup: typeof activeAccountActivities = [];
 
-                  const today = new Date();
+                  const today = getNow();
                   const yesterday = new Date(today);
                   yesterday.setDate(yesterday.getDate() - 1);
 

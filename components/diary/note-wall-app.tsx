@@ -1,4 +1,5 @@
 "use client";
+import { getNow } from "@/lib/virtual-time";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type PointerEvent, type TextareaHTMLAttributes, type TouchEvent } from "react";
 import { Bot, ChevronLeft, Clock3, Flame, MessageCircle, PenLine, RotateCw, Trash2, UserRound, WandSparkles, X } from "lucide-react";
@@ -1351,7 +1352,7 @@ function NoteComposer({ draft, userName, submitting, onChange, onClose, onSubmit
 }) {
   const previewStyle = styleFromSafeStyle(sanitizeNoteWallCss(draft.rawCss));
   const previewAuthorName = draft.isAnonymous ? "匿名" : draft.signature.trim() || userName;
-  const previewDate = formatCardDate(new Date().toISOString());
+  const previewDate = formatCardDate(getNow().toISOString());
 
   return (
     <div className="nw-modal-backdrop" role="dialog" aria-modal="true">
