@@ -12,7 +12,6 @@ export const SEND_FILE_CAPABILITY_ID = "send_file";
 export const LOCAL_DATA_LIBRARY_CAPABILITY_ID = "local_data_library";
 export const TOOLBOX_MANAGEMENT_CAPABILITY_ID = "toolbox_management";
 export const TIMED_WAKE_CAPABILITY_ID = "timed_wake";
-export const VIRTUAL_TIME_CAPABILITY_ID = "virtual_time";
 
 export type InternalToolDefinition = {
     name: string;
@@ -112,119 +111,6 @@ const TIMED_WAKE_USAGE_GUIDE = [
     "示例：",
     '[执行动作:稍后主动联系({"delayMinutes":15,"intent":"过15分钟看看对方回了没，如果还合适就轻轻找一句"})]',
 ].join("\n");
-
-const VIRTUAL_TIME_GET_PARAMETER_SCHEMA = JSON.stringify({
-    type: "object",
-    properties: {},
-});
-
-const VIRTUAL_TIME_SET_PARAMETER_SCHEMA = JSON.stringify({
-    type: "object",
-    properties: {
-        datetime: { type: "string", description: "要设定到的具体时间，格式 YYYY-MM-DD HH:mm，例如 2026-08-13 20:30" },
-    },
-    required: ["datetime"],
-});
-
-const VIRTUAL_TIME_ADVANCE_PARAMETER_SCHEMA = JSON.stringify({
-    type: "object",
-    properties: {
-        deltaMinutes: { type: "number", description: "从当前虚拟时间推进多少分钟（负数=回退），例如 120 表示推进 2 小时" },
-        targetTime: { type: "string", description: "推进到今天的某个时刻，格式 HH:mm，例如 20:00（与 deltaMinutes 二选一，优先 targetTime）" },
-    },
-});
-
-const VIRTUAL_TIME_RATE_PARAMETER_SCHEMA = JSON.stringify({
-    type: "object",
-    properties: {
-        rate: { type: "number", description: "时间流速：0=暂停，1=与真实时间同步，大于 1 为倍速（例如 2 表示虚拟时间每小时走 2 小时）" },
-    },
-    required: ["rate"],
-});
-
-const VIRTUAL_TIME_RESUME_PARAMETER_SCHEMA = JSON.stringify({
-    type: "object",
-    properties: {},
-});
-
-const VIRTUAL_TIME_USAGE_GUIDE = [
-    "以下是你获取指令的返回结果：",
-    "服务：虚拟时间",
-    "用途：系统标注的「当前系统时间」就是这个世界的绝对真实时间，判断时刻、作息、问候时一律以它为准。",
-    "",
-    "重要规则：",
-    "- 用户问「几点了 / 现在几点」时，必须直接回答系统标注的当前时间，不要自行推算、不要提前或推后，更不要臆造另一个时间。",
-    "- 只有剧情明确需要「时间流逝」时才推进时间，例如：用户或剧情明确表示过了几小时、天黑了、睡了一觉、第二天、过了几天等。",
-    "- 普通连续对话、寒暄、用户没有表达时间流逝时，一律不要动时间。",
-    "- 用户手动设定的时间是最高优先级，不得擅自改回或覆盖。",
-    "",
-    "推进后：在回复里自然地体现新时刻（问候语、天色、作息），但不要生硬念出「我把时间推进到了…」。",
-    "",
-    "执行时必须使用下面的具体动作名，不要输出“虚拟时间”本身。",
-    "",
-    "动作：查看虚拟时间",
-    "描述：查看当前系统时间与流速。",
-    "参数：无",
-    "示例：",
-    "[执行动作:查看虚拟时间({})]",
-    "",
-    "动作：设定虚拟时间",
-    "描述：把系统时间设定到某个具体时刻。",
-    "参数：",
-    "  - datetime (string, 必填): 格式 YYYY-MM-DD HH:mm",
-    "示例：",
-    '[执行动作:设定虚拟时间({"datetime":"2026-08-13 20:30"})]',
-    "",
-    "动作：推进虚拟时间",
-    "描述：从当前系统时间向前推进（或回退）。",
-    "参数：",
-    "  - deltaMinutes (number): 推进的分钟数，负数回退",
-    "  - targetTime (string): 推进到今天的某时刻，HH:mm",
-    "示例：",
-    '[执行动作:推进虚拟时间({"deltaMinutes":120})]',
-    '[执行动作:推进虚拟时间({"targetTime":"20:00"})]',
-    "",
-    "动作：调整时间流速",
-    "描述：调整虚拟时间流速（0=暂停，1=真实同步，大于 1=倍速）。",
-    "参数：",
-    "  - rate (number, 必填)",
-    "示例：",
-    '[执行动作:调整时间流速({"rate":1})]',
-    "",
-    "动作：恢复真实时间",
-    "描述：退出虚拟时间，恢复跟随现实时间。",
-    "参数：无",
-    "示例：",
-    "[执行动作:恢复真实时间({})]",
-].join("\n");
-
-const VIRTUAL_TIME_SUBTOOLS: InternalToolDefinition[] = [
-    {
-        name: "查看虚拟时间",
-        description: "查看当前虚拟时间与时间流速。",
-        parameterSchema: VIRTUAL_TIME_GET_PARAMETER_SCHEMA,
-    },
-    {
-        name: "设定虚拟时间",
-        description: "把虚拟时间设定到某个具体时刻（YYYY-MM-DD HH:mm）。",
-        parameterSchema: VIRTUAL_TIME_SET_PARAMETER_SCHEMA,
-    },
-    {
-        name: "推进虚拟时间",
-        description: "从当前虚拟时间向前推进或回退（deltaMinutes 或 targetTime）。",
-        parameterSchema: VIRTUAL_TIME_ADVANCE_PARAMETER_SCHEMA,
-    },
-    {
-        name: "调整时间流速",
-        description: "调整虚拟时间流速（0=暂停，1=真实同步，大于 1=倍速）。",
-        parameterSchema: VIRTUAL_TIME_RATE_PARAMETER_SCHEMA,
-    },
-    {
-        name: "恢复真实时间",
-        description: "退出虚拟时间，恢复跟随现实时间。",
-        parameterSchema: VIRTUAL_TIME_RESUME_PARAMETER_SCHEMA,
-    },
-];
 
 const NOTE_WALL_USAGE_GUIDE = [
     "以下是你获取指令的返回结果：",
@@ -1490,6 +1376,13 @@ export function findEnabledInternalSubToolDefinition(
 
 function ensureBuiltinInternalCapabilities(items: InternalCapabilityConfig[]): InternalCapabilityConfig[] {
     let changed = false;
+    // 移除已不在内置清单里的旧能力（例如已删除的「虚拟时间」），避免残留在设置里
+    const builtinIds = new Set(BUILTIN_INTERNAL_CAPABILITIES.map(item => item.id));
+    const filtered = items.filter(item => builtinIds.has(item.id));
+    if (filtered.length !== items.length) {
+        items = filtered;
+        changed = true;
+    }
     for (const builtin of BUILTIN_INTERNAL_CAPABILITIES) {
         const existing = items.find(item => item.id === builtin.id);
         if (!existing) {
