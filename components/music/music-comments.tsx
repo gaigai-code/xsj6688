@@ -1,8 +1,8 @@
 // components/music/music-comments.tsx — Song comment page (Netease comments)
-import { getNow } from "@/lib/virtual-time";
 // Hot / latest sorting, floor replies, pagination, posting (requires login).
 "use client";
 
+import { getNow } from "@/lib/virtual-time";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
     getSongCommentPage, getFloorComments, postSongComment,
