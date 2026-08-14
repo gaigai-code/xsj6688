@@ -8,6 +8,7 @@ import {
 const EXTRA_TAG_LABELS: Record<string, string> = {
     adventure: "冒险",
     add_friend: "加好友",
+    group_kick: "群聊被踢",
     dwelling: "栖所",
     offline: "线下",
     followup: "追发",
@@ -148,6 +149,7 @@ export const CONTENT_SCOPE_TAG_GROUPS: TagGroupProfile[] = [
     { id: "adventure", label: "冒险", tags: ["adventure"], minors: [commonMinor("adventure", ["adventure"])] },
     { id: "game", label: "游戏", tags: ["game"], minors: [commonMinor("game", ["game"])] },
     { id: "add_friend", label: "加好友", tags: ["add_friend"], minors: [commonMinor("add_friend", ["add_friend"])] },
+    { id: "group_kick", label: "群聊被踢", tags: ["group_kick"], minors: [commonMinor("group_kick", ["group_kick"])] },
     {
         id: "checkphone",
         label: "查手机",

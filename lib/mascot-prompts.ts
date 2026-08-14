@@ -512,6 +512,7 @@ prompt 仅在所有 tag 都匹配当前场景时才会注入。
 · adventure — 跑团冒险
 · interview_magazine — 「在场」杂志采访
 · add_friend — 添加好友反应
+· group_kick — 群聊被踢反应
 
 【常见子场景 tag】（搭配主场景使用）
 · text / voice / video / offline — chat 子细化（消息类型）

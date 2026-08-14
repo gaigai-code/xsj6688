@@ -77,6 +77,7 @@ import {
 import { abortableDelay, throwIfAborted } from "@/lib/abort-utils";
 import { GROUP_SELF_KEY, canGroupAdminAct, applyGroupAdminAction, buildGroupAdminNoticeText, getGroupMemberDisplayName, getGroupMuteRemainingMs, getGroupRole, isGroupMuted, formatMuteRemainingLabel, resolveGroupMemberKeyByName, type GroupAdminAction } from "@/lib/group-admin";
 import { extractTextToolDirectiveText } from "@/lib/text-tool-protocol";
+import { triggerGroupKickReaction } from "@/lib/group-kick-reaction";
 import { emitChatPluginEvent, getChatPluginHookBus, runChatPluginTransform } from "@/lib/chat-plugin-hooks";
 import { CHAT_PLUGIN_TOAST_EVENT, getChatPluginRuntime } from "@/lib/chat-plugin-runtime";
 import { ChatPluginSlot } from "@/components/chat/chat-plugin-slot";
@@ -2231,6 +2232,15 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         applyGroupAdminAction(session, action, actorKey, targetKey, data.adminMuteMinutes);
         const actorDisplay = getGroupMemberDisplayName(actorKey, userN);
         const targetDisplay = getGroupMemberDisplayName(targetKey, userN);
+        if (action === "kick" && targetKey !== GROUP_SELF_KEY) {
+            triggerGroupKickReaction({
+                characterId: targetKey,
+                groupSessionId: session.id,
+                groupName: session.groupName,
+                kickerKey: actorKey,
+                kickerName: actorDisplay,
+            }).catch(() => {});
+        }
         return {
             content: buildGroupAdminNoticeText(action, actorDisplay, targetDisplay, data.adminMuteMinutes),
             mediaData: {

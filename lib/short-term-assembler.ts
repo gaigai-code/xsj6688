@@ -26,6 +26,7 @@ import { loadCoCreateProjectionEntries } from "./cocreate-memory";
 import { stripStateAndInnerForPrompt } from "./prompt-sanitizer";
 import { renderUserNameMacro } from "./user-macro";
 import { loadChatOfflineProjectionEntries } from "./chat-offline-storage";
+import { loadGroupKickMemoryEntries } from "./group-kick-memory";
 import { loadCheckPhoneProjectionEntries } from "./checkphone-storage";
 import { formatShoppingPaymentRequestHistory } from "./shopping-payment-request";
 import { loadCustomAppTimelineEntries } from "./custom-app-storage";
@@ -51,7 +52,7 @@ function formatPhotoDirectiveForPrompt(msg: ChatMessage): string {
 export type NativeTimelineEntry = {
     id: string;
     sourceApp: "chat" | "moments" | "story" | "vn" | "map" | "game" | "diary" | "xiaohongshu" | "interview_magazine" | "cocreate" | "checkphone" | "custom_app";
-    sourceDetail?: "direct" | "group" | "system" | "story" | "chat_offline" | "game" | "diary_entry" | "notewall" | "xiaohongshu" | "black_market_theater" | "interview_issue" | "interview_shared_issue" | "cocreate_project" | "checkphone" | "custom_app_event"; // chat sub-type: 1:1 vs group chat vs system note
+    sourceDetail?: "direct" | "group" | "group_kick" | "system" | "story" | "chat_offline" | "game" | "diary_entry" | "notewall" | "xiaohongshu" | "black_market_theater" | "interview_issue" | "interview_shared_issue" | "cocreate_project" | "checkphone" | "custom_app_event"; // chat sub-type: 1:1 vs group chat vs group-kick memory vs system note
     authorType?: "user" | "character" | "npc"; // who authored this entry
     postAuthorType?: "user" | "character"; // for moments: who owns the parent post
     sessionId?: string;
@@ -175,19 +176,34 @@ export function loadNativeTimeline(
     const timeAware = resolvePromptTimeAware(options?.timeAware);
     const timestampOptions = options?.promptTimestampOptions;
 
+    // 被踢记忆：既用于「被踢事件」投影，也用于把已退出群的历史截断到被踢前
+    const kickMemoryEntries = loadGroupKickMemoryEntries(characterId);
+    const kickCutoffByGroup = new Map<string, string>();
+    for (const entry of kickMemoryEntries) {
+        if (entry.kind === "kick" && entry.groupSessionId && !kickCutoffByGroup.has(entry.groupSessionId)) {
+            kickCutoffByGroup.set(entry.groupSessionId, entry.timestamp);
+        }
+    }
+
     // ── Chat messages ──
     const sessions = loadChatSessions();
-    // Include direct chat session AND group sessions where this character participates
+    // Include direct chat session, group sessions where this character participates,
+    // AND groups this character was kicked from (history kept up to the kick time).
     const session = sessions.find(s => !s.isGroup && s.contactId === characterId);
-    const groupSessions = sessions.filter(s => s.isGroup && s.participantIds?.includes(characterId));
+    const groupSessions = sessions.filter(s => s.isGroup && (
+        s.participantIds?.includes(characterId) || kickCutoffByGroup.has(s.id)
+    ));
 
     // Process group sessions
     for (const gs of groupSessions) {
+        const isCurrentMember = gs.participantIds?.includes(characterId) ?? false;
+        const kickCutoff = isCurrentMember ? null : (kickCutoffByGroup.get(gs.id) ?? null);
         const messages = loadChatMessages(gs.id);
         for (const msg of messages) {
             if (msg.isRetracted) continue;
             if (isPromptHiddenChatMessage(msg)) continue;
             if (options?.afterTimestamp && msg.createdAt <= options.afterTimestamp) continue;
+            if (kickCutoff && msg.createdAt > kickCutoff) continue;
 
             let sender: string;
             if (msg.role === "user") sender = userName;
@@ -547,6 +563,27 @@ export function loadNativeTimeline(
             content: formatStoredPromptEventContent(offlineEntry.content, {
                 label: "事件",
                 timestamp: offlineEntry.timestamp,
+                timeAware,
+                timestampOptions,
+            }),
+        });
+    }
+
+    // ── Group kick memory projections ──
+    const groupKickEntries = options?.afterTimestamp
+        ? kickMemoryEntries.filter((entry) => entry.timestamp > options.afterTimestamp!)
+        : kickMemoryEntries;
+    for (const kickEntry of groupKickEntries) {
+        entries.push({
+            id: kickEntry.id,
+            sourceApp: "chat",
+            sourceDetail: "group_kick",
+            groupSessionId: kickEntry.groupSessionId,
+            groupName: kickEntry.groupName,
+            timestamp: kickEntry.timestamp,
+            content: formatStoredPromptEventContent(kickEntry.content, {
+                label: "事件",
+                timestamp: kickEntry.timestamp,
                 timeAware,
                 timestampOptions,
             }),
@@ -1013,7 +1050,7 @@ export function prepareShortTermContext(
 
     const groupChatEntries = timeline.filter(e =>
         e.sourceApp === "chat"
-        && e.sourceDetail === "group"
+        && (e.sourceDetail === "group" || e.sourceDetail === "group_kick")
         && e.groupSessionId !== options?.excludeGroupSessionId
     );
     if (groupChatEntries.length > 0) {
@@ -1267,7 +1304,7 @@ export function prepareGroupShortTermContext(
         raw.push({ tag: "recent_custom_app", order: FEATURE_ORDER.custom_app, entries: customAppEntries });
     }
 
-    const groupChatEntries = timeline.filter(e => e.sourceApp === "chat" && e.sourceDetail === "group");
+    const groupChatEntries = timeline.filter(e => e.sourceApp === "chat" && (e.sourceDetail === "group" || e.sourceDetail === "group_kick"));
     if (groupChatEntries.length > 0) {
         raw.push({ tag: "recent_group_chat", order: FEATURE_ORDER.group_chat, entries: groupChatEntries });
     }
@@ -1352,7 +1389,7 @@ export function prepareGroupShortTermContext(
                 kind: "event",
                 timestamp: item.timestamp,
                 sourceApp: entry.sourceApp,
-                sourceTag: entry.sourceDetail === "group" ? "recent_group_chat" : (
+                sourceTag: (entry.sourceDetail === "group" || entry.sourceDetail === "group_kick") ? "recent_group_chat" : (
                     entry.sourceApp === "moments" ? "recent_moments" :
                         entry.sourceApp === "map" ? "recent_game" :
                             entry.sourceApp === "game" ? "recent_game" :
