@@ -1,24 +1,24 @@
 import { getNow } from "./virtual-time";
 // lib/group-kick-reaction.ts
-// 角色被踢出群聊后的反应引擎（对称于 friend-request-engine 的删除好友反应）。
-// 永远先落「被踢」记忆，再（若被踢角色是用户联系人）用 LLM 基于人设/关系/记忆
-// 决定：放弃 / 找对方表达 / 向用户倾诉 / 发朋友圈，并落地为可见动作。
+// 角色被踢出群聊后的反应引擎。
+// 复用现有「主动消息」与「朋友圈」派发机制：LLM 输出动作标签（[消息]/[朋友圈]），
+// 由 action-parser 的 dispatchActions 派发——主动私聊走 dispatchChatMessage
+// （自动建联系人/会话 + parseAndSaveResponse，消息正确出现在用户消息界面 + 通知 + 状态值），
+// 朋友圈走 dispatchMomentsPost。不再手动拼消息。
 
 import { loadCharacters } from "./character-storage";
 import {
     loadChatSessions,
     loadChatMessages,
-    loadChatContacts,
     createOrGetSession,
-    pushChatMessage,
     type ChatMessage,
 } from "./chat-storage";
 import { generateChatCompletion, flattenCompletionResult } from "./chat-engine";
-import { recordGroupKickMemory, recordGroupKickReaction } from "./group-kick-memory";
-import { dispatchChatMessageNotice } from "./chat-notification-events";
+import { recordGroupKickMemory } from "./group-kick-memory";
 import { GROUP_SELF_KEY } from "./group-admin";
+import { parseActionTags, dispatchActions } from "./action-parser";
+import { parseAndSaveResponse } from "./follow-up-service";
 import { stripStateAndInnerForPrompt } from "./prompt-sanitizer";
-import { addMomentPost } from "./moments-storage";
 
 export type GroupKickReactionInput = {
     characterId: string;      // 被踢角色
@@ -27,13 +27,6 @@ export type GroupKickReactionInput = {
     kickerKey: string;        // GROUP_SELF_KEY（用户）或角色 id
     kickerName?: string;
 };
-
-type GroupKickParsed =
-    | { action: "ignore" }
-    | { action: "abandon" }
-    | { action: "find"; message: string }
-    | { action: "vent"; message: string }
-    | { action: "post"; message: string };
 
 /**
  * 触发被踢反应。fire-and-forget —— 调用方自行 `.catch(() => {})`。
@@ -49,7 +42,7 @@ export async function triggerGroupKickReaction(input: GroupKickReactionInput): P
         || (input.kickerKey === GROUP_SELF_KEY ? "用户" : "群主");
     console.log(`[GroupKick] 触发被踢反应: 角色=${char.name}, 踢人者=${kickerName}, 群=${groupName}`);
 
-    // 1. 先落被踢记忆（同步写库，早于 LLM 调用，使短期上下文能看到）
+    // 1. 落被踢记忆（同步写库，早于 LLM 调用，使短期上下文能看到）
     recordGroupKickMemory({
         characterId,
         groupSessionId: input.groupSessionId,
@@ -81,9 +74,7 @@ export async function triggerGroupKickReaction(input: GroupKickReactionInput): P
 
     let aiResponse: string;
     try {
-        // appId 用 "chat" 走单聊的 API 绑定（避免 "group_kick" 这类非标准 appId
-        // 取不到 API 配置而报 No API Configuration bound）；appTags 传 group_kick
-        // 只注入「群聊被踢反应」预设，不掺普通聊天格式条目。
+        // appId 用 "chat" 走单聊的 API 绑定；appTags 传 group_kick 只注入被踢反应预设。
         aiResponse = flattenCompletionResult(await generateChatCompletion(
             session,
             augmented,
@@ -95,106 +86,20 @@ export async function triggerGroupKickReaction(input: GroupKickReactionInput): P
         return;
     }
 
-    const parsed = parseGroupKickResponse(aiResponse);
-    console.log(
-        `[GroupKick] ${char.name} 解析结果: action=${parsed.action}`,
-        parsed.action === "ignore" ? `原文=${aiResponse.slice(0, 200)}` : "",
-    );
-    if (parsed.action === "ignore" || parsed.action === "abandon") return;
-
-    // 发朋友圈：无论谁踢的，都可以公开发条情绪动态
-    if (parsed.action === "post") {
-        postMomentReaction(characterId, parsed.message);
-        return;
-    }
-
-    if (input.kickerKey === GROUP_SELF_KEY) {
-        // 踢人者 = 用户：找对方 → 主动私聊用户表达情绪
-        if (parsed.action === "find") {
-            pushProactiveMessage(session.id, char.name, parsed.message);
-        }
-        // 「向用户倾诉」在用户踢人的场景无意义，忽略
-        return;
-    }
-
-    // 踢人者 = AI 角色
-    if (parsed.action === "find") {
-        // 对 AI 角色无私聊通道 → 记为「记恨/对质」记忆
-        recordGroupKickReaction({
+    // 3. 提取动作标签（[消息]/[朋友圈]），走现成的派发机制
+    const { cleanText, actions } = parseActionTags(aiResponse);
+    if (actions.length > 0) {
+        console.log(`[GroupKick] ${char.name} 动作标签:`, actions.map(a => a.type).join("、"));
+        dispatchActions(actions, {
             characterId,
-            groupSessionId: input.groupSessionId,
-            groupName,
-            kickerKey: input.kickerKey,
-            kickerName,
-            message: parsed.message,
-        });
-    } else if (parsed.action === "vent") {
-        // 向用户倾诉/吐槽
-        pushProactiveMessage(session.id, char.name, parsed.message);
-    }
-}
-
-function pushProactiveMessage(sessionId: string, senderName: string, message: string): void {
-    const clean = stripStateAndInnerForPrompt(message);
-    if (!clean) return;
-    pushChatMessage({
-        sessionId,
-        role: "assistant",
-        content: clean,
-    });
-    dispatchChatMessageNotice({
-        sessionId,
-        senderName,
-        body: clean.slice(0, 80),
-    });
-}
-
-function postMomentReaction(characterId: string, message: string): void {
-    const clean = stripStateAndInnerForPrompt(message);
-    if (!clean) return;
-    const visibility = loadChatContacts().map(c => c.characterId);
-    const post = addMomentPost({
-        authorType: "character",
-        authorId: characterId,
-        content: clean,
-        visibility,
-    });
-    if (!post) return;
-    if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("moments-updated"));
-    }
-}
-
-function parseGroupKickResponse(text: string): GroupKickParsed {
-    if (!text) return { action: "ignore" };
-
-    const findMatch = text.match(/\[找对方\]([\s\S]*?)(?:\[向用户倾诉\]|\[发朋友圈\]|$)/);
-    const ventMatch = text.match(/\[向用户倾诉\]([\s\S]*?)(?:\[找对方\]|\[发朋友圈\]|$)/);
-    const postMatch = text.match(/\[发朋友圈\]([\s\S]*?)(?:\[找对方\]|\[向用户倾诉\]|$)/);
-
-    if (findMatch && findMatch[1].trim()) {
-        return { action: "find", message: findMatch[1].trim() };
-    }
-    if (ventMatch && ventMatch[1].trim()) {
-        return { action: "vent", message: ventMatch[1].trim() };
-    }
-    if (postMatch && postMatch[1].trim()) {
-        return { action: "post", message: postMatch[1].trim() };
+            sessionId: session.id,
+            sourceEngine: "chat",
+        }).catch(err => console.warn(`[GroupKick] ${char.name} 动作派发失败:`, err));
+        return;
     }
 
-    // 显式放弃（角色自己决定不反应）
-    if (/放弃/.test(text)) {
-        return { action: "abandon" };
+    // 4. 兜底：模型没按动作标签输出时，剩余的自然语言当作主动消息
+    if (stripStateAndInnerForPrompt(cleanText).trim()) {
+        await parseAndSaveResponse(cleanText, session.id, 0, undefined, messages);
     }
-
-    // Fallback：模型没按指令格式输出时，只识别「[名字] 开头的喊话」为主动私聊；
-    // 其余不强行发朋友圈（乱发会违背人设），静默即可。
-    const cleaned = stripStateAndInnerForPrompt(text);
-    const shout = cleaned.match(/^\[([^\]\n]{1,20})\]\s*([\s\S]*)$/);
-    if (shout && shout[2].trim()) {
-        return { action: "find", message: shout[2].trim() };
-    }
-
-    // 无法解析 → 不做任何反应
-    return { action: "ignore" };
 }
