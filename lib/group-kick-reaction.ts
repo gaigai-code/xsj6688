@@ -74,11 +74,12 @@ export async function triggerGroupKickReaction(input: GroupKickReactionInput): P
 
     let aiResponse: string;
     try {
-        // appId 用 "chat" 走单聊的 API 绑定；appTags 传 group_kick 只注入被踢反应预设。
+        // appId 用 "chat" 走单聊的 API 绑定；appTags 带 chat/text/group_kick，
+        // 让模型处于「单聊」语境、以第一人称自然输出，同时注入被踢反应预设。
         aiResponse = flattenCompletionResult(await generateChatCompletion(
             session,
             augmented,
-            { appId: "chat", appTags: ["group_kick"] },
+            { appId: "chat", appTags: ["chat", "text", "group_kick"] },
         ));
         console.log(`[GroupKick] ${char.name} 被踢反应 LLM 输出:`, aiResponse.slice(0, 300));
     } catch (err) {
@@ -86,7 +87,7 @@ export async function triggerGroupKickReaction(input: GroupKickReactionInput): P
         return;
     }
 
-    // 3. 提取动作标签（[消息]/[朋友圈]），走现成的派发机制
+    // 3. 提取动作标签（[朋友圈]/[消息]），走现成的派发机制
     const { cleanText, actions } = parseActionTags(aiResponse);
     if (actions.length > 0) {
         console.log(`[GroupKick] ${char.name} 动作标签:`, actions.map(a => a.type).join("、"));
@@ -95,10 +96,9 @@ export async function triggerGroupKickReaction(input: GroupKickReactionInput): P
             sessionId: session.id,
             sourceEngine: "chat",
         }).catch(err => console.warn(`[GroupKick] ${char.name} 动作派发失败:`, err));
-        return;
     }
 
-    // 4. 兜底：模型没按动作标签输出时，剩余的自然语言当作主动消息
+    // 4. 剩余的第一人称话 → 当作主动私聊消息保存（正确出现在用户消息界面）
     if (stripStateAndInnerForPrompt(cleanText).trim()) {
         await parseAndSaveResponse(cleanText, session.id, 0, undefined, messages);
     }
