@@ -9,6 +9,7 @@ import {
     loadChatSessions,
     loadChatMessages,
     loadChatContacts,
+    createOrGetSession,
     pushChatMessage,
     type ChatMessage,
 } from "./chat-storage";
@@ -18,7 +19,6 @@ import { dispatchChatMessageNotice } from "./chat-notification-events";
 import { GROUP_SELF_KEY } from "./group-admin";
 import { stripStateAndInnerForPrompt } from "./prompt-sanitizer";
 import { addMomentPost } from "./moments-storage";
-import type { ContentAppId } from "./settings-types";
 
 export type GroupKickReactionInput = {
     characterId: string;      // 被踢角色
@@ -46,6 +46,7 @@ export async function triggerGroupKickReaction(input: GroupKickReactionInput): P
     const groupName = input.groupName?.trim() || "群聊";
     const kickerName = input.kickerName?.trim()
         || (input.kickerKey === GROUP_SELF_KEY ? "用户" : "群主");
+    console.log(`[GroupKick] 触发被踢反应: 角色=${char.name}, 踢人者=${kickerName}, 群=${groupName}`);
 
     // 1. 先落被踢记忆（同步写库，早于 LLM 调用，使短期上下文能看到）
     recordGroupKickMemory({
@@ -56,10 +57,13 @@ export async function triggerGroupKickReaction(input: GroupKickReactionInput): P
         kickerName,
     });
 
-    // 2. 仅当被踢角色是用户联系人（存在私聊会话）时才做主动反应
+    // 2. 确保被踢角色有私聊会话（即使原本不是联系人，也让它能「主动来找用户」）
     const sessions = loadChatSessions();
-    const session = sessions.find(s => !s.isGroup && s.contactId === characterId);
-    if (!session) return;
+    let session = sessions.find(s => !s.isGroup && s.contactId === characterId);
+    if (!session) {
+        session = createOrGetSession(characterId);
+        console.log(`[GroupKick] ${char.name} 原本不是联系人，已创建私聊会话 ${session.id}`);
+    }
 
     const messages = loadChatMessages(session.id);
     const augmented: ChatMessage[] = [
@@ -76,17 +80,22 @@ export async function triggerGroupKickReaction(input: GroupKickReactionInput): P
 
     let aiResponse: string;
     try {
+        // appId 用 "chat" 走单聊的 API 绑定（避免 "group_kick" 这类非标准 appId
+        // 取不到 API 配置而报 No API Configuration bound）；appTags 传 group_kick
+        // 只注入「群聊被踢反应」预设，不掺普通聊天格式条目。
         aiResponse = flattenCompletionResult(await generateChatCompletion(
             session,
             augmented,
-            { appId: "group_kick" as ContentAppId },
+            { appId: "chat", appTags: ["group_kick"] },
         ));
+        console.log(`[GroupKick] ${char.name} 被踢反应 LLM 输出:`, aiResponse.slice(0, 300));
     } catch (err) {
-        console.warn(`[GroupKick] Failed to generate reaction for ${characterId}:`, err);
+        console.error(`[GroupKick] ${char.name} 被踢反应 LLM 失败:`, err);
         return;
     }
 
     const parsed = parseGroupKickResponse(aiResponse);
+    console.log(`[GroupKick] ${char.name} 解析结果: action=${parsed.action}`);
     if (parsed.action === "ignore") return;
 
     // 发朋友圈：无论谁踢的，都可以公开发条情绪动态
