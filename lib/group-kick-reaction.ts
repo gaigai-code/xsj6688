@@ -30,6 +30,7 @@ export type GroupKickReactionInput = {
 
 type GroupKickParsed =
     | { action: "ignore" }
+    | { action: "abandon" }
     | { action: "find"; message: string }
     | { action: "vent"; message: string }
     | { action: "post"; message: string };
@@ -95,8 +96,11 @@ export async function triggerGroupKickReaction(input: GroupKickReactionInput): P
     }
 
     const parsed = parseGroupKickResponse(aiResponse);
-    console.log(`[GroupKick] ${char.name} 解析结果: action=${parsed.action}`);
-    if (parsed.action === "ignore") return;
+    console.log(
+        `[GroupKick] ${char.name} 解析结果: action=${parsed.action}`,
+        parsed.action === "ignore" ? `原文=${aiResponse.slice(0, 200)}` : "",
+    );
+    if (parsed.action === "ignore" || parsed.action === "abandon") return;
 
     // 发朋友圈：无论谁踢的，都可以公开发条情绪动态
     if (parsed.action === "post") {
@@ -178,6 +182,18 @@ function parseGroupKickResponse(text: string): GroupKickParsed {
         return { action: "post", message: postMatch[1].trim() };
     }
 
-    // 放弃关键字，或无法解析 → 不做任何反应
+    // 显式放弃（角色自己决定不反应）
+    if (/放弃/.test(text)) {
+        return { action: "abandon" };
+    }
+
+    // Fallback：模型没按指令格式输出，但清理掉 [内心]/状态块后仍有情绪内容时，
+    // 当作「发朋友圈」处理（朋友圈是最低门槛的情绪出口，不要求明确对象）。
+    const cleaned = stripStateAndInnerForPrompt(text);
+    if (cleaned.length >= 4 && cleaned.length < 200) {
+        return { action: "post", message: cleaned };
+    }
+
+    // 无法解析 → 不做任何反应
     return { action: "ignore" };
 }
