@@ -1,14 +1,22 @@
 import { getNow } from "./virtual-time";
-import { kvGet, kvSet, registerDynamicPrefix } from "./kv-db";
-import { formatChatTimestamp } from "./llm-prompt-assembler";
+import { kvGet, kvRemove, kvSet, kvKeysWithPrefix, registerDynamicPrefix } from "./kv-db";
 
 // lib/group-kick-memory.ts
 // 群聊被踢事件的记忆投影条目（projection entry）。
 // 被踢角色从 participantIds 移除后，原群聊时间线不再覆盖 ta；这里把「被踢」与
 // 后续「记恨/对质」单独落为持久化条目，供 loadNativeTimeline 注入短期上下文与记忆总结。
+// 注意：不要 import 依赖 chat-storage 的模块（如 llm-prompt-assembler），
+// 否则与 chat-storage 形成循环依赖——时间戳在此内联格式化。
 
 const GROUP_KICK_MEMORY_PREFIX = "ai_phone_group_kick_memory:";
 const MAX_GROUP_KICK_EVENTS = 120;
+
+function formatKickTimestamp(isoStr: string): string {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return "";
+    const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+    return `(${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())})`;
+}
 
 registerDynamicPrefix(GROUP_KICK_MEMORY_PREFIX);
 
@@ -89,7 +97,7 @@ export function recordGroupKickMemory(input: {
     const groupName = cleanText(input.groupName, 80) || "群聊";
     const kickerName = cleanText(input.kickerName, 80) || "群主";
     const timestamp = getNow().toISOString();
-    const content = `[事件 ${formatChatTimestamp(timestamp)}] 你被${kickerName}移出了群聊「${groupName}」`;
+    const content = `[事件 ${formatKickTimestamp(timestamp)}] 你被${kickerName}移出了群聊「${groupName}」`;
 
     const entry: GroupKickMemoryEntry = {
         id: `group_kick_${groupSessionId}`,
@@ -126,8 +134,8 @@ export function recordGroupKickReaction(input: {
     const message = cleanText(input.message, 500);
     const timestamp = getNow().toISOString();
     const content = message
-        ? `[事件 ${formatChatTimestamp(timestamp)}] 你因为被${kickerName}移出群聊「${groupName}」而私下找${kickerName}对质：${message}`
-        : `[事件 ${formatChatTimestamp(timestamp)}] 你因为被${kickerName}移出群聊「${groupName}」而对${kickerName}记恨在心`;
+        ? `[事件 ${formatKickTimestamp(timestamp)}] 你因为被${kickerName}移出群聊「${groupName}」而私下找${kickerName}对质：${message}`
+        : `[事件 ${formatKickTimestamp(timestamp)}] 你因为被${kickerName}移出群聊「${groupName}」而对${kickerName}记恨在心`;
 
     const entry: GroupKickMemoryEntry = {
         id: `group_kick_reaction_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -151,4 +159,23 @@ export function loadGroupKickMemoryEntries(
     const entries = loadEventsByKey(storageKey(characterId));
     if (!options?.afterTimestamp) return entries;
     return entries.filter((entry) => entry.timestamp > options.afterTimestamp!);
+}
+
+/**
+ * 删除某个群的全部被踢记忆（被踢 + 记恨）。
+ * 用于「解散群 / 清空群聊消息」等整理场景：群没了，依附于该群的被踢记忆一并抹除，
+ * 角色不再保留这段记忆。
+ */
+export function deleteGroupKickMemoriesForGroup(groupSessionId: string): void {
+    if (!groupSessionId || typeof window === "undefined") return;
+    for (const key of kvKeysWithPrefix(GROUP_KICK_MEMORY_PREFIX)) {
+        const current = loadEventsByKey(key);
+        const next = current.filter((entry) => entry.groupSessionId !== groupSessionId);
+        if (next.length === current.length) continue;
+        if (next.length === 0) {
+            kvRemove(key);
+        } else {
+            saveEventsByKey(key, next);
+        }
+    }
 }

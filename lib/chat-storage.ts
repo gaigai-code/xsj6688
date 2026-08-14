@@ -13,6 +13,7 @@ import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { emitChatPluginEvent, runChatPluginTransformSync } from "./chat-plugin-hooks";
 import { parseAIResponse } from "./rich-message-parser";
 import { extractTextToolDirectiveText } from "./text-tool-protocol";
+import { deleteGroupKickMemoriesForGroup } from "./group-kick-memory";
 
 export const DEFAULT_VISION_IMAGE_PROMPT_LIMIT = 1;
 export const MAX_VISION_IMAGE_PROMPT_LIMIT = 20;
@@ -1071,10 +1072,13 @@ export function createGroupSession(groupName: string, participantIds: string[], 
 
 export function deleteChatSession(sessionId: string) {
     const sessions = loadChatSessions();
+    const target = sessions.find(s => s.id === sessionId);
     const filtered = sessions.filter(s => s.id !== sessionId);
     saveChatSessions(filtered);
     dbDeleteSession(sessionId);
     clearChatSessionMessages(sessionId); // Cleanup associated messages
+    // 解散群：依附于该群的「被踢」记忆一并抹除
+    if (target?.isGroup) deleteGroupKickMemoriesForGroup(sessionId);
 }
 
 // ── CRUD for Messages ─────────────────────────
@@ -1515,6 +1519,9 @@ export function clearChatSessionMessages(sessionId: string) {
         sessions[sessIdx].lastMessagePreview = "";
         saveChatSessions(sessions);
     }
+
+    // 清空群聊消息 = 抹除这个群的存在痕迹：依附于该群的「被踢」记忆一并清理
+    if (sessIdx !== -1 && sessions[sessIdx].isGroup) deleteGroupKickMemoriesForGroup(sessionId);
 
     dispatchDeletedMessages(deletedMessages);
 }
