@@ -187,11 +187,12 @@ function parseGroupKickResponse(text: string): GroupKickParsed {
         return { action: "abandon" };
     }
 
-    // Fallback：模型没按指令格式输出，但清理掉 [内心]/状态块后仍有情绪内容时，
-    // 当作「发朋友圈」处理（朋友圈是最低门槛的情绪出口，不要求明确对象）。
+    // Fallback：模型没按指令格式输出时，只识别「[名字] 开头的喊话」为主动私聊；
+    // 其余不强行发朋友圈（乱发会违背人设），静默即可。
     const cleaned = stripStateAndInnerForPrompt(text);
-    if (cleaned.length >= 4 && cleaned.length < 200) {
-        return { action: "post", message: cleaned };
+    const shout = cleaned.match(/^\[([^\]\n]{1,20})\]\s*([\s\S]*)$/);
+    if (shout && shout[2].trim()) {
+        return { action: "find", message: shout[2].trim() };
     }
 
     // 无法解析 → 不做任何反应
