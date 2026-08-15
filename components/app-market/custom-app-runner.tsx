@@ -1,5 +1,5 @@
 "use client";
-import { getNow } from "@/lib/virtual-time";
+import { getNow, getNowMs } from "@/lib/virtual-time";
 
 import { useCallback, useMemo, useRef, useState, useEffect, useLayoutEffect } from "react";
 import { CheckCircle2, Circle, FileJson, Layers, LoaderCircle, MoreHorizontal, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
@@ -267,6 +267,7 @@ html, body { min-height: 100%; }
       getManifest: function(){ return request('app.getManifest'); },
       getCapabilities: function(){ return request('app.getCapabilities'); },
       getLaunchContext: function(){ return Promise.resolve(launchContext); },
+      getNow: function(){ return request('app.getNow'); },
       getAssetUrl: function(path){ return request('app.getAssetUrl', { path: path }); },
       close: function(){ return request('app.close'); }
     },
@@ -969,6 +970,9 @@ export function CustomAppRunner({
       await hydrateChatStorage();
     }
 
+    if (action === "app.getNow") {
+      return { iso: getNow().toISOString(), ms: getNowMs() };
+    }
     if (action === "app.getManifest") return app.manifest;
     if (action === "app.getCapabilities") {
       return {
@@ -980,7 +984,7 @@ export function CustomAppRunner({
         events: app.manifest.extensions?.events ?? app.manifest.events ?? [],
         network: app.manifest.network ?? {},
         sdk: {
-          app: ["getManifest", "getCapabilities", "getLaunchContext", "getAssetUrl", "close"],
+          app: ["getManifest", "getCapabilities", "getLaunchContext", "getAssetUrl", "getNow", "close"],
           ai: ["generate", "chat", "embed", "classify"],
           user: ["getProfile", "getPersona", "getPreferences"],
           network: ["fetch"],
