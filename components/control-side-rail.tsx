@@ -1,84 +1,169 @@
 "use client";
 
-// 控制侧边栏：把散落的悬浮控制面板统一收纳。
-// 隐藏把手贴在屏幕右侧边缘，点击从右侧滑出面板，内含「虚拟时间 / 情绪调试」两个入口。
-// 取代原先独立的 VirtualTimeFloat 与 AffectDebugFloat 悬浮球。
+// 控制浮球：把虚拟时间 / 情绪调试两个面板收进一个低调的玻璃浮球。
+// 浮球可拖动，无文字；点开在浮球上方弹出一个小浮层（参考小卷悬浮球），不占满半屏。
 
-import { useState, type CSSProperties } from "react";
+import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { Clock, Heart, SlidersHorizontal, X } from "lucide-react";
 import { VirtualTimePanel } from "./virtual-time-panel";
 import { AffectPanel } from "./affect-panel";
 
 type Tab = "time" | "affect";
 
+const BALL_SIZE = 40;
+const DEFAULT_RIGHT = 12;
+const DEFAULT_BOTTOM = 164;
+
 export function ControlSideRail() {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("time");
+  const [floatPos, setFloatPos] = useState<{ left: number; top: number } | null>(null);
+  const dragState = useRef<{ startX: number; startY: number; startLeft: number; startTop: number; moved: boolean } | null>(null);
+  const floatRef = useRef<HTMLButtonElement | null>(null);
+
+  function handlePointerDown(e: ReactPointerEvent<HTMLButtonElement>) {
+    const el = floatRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const shell = el.closest("[data-ui='phone-screen']") as HTMLElement | null;
+    const shellRect = shell?.getBoundingClientRect();
+    dragState.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startLeft: rect.left - (shellRect?.left ?? 0),
+      startTop: rect.top - (shellRect?.top ?? 0),
+      moved: false,
+    };
+    el.setPointerCapture(e.pointerId);
+  }
+
+  function handlePointerMove(e: ReactPointerEvent<HTMLButtonElement>) {
+    const drag = dragState.current;
+    if (!drag) return;
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+      if (!drag.moved) {
+        drag.moved = true;
+        setOpen(false);
+      }
+    }
+    if (drag.moved) {
+      setFloatPos({ left: drag.startLeft + dx, top: drag.startTop + dy });
+    }
+  }
+
+  function handlePointerUp() {
+    const wasDrag = dragState.current?.moved ?? false;
+    dragState.current = null;
+    if (!wasDrag) setOpen((o) => !o);
+  }
+
+  function panelGeometry() {
+    const el = floatRef.current;
+    const shell = el?.closest("[data-ui='phone-screen']") as HTMLElement | null;
+    const shellRect = shell?.getBoundingClientRect();
+    const ballRect = el?.getBoundingClientRect();
+    const shellW = shellRect?.width ?? 390;
+    const shellH = shellRect?.height ?? 844;
+    const ballLeft = (ballRect?.left ?? 0) - (shellRect?.left ?? 0);
+    const ballTop = (ballRect?.top ?? 0) - (shellRect?.top ?? 0);
+    const panelW = Math.min(300, shellW * 0.8);
+    const onRight = ballLeft > shellW / 2;
+    const pLeft = onRight ? Math.max(8, ballLeft + BALL_SIZE - panelW) : Math.min(ballLeft, shellW - panelW - 8);
+    const pBottom = shellH - ballTop + 8;
+    return { left: pLeft, bottom: pBottom, width: panelW };
+  }
+
+  const ballStyle: CSSProperties = floatPos
+    ? { left: floatPos.left, top: floatPos.top, right: "auto", bottom: "auto" }
+    : { right: DEFAULT_RIGHT, bottom: DEFAULT_BOTTOM };
 
   return (
     <div style={{ position: "absolute", inset: 0, zIndex: 100001, pointerEvents: "none" }}>
-      {/* 隐藏把手（贴右边缘） */}
+      {/* 面板打开时的点击遮罩（点击空白关闭） */}
+      {open ? (
+        <div style={{ position: "absolute", inset: 0, pointerEvents: "auto" }} onClick={() => setOpen(false)} />
+      ) : null}
+
+      {/* 玻璃浮球 */}
       <button
+        ref={floatRef}
         type="button"
         aria-label="控制面板"
-        onClick={() => setOpen((o) => !o)}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        onContextMenu={(e) => e.preventDefault()}
         style={{
-          position: "absolute", right: 0, top: "40%", pointerEvents: "auto",
-          width: 28, height: 104, border: "none", cursor: "pointer",
-          borderRadius: "14px 0 0 14px",
-          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
-          background: "linear-gradient(180deg, #7c3aed, #db2777)", color: "#fff",
-          boxShadow: "0 6px 20px rgba(0,0,0,0.28)",
+          ...ballStyle,
+          position: "absolute", pointerEvents: "auto",
+          width: BALL_SIZE, height: BALL_SIZE, borderRadius: 999,
+          border: "1px solid rgba(255,255,255,0.18)", cursor: "grab",
+          touchAction: "none", userSelect: "none", WebkitUserSelect: "none",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.85)",
+          backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
+          boxShadow: "0 2px 10px rgba(0,0,0,0.18)",
         }}
       >
-        <SlidersHorizontal size={17} />
-        <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: 2, writingMode: "vertical-rl" }}>控制</span>
+        <SlidersHorizontal size={18} />
       </button>
 
-      {/* 展开面板 */}
-      {open ? (
-        <div
-          role="dialog"
-          aria-label="控制面板"
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            position: "absolute", right: 0, top: 0, bottom: 0, width: 320, maxWidth: "94%",
-            pointerEvents: "auto",
-            background: "rgba(24,26,34,0.97)", color: "#e5e7eb",
-            boxShadow: "0 0 44px rgba(0,0,0,0.5)", backdropFilter: "blur(12px)",
-            display: "flex", flexDirection: "column",
-            padding: 14,
-            overflowY: "auto",
-          }}
-        >
-          {/* 顶部：关闭 + tab */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button type="button" onClick={() => setTab("time")} style={tabStyle(tab === "time")}>
-                <Clock size={15} style={{ marginRight: 5 }} />
-                虚拟时间
-              </button>
-              <button type="button" onClick={() => setTab("affect")} style={tabStyle(tab === "affect")}>
-                <Heart size={15} style={{ marginRight: 5 }} />
-                情绪调试
+      {/* 玻璃小浮层 */}
+      {open ? (() => {
+        const geo = panelGeometry();
+        return (
+          <div
+            role="dialog"
+            aria-label="控制面板"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: "absolute", pointerEvents: "auto",
+              left: geo.left, bottom: geo.bottom, width: geo.width,
+              maxHeight: "min(480px, 66vh)", overflowY: "auto",
+              background: "rgba(22,24,32,0.78)", color: "#e5e7eb",
+              border: "1px solid rgba(255,255,255,0.12)", borderRadius: 16,
+              padding: 14, boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+              backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+              animation: "control-rail-in 0.22s ease",
+              transformOrigin: "right bottom",
+            }}
+          >
+            <style>{`
+              @keyframes control-rail-in {
+                from { opacity: 0; transform: translateY(10px) scale(0.96); }
+                to { opacity: 1; transform: translateY(0) scale(1); }
+              }
+            `}</style>
+
+            {/* tab + 关闭 */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button type="button" onClick={() => setTab("time")} style={tabStyle(tab === "time")}>
+                  <Clock size={15} style={{ marginRight: 4 }} />
+                  时间
+                </button>
+                <button type="button" onClick={() => setTab("affect")} style={tabStyle(tab === "affect")}>
+                  <Heart size={15} style={{ marginRight: 4 }} />
+                  情绪
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                aria-label="关闭"
+                style={{ background: "rgba(255,255,255,0.08)", border: "none", color: "#cbd5e1", cursor: "pointer", padding: 5, borderRadius: 8, display: "flex" }}
+              >
+                <X size={15} />
               </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              aria-label="关闭"
-              style={{ background: "transparent", border: "none", color: "#9ca3af", cursor: "pointer", padding: 4 }}
-            >
-              <X size={18} />
-            </button>
-          </div>
 
-          {/* 内容 */}
-          <div style={{ flex: 1, minHeight: 0 }}>
             {tab === "time" ? <VirtualTimePanel /> : <AffectPanel />}
           </div>
-        </div>
-      ) : null}
+        );
+      })() : null}
     </div>
   );
 }
@@ -86,12 +171,12 @@ export function ControlSideRail() {
 const tabStyle = (active: boolean): CSSProperties => ({
   display: "flex",
   alignItems: "center",
-  padding: "8px 12px",
+  padding: "7px 11px",
   borderRadius: 10,
   border: "none",
   cursor: "pointer",
   fontSize: 13,
   fontWeight: 600,
-  background: active ? "#7c3aed" : "rgba(255,255,255,0.08)",
+  background: active ? "rgba(124,58,237,0.55)" : "rgba(255,255,255,0.08)",
   color: active ? "#fff" : "#cbd5e1",
 });
