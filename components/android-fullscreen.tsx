@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { isMobileShell } from "@/lib/mobile-shell";
 
+
 /**
  * 安卓全屏兜底：点击屏幕进入全屏模式（iOS 不支持此 API，会自动忽略）。
  *
