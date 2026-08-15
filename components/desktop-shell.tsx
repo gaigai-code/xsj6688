@@ -31,8 +31,7 @@ import { DwellingApp } from "@/components/dwelling/dwelling-app";
 import { MascotFloat } from "@/components/mascot/mascot-float";
 import { useVirtualNow } from "@/lib/virtual-time-hooks";
 import { isVirtualTimeMode } from "@/lib/virtual-time";
-import { VirtualTimeFloat } from "@/components/virtual-time-float";
-import { AffectDebugFloat } from "@/components/affect-debug-float";
+import { ControlSideRail } from "@/components/control-side-rail";
 import { useMusicControlsOptional } from "@/lib/music-context";
 import { PhoneResourcesApp, type ResourceSubPage } from "@/components/phone-resources-app";
 import { CheckPhoneApp } from "@/components/checkphone/checkphone-app";
@@ -4678,8 +4677,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
               <DebugPromptPanel />
               <QuickActionFloat />
               <MascotFloat />
-              <VirtualTimeFloat />
-              <AffectDebugFloat />
+              <ControlSideRail />
 
               {/* Widget Picker Bottom Sheet */}
               {showWidgetPicker && (

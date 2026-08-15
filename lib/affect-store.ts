@@ -10,6 +10,7 @@
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { getNowMs } from "./virtual-time";
 import { loadCharacters } from "./character-storage";
+import { recordAffectHistory, describeAffectEvent } from "./affect-history";
 import {
   AFFECT_DIMS,
   advance,
@@ -210,7 +211,20 @@ export function getAffectMeta(ownerId: string): AffectMeta {
 export function ingestAffectEvent(ownerId: string, ev: AffectEvent): void {
   const state = ensureState(ownerId);
   advanceOwner(state);
-  ingestEvent(state, ev, getNowMs());
+  const nowMs = getNowMs();
+  ingestEvent(state, ev, nowMs);
+  const display = buildDisplay(state, nowMs);
+  state.display = display;
+  const kind = ev.type;
+  const label = ev.type === "msg_user" ? ev.label : undefined;
+  const calendarType = ev.type === "calendar" ? ev.calendarType : undefined;
+  recordAffectHistory(ownerId, {
+    atMs: nowMs,
+    kind,
+    text: describeAffectEvent(kind, label, calendarType),
+    display: { ...display },
+    frustration: state.frustration,
+  });
   persist();
 }
 
