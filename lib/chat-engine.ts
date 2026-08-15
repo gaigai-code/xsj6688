@@ -70,6 +70,11 @@ import { buildCalendarScheduleMarker, getCurrentCalendarScheduleForPrompt } from
 import { getWeekStartIso } from "./calendar-utils";
 import { buildCharacterTimeContext } from "./character-time";
 import { getNow } from "./virtual-time";
+import { buildAffectContext } from "./affect-context";
+import { ingestUserMessage } from "./affect-store";
+import { classifyAffectLabel } from "./affect-classifier";
+import { syncCalendarAffect } from "./affect-calendar";
+import { mergeAffectIntoStateValues } from "./affect-state-values";
 import { getPromptTimestampOptionsForTimeContext } from "./prompt-time";
 import { kvGet, kvSet, kvRemove, registerKvMigration } from "./kv-db";
 import { stripStateAndInnerForPrompt } from "./prompt-sanitizer";
@@ -1892,7 +1897,7 @@ export async function buildChatPromptMessages(
         userIdentity,
         appId: resolvedAppId,
         appTags: effectiveAppTags,
-        initialStateValues: getLatestCharacterStateValues(character.id),
+        initialStateValues: mergeAffectIntoStateValues(character.id, getLatestCharacterStateValues(character.id)),
         followUpCount: options?.followUpCount,
         followUpDelay: options?.followUpDelay,
         timedWakeElapsedMinutes: options?.timedWakeElapsedMinutes,
@@ -2269,6 +2274,17 @@ export async function generateChatCompletion(
 ): Promise<ChatCompletionResult> {
     const { llmMessages, character, config, preset, regexes, userIdentity, toolsEnabled } = await buildChatPromptMessages(session, history, options);
     const requestAppTags = mergeAppTags(options?.appTags, options?.promptProfile?.appTags, options?.appId ?? "chat");
+
+    // 情绪：注入 [内心状态] + 分类用户最新消息并摄入（fire-and-forget，不阻塞回复）
+    const affectContext = buildAffectContext(character.id);
+    if (affectContext) llmMessages.push({ role: "system", content: affectContext });
+    syncCalendarAffect("character", character.id);
+    const lastUserMsg = [...history].reverse().find((m) => m.role === "user" && m.content?.trim());
+    if (lastUserMsg && lastUserMsg.content) {
+        void classifyAffectLabel(config, lastUserMsg.content.trim()).then(({ label, confidence }) => {
+            ingestUserMessage(character.id, label, confidence);
+        });
+    }
 
     if (toolsEnabled && nativeToolProtocolForConfig(config) && getEnabledTools(options?.appId ?? "chat").length > 0) {
         return generateNativeChatCompletion({

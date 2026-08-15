@@ -18,6 +18,9 @@ import {
     type MascotToolContext,
 } from "./mascot-tools";
 import { isMascotPanelOpen } from "./mascot-state";
+import { classifyAffectLabel } from "./affect-classifier";
+import { ingestUserMessage, MASCOT_OWNER_ID } from "./affect-store";
+import { resolveAuxiliaryApiConfig } from "./settings-storage";
 
 const MASCOT_DB_NAME = "AiPhoneMascotDB";
 const MASCOT_DB_VERSION = 2;
@@ -503,6 +506,11 @@ export async function sendMascotMessage({
     }
     publishMessages(workingMessages);
     setThinking(true);
+
+    // 情绪：分类用户消息并摄入（fire-and-forget，不阻塞回复）
+    void classifyAffectLabel(resolveAuxiliaryApiConfig("mascotApiConfigId"), trimmed).then(({ label, confidence }) => {
+        ingestUserMessage(MASCOT_OWNER_ID, label, confidence);
+    });
 
     const MAX_ROUNDS = 8;
     abortRequested = false;
