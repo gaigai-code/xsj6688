@@ -11,7 +11,7 @@ import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { getNowMs } from "./virtual-time";
 import { loadCharacters } from "./character-storage";
 import { recordAffectHistory, describeAffectEvent } from "./affect-history";
-import { recordSampleIfDue } from "./affect-samples";
+import { recordSampleIfDue, recordSamplesDuringCatchUp, resetAffectSamples } from "./affect-samples";
 import {
   AFFECT_DIMS,
   advance,
@@ -171,9 +171,11 @@ function ensureState(ownerId: string): AffectState {
   return all[ownerId];
 }
 
-/** 惰性推进：decay + 时间累积 + 睡眠窗口自动切换，推进到当前虚拟时间。 */
-function advanceOwner(state: AffectState): void {
+/** 惰性推进：decay + 时间累积 + 睡眠窗口自动切换，推进到当前虚拟时间。
+ *  推进前先沿采样网格补记闲置期曲线（recordSamplesDuringCatchUp 会把 snapshotAtMs 逐步推到 now）。 */
+function advanceOwner(ownerId: string, state: AffectState): void {
   const nowMs = getNowMs();
+  recordSamplesDuringCatchUp(ownerId, state, nowMs, DEFAULT_SLEEP_WINDOW);
   advance(state, nowMs);
   applyAutoSleep(state, nowMs, DEFAULT_SLEEP_WINDOW);
   if (!state.display) state.display = buildDisplay(state, nowMs);
@@ -183,7 +185,7 @@ function advanceOwner(state: AffectState): void {
 
 export function getAffectDisplay(ownerId: string): DimLevels {
   const state = ensureState(ownerId);
-  advanceOwner(state);
+  advanceOwner(ownerId, state);
   const display = { ...state.display! };
   // 定时采样：到点自动补记（幂等）
   recordSampleIfDue(ownerId, display, getNowMs());
@@ -201,7 +203,7 @@ export type AffectMeta = {
 
 export function getAffectMeta(ownerId: string): AffectMeta {
   const state = ensureState(ownerId);
-  advanceOwner(state);
+  advanceOwner(ownerId, state);
   if (state.display) recordSampleIfDue(ownerId, state.display, getNowMs());
   return {
     mood: { ...state.mood },
@@ -215,11 +217,13 @@ export function getAffectMeta(ownerId: string): AffectMeta {
 
 export function ingestAffectEvent(ownerId: string, ev: AffectEvent): void {
   const state = ensureState(ownerId);
-  advanceOwner(state);
+  advanceOwner(ownerId, state);
   const nowMs = getNowMs();
   ingestEvent(state, ev, nowMs);
   const display = buildDisplay(state, nowMs);
   state.display = display;
+  // 写路径兜底：事件后也到点补记当前点（聊天中不读面板也有曲线）
+  recordSampleIfDue(ownerId, display, nowMs);
   const kind = ev.type;
   const label = ev.type === "msg_user" ? ev.label : undefined;
   const calendarType = ev.type === "calendar" ? ev.calendarType : undefined;
@@ -241,6 +245,7 @@ export function resetAffect(ownerId: string): void {
     cachedStates = all;
     persist();
   }
+  resetAffectSamples(ownerId);
 }
 
 export function subscribeAffect(listener: () => void): () => void {

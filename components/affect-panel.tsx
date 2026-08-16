@@ -124,13 +124,19 @@ export function AffectPanel() {
                   if (samples.length < 2) return null;
                   return (
                     <div style={{ marginBottom: 8, paddingBottom: 8, borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                      <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>情绪曲线（每10分钟）</div>
-                      {SPARK_DIMS.map(({ dim }) => (
-                        <div key={dim} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, lineHeight: 1.6 }}>
-                          <span style={{ color: "#9ca3af", width: 36, flexShrink: 0 }}>{DIM_NAMES[dim]}</span>
-                          <Sparkline values={samples.map((s) => s.display[dim])} />
-                        </div>
-                      ))}
+                      <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>
+                        情绪曲线 · {formatClock(samples[0].atMs)}→{formatClock(samples[samples.length - 1].atMs)}（每10分钟）
+                      </div>
+                      {SPARK_DIMS.map(({ dim }) => {
+                        const vals = samples.map((s) => s.display[dim]);
+                        return (
+                          <div key={dim} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, lineHeight: 1.6 }}>
+                            <span style={{ color: "#9ca3af", width: 36, flexShrink: 0 }}>{DIM_NAMES[dim]}</span>
+                            <Sparkline values={vals} />
+                            <span style={{ marginLeft: "auto", color: "#e5e7eb", fontVariantNumeric: "tabular-nums" }}>{vals[vals.length - 1].toFixed(2)}</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   );
                 })()}
