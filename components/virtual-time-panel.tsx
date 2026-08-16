@@ -3,7 +3,7 @@
 // 虚拟时间面板（内容组件）：从 virtual-time-float 抽取，供侧边栏 ControlSideRail 收纳。
 // 不含悬浮球与拖动逻辑，不含绝对定位（由父容器决定摆放）。
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, type CSSProperties } from "react";
 import { RotateCcw } from "lucide-react";
 import {
     advanceVirtualTime,

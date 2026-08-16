@@ -1,5 +1,5 @@
 "use client";
-import { getNowMs } from "@/lib/virtual-time";
+import { getNow, getNowMs } from "@/lib/virtual-time";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent, type TouchEvent, type UIEvent, type WheelEvent } from "react";
 import { ShareFat } from "@phosphor-icons/react";

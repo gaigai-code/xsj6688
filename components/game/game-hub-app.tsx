@@ -1,5 +1,5 @@
 "use client";
-import { getNowMs } from "@/lib/virtual-time";
+import { getNow, getNowMs } from "@/lib/virtual-time";
 
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

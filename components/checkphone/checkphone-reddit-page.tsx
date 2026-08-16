@@ -1,5 +1,5 @@
 "use client";
-import { getNowMs } from "@/lib/virtual-time";
+import { getNow, getNowMs } from "@/lib/virtual-time";
 
 import { useEffect, useMemo, useState, type UIEvent } from "react";
 import { useCheckPhoneRefresh } from "@/lib/checkphone-refresh-tracker";
