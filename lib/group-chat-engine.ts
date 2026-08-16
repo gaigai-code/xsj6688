@@ -1079,6 +1079,17 @@ export async function generateGroupOfflineChatCompletion(
             disableTools: true,
         },
     );
+    // 情绪：群聊离线里用户主动发消息也要分类摄入，写事件日志（与在线群聊一致）
+    const participantIds = session.participantIds || [];
+    const lastUserMsg = [...history].reverse().find((m) => m.role === "user" && m.content?.trim());
+    if (lastUserMsg && lastUserMsg.content) {
+        const affectCtx = history.slice(-6).filter((m) => m.content?.trim()).map((m) => `${m.role === "user" ? "用户" : "角色"}: ${m.content!.trim()}`);
+        void classifyAffectLabel(config, lastUserMsg.content.trim(), affectCtx).then(({ label, confidence }) => {
+            for (const charId of participantIds) {
+                ingestUserMessage(charId, label, confidence);
+            }
+        });
+    }
     const summaryTag = preset?.story_summary_tag?.trim() || "summary";
     let reasoning = "";
     const rawOutput = await sendLLMRequest(config, preset, llmMessages, regexes, {

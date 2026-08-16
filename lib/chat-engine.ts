@@ -2006,7 +2006,7 @@ export async function generateOfflineChatCompletion(
     history: ChatMessage[],
     options?: { signal?: AbortSignal },
 ): Promise<OfflineChatCompletionResult> {
-    const { llmMessages, character, config, preset, regexes, userIdentity } = await buildChatPromptMessages(
+    const { llmMessages, character, config, preset, regexes, userIdentity, affectScene } = await buildChatPromptMessages(
         session,
         history,
         {
@@ -2014,6 +2014,14 @@ export async function generateOfflineChatCompletion(
             excludeOfflineSessionId: session.id,
         },
     );
+    // 情绪：离线聊天里用户主动发消息也要分类摄入，写事件日志（与在线聊天一致）
+    const lastUserMsg = [...history].reverse().find((m) => m.role === "user" && m.content?.trim());
+    if (lastUserMsg && lastUserMsg.content) {
+        const affectCtx = history.slice(-6).filter((m) => m.content?.trim()).map((m) => `${m.role === "user" ? "用户" : "角色"}: ${m.content!.trim()}`);
+        void classifyAffectLabel(config, lastUserMsg.content.trim(), affectCtx, affectScene).then(({ label, confidence }) => {
+            ingestUserMessage(character.id, label, confidence);
+        });
+    }
     const summaryTag = preset?.story_summary_tag?.trim() || "summary";
     let reasoning = "";
     const rawOutput = await sendLLMRequest(config, preset, llmMessages, regexes, {
