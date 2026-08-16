@@ -8,6 +8,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
 import { getAffectDisplay, getAffectMeta, subscribeAffect, MASCOT_OWNER_ID } from "@/lib/affect-store";
 import { getAffectHistory } from "@/lib/affect-history";
+import { getAffectSamples } from "@/lib/affect-samples";
 import { AFFECT_DIMS, DIMS, type AffectDim } from "@/lib/affect-model";
 
 function formatClock(atMs: number): string {
@@ -41,6 +42,22 @@ function Bar({ label, value, neutral }: { label: string; value: number; neutral:
     </div>
   );
 }
+
+// 迷你情绪曲线：每个字符一个采样点（▁=低 … █=高），连成趋势线。
+function Sparkline({ values }: { values: number[] }) {
+  const marks = "▁▂▃▄▅▆▇█";
+  return (
+    <span style={{ fontVariantNumeric: "tabular-nums", letterSpacing: 1, color: "#cbd5e1", whiteSpace: "pre" }}>
+      {values.map((v) => marks[Math.min(7, Math.max(0, Math.floor(v * 8)))]).join("")}
+    </span>
+  );
+}
+
+// sparkline 展示的关键维度（太多行会挤）
+const SPARK_DIMS: { dim: AffectDim; }[] = [
+  { dim: "anxiety" }, { dim: "intimacy" }, { dim: "contentment" },
+  { dim: "longing" }, { dim: "irritability" },
+];
 
 function ownerRows() {
   const rows = [{ id: MASCOT_OWNER_ID, name: "小卷" }];
@@ -101,6 +118,22 @@ export function AffectPanel() {
 
             {isOpen ? (
               <div style={{ padding: "0 12px 10px" }}>
+                {/* 定时采样曲线（每 10 分钟一个点） */}
+                {(() => {
+                  const samples = getAffectSamples(owner.id).slice(-24); // 最近 24 点 ≈ 4 小时
+                  if (samples.length < 2) return null;
+                  return (
+                    <div style={{ marginBottom: 8, paddingBottom: 8, borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                      <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>情绪曲线（每10分钟）</div>
+                      {SPARK_DIMS.map(({ dim }) => (
+                        <div key={dim} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, lineHeight: 1.6 }}>
+                          <span style={{ color: "#9ca3af", width: 36, flexShrink: 0 }}>{DIM_NAMES[dim]}</span>
+                          <Sparkline values={samples.map((s) => s.display[dim])} />
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
                 {(() => {
                   const display = getAffectDisplay(owner.id);
                   return AFFECT_DIMS.map((k) => (
@@ -108,11 +141,11 @@ export function AffectPanel() {
                   ));
                 })()}
                 {(() => {
-                  const history = getAffectHistory(owner.id).slice(0, 8);
+                  const history = getAffectHistory(owner.id).slice(0, 12);
                   if (history.length === 0) return null;
                   return (
                     <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
-                      <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>最近记录</div>
+                      <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>最近事件（有互动才记）</div>
                       {history.map((h, i) => (
                         <div
                           key={`${h.atMs}-${i}`}

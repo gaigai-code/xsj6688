@@ -11,6 +11,7 @@ import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { getNowMs } from "./virtual-time";
 import { loadCharacters } from "./character-storage";
 import { recordAffectHistory, describeAffectEvent } from "./affect-history";
+import { recordSampleIfDue } from "./affect-samples";
 import {
   AFFECT_DIMS,
   advance,
@@ -183,7 +184,10 @@ function advanceOwner(state: AffectState): void {
 export function getAffectDisplay(ownerId: string): DimLevels {
   const state = ensureState(ownerId);
   advanceOwner(state);
-  return { ...state.display! };
+  const display = { ...state.display! };
+  // 定时采样：到点自动补记（幂等）
+  recordSampleIfDue(ownerId, display, getNowMs());
+  return display;
 }
 
 export type AffectMeta = {
@@ -198,6 +202,7 @@ export type AffectMeta = {
 export function getAffectMeta(ownerId: string): AffectMeta {
   const state = ensureState(ownerId);
   advanceOwner(state);
+  if (state.display) recordSampleIfDue(ownerId, state.display, getNowMs());
   return {
     mood: { ...state.mood },
     sleepStatus: state.sleep.status,
