@@ -1771,6 +1771,7 @@ export async function buildChatPromptMessages(
     regexes: RegexConfig[];
     userIdentity: ReturnType<typeof resolveUserIdentity>;
     toolsEnabled: boolean;
+    affectScene: string;
 }> {
     const chars = loadCharacters();
     const character = chars.find(c => c.id === session.contactId);
@@ -1845,6 +1846,20 @@ export async function buildChatPromptMessages(
         excludeOfflineSessionId: options?.excludeOfflineSessionId,
         promptTimestampOptions,
     });
+    // 情绪分类场景：角色性格 + 最近剧情事件，供情绪分类器结合上下文判断（不属于回复 prompt）
+    const personaText = [character.personality, character.persona]
+        .map((s) => (s ? String(s).trim() : ""))
+        .filter(Boolean)
+        .join("；");
+    const plotEvents = unifiedRecentItems
+        .filter((u) => u.kind === "event")
+        .map((u) => (u.kind === "event" ? u.text : ""))
+        .filter(Boolean)
+        .slice(-5);
+    const affectScene = [
+        personaText ? `角色性格：${personaText.slice(0, 200)}` : "",
+        plotEvents.length ? `最近剧情：\n${plotEvents.join("\n")}` : "",
+    ].filter(Boolean).join("\n");
     const promptHistory = applyVisionImagePromptLimit(
         truncatedHistory.map(msg => ({ ...msg })),
         session.visionImagePromptLimit,
@@ -1940,7 +1955,7 @@ export async function buildChatPromptMessages(
     }
     appendEmptyGenerateGuardMessage(llmMessages, config, historyForPrompt);
 
-    return { llmMessages, character, config, preset, regexes, userIdentity, toolsEnabled };
+    return { llmMessages, character, config, preset, regexes, userIdentity, toolsEnabled, affectScene };
 }
 
 export type ChatCompletionCallbacks = {
@@ -2272,7 +2287,7 @@ export async function generateChatCompletion(
     options?: ChatPromptBuildOptions & { signal?: AbortSignal },
     callbacks?: ChatCompletionCallbacks,
 ): Promise<ChatCompletionResult> {
-    const { llmMessages, character, config, preset, regexes, userIdentity, toolsEnabled } = await buildChatPromptMessages(session, history, options);
+    const { llmMessages, character, config, preset, regexes, userIdentity, toolsEnabled, affectScene } = await buildChatPromptMessages(session, history, options);
     const requestAppTags = mergeAppTags(options?.appTags, options?.promptProfile?.appTags, options?.appId ?? "chat");
 
     // 情绪：注入 [内心状态] + 分类用户最新消息并摄入（fire-and-forget，不阻塞回复）
@@ -2281,7 +2296,8 @@ export async function generateChatCompletion(
     syncCalendarAffect("character", character.id);
     const lastUserMsg = [...history].reverse().find((m) => m.role === "user" && m.content?.trim());
     if (lastUserMsg && lastUserMsg.content) {
-        void classifyAffectLabel(config, lastUserMsg.content.trim()).then(({ label, confidence }) => {
+        const affectCtx = history.slice(-6).filter((m) => m.content?.trim()).map((m) => `${m.role === "user" ? "用户" : "角色"}: ${m.content!.trim()}`);
+        void classifyAffectLabel(config, lastUserMsg.content.trim(), affectCtx, affectScene).then(({ label, confidence }) => {
             ingestUserMessage(character.id, label, confidence);
         });
     }

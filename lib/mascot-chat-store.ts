@@ -508,7 +508,8 @@ export async function sendMascotMessage({
     setThinking(true);
 
     // 情绪：分类用户消息并摄入（fire-and-forget，不阻塞回复）
-    void classifyAffectLabel(resolveAuxiliaryApiConfig("mascotApiConfigId"), trimmed).then(({ label, confidence }) => {
+    const affectCtx = messages.slice(-6).filter((m) => m.text?.trim()).map((m) => `${m.role === "user" ? "用户" : "小卷"}: ${m.text!.trim()}`);
+    void classifyAffectLabel(resolveAuxiliaryApiConfig("mascotApiConfigId"), trimmed, affectCtx).then(({ label, confidence }) => {
         ingestUserMessage(MASCOT_OWNER_ID, label, confidence);
     });
 

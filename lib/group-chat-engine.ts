@@ -788,7 +788,8 @@ export async function generateGroupChatCompletion(
     }
     const lastUserMsg = [...history].reverse().find((m) => m.role === "user" && m.content?.trim());
     if (lastUserMsg && lastUserMsg.content) {
-        void classifyAffectLabel(config, lastUserMsg.content.trim()).then(({ label, confidence }) => {
+        const affectCtx = history.slice(-6).filter((m) => m.content?.trim()).map((m) => `${m.role === "user" ? "用户" : "角色"}: ${m.content!.trim()}`);
+        void classifyAffectLabel(config, lastUserMsg.content.trim(), affectCtx).then(({ label, confidence }) => {
             for (const charId of participantIds) {
                 ingestUserMessage(charId, label, confidence);
             }

@@ -45,7 +45,18 @@ Rules:
 - When the message is plain and unremarkable, use neutral
 - fear_* labels take priority over struggling when the core emotion is fear rather than stress
 - Mentions of death, suicide, major accidents, or life threats prefer fear_death
-- vulnerable is for fragility, hurt, or insecurity; when the core meaning is death, danger, or fear, choose the matching fear_* label`;
+- vulnerable is for fragility, hurt, or insecurity; when the core meaning is death, danger, or fear, choose the matching fear_* label
+
+Chinese emotion hints (the message may be written in Chinese):
+- 焦虑/担心/紧张/着急/心慌/不安 = anxious → vulnerable or fear_concern (NOT neutral)
+- 生气/愤怒/火大/气死 = angry → hostile or conflict (NOT neutral)
+- 烦躁/心烦/闹心 = irritated → struggling
+- 难过/委屈/失望/失落 = hurt/disappointed → vulnerable
+- 孤独/寂寞/孤单 = lonely → distant
+- 吃醋/嫉妒 = jealous → conflict
+- 口语化的负面情绪不要轻易归为 neutral；只有真正平淡无奇的日常回复才用 neutral
+
+The [SCENE] block (when present) describes the character's personality and recent plot. Use it to judge how the [CLASSIFY] message affects THIS character emotionally — the same words can mean different emotions for different characters.`;
 
 export type AffectClassification = {
   label: AffectLabel;
@@ -57,13 +68,17 @@ function clamp01(v: number): number {
   return Number.isFinite(v) ? Math.min(Math.max(v, 0), 1) : 0.6;
 }
 
-function buildUserMessage(text: string, context?: string[]): string {
+function buildUserMessage(text: string, context?: string[], sceneText?: string): string {
   const ctx = (context || []).filter(Boolean);
-  if (!ctx.length) return `[CLASSIFY]\n${text}`;
-  const lines = ["[CONTEXT]"];
-  for (const m of ctx) lines.push(m);
-  lines.push("[CLASSIFY]", text);
-  return lines.join("\n");
+  const blocks: string[] = [];
+  if (sceneText && sceneText.trim()) {
+    blocks.push(`[SCENE]\n${sceneText.trim()}`);
+  }
+  if (ctx.length) {
+    blocks.push("[CONTEXT]", ...ctx);
+  }
+  blocks.push(`[CLASSIFY]\n${text}`);
+  return blocks.join("\n");
 }
 
 function parseLabel(content: string): { label: AffectLabel; confidence: number } | null {
@@ -95,14 +110,15 @@ const RULES: Rule[] = [
   { label: "fear_death", patterns: [/死/, /自杀/, /不想活/, /活不下去/, /跳楼/, /割腕/, /杀了我/, /轻生/] },
   { label: "fear_separation", patterns: [/别离开/, /不要走/, /离开我/, /别丢下/, /分手/, /不要抛弃/] },
   { label: "fear_concern", patterns: [/你没事吧/, /担心你/, /别出事/, /注意安全/, /怕你受伤/] },
-  { label: "hostile", patterns: [/滚/, /讨厌你/, /恶心/, /去死/, /闭嘴/, /废物/, /傻逼/] },
-  { label: "struggling", patterns: [/好累/, /撑不住/, /压力好大/, /崩溃/, /快不行了/] },
-  { label: "vulnerable", patterns: [/害怕/, /难过/, /委屈/, /不安/, /没安全感/, /好怕/] },
+  { label: "hostile", patterns: [/滚/, /讨厌你/, /恶心/, /去死/, /闭嘴/, /废物/, /傻逼/, /生气/, /气死/, /火大/, /愤怒/, /发火/, /暴怒/] },
+  { label: "struggling", patterns: [/好累/, /撑不住/, /压力好大/, /崩溃/, /快不行了/, /烦躁/, /心烦/, /闹心/, /心累/] },
+  { label: "vulnerable", patterns: [/害怕/, /难过/, /委屈/, /不安/, /没安全感/, /好怕/, /焦虑/, /紧张/, /着急/, /担心/, /心慌/, /焦躁/, /失望/, /失落/, /心寒/] },
   { label: "reassuring", patterns: [/没事的/, /别怕/, /有我在/, /抱抱/, /我在呢/, /会好的/] },
   { label: "affectionate", patterns: [/爱你/, /想你/, /宝贝/, /亲亲/, /喜欢你/, /么么哒/, /抱抱你/] },
   { label: "playful", patterns: [/哈哈/, /开玩笑/, /逗你/, /略略略/, /皮一下/] },
+  { label: "conflict", patterns: [/吃醋/, /嫉妒/, /酸了/] },
   { label: "cold", patterns: [/哦/, /随便/, /无所谓/, /嗯/] },
-  { label: "distant", patterns: [/在忙/, /没空/, /别烦我/, /不想聊/] },
+  { label: "distant", patterns: [/在忙/, /没空/, /别烦我/, /不想聊/, /孤独/, /寂寞/, /孤单/] },
 ];
 
 export function ruleClassify(text: string): { label: AffectLabel; confidence: number } {
@@ -119,12 +135,13 @@ export async function classifyAffectLabel(
   config: ApiConfig | null,
   text: string,
   context?: string[],
+  sceneText?: string,
 ): Promise<AffectClassification> {
   if (config && config.apiKey && text.trim()) {
     try {
       const messages = [
         { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: buildUserMessage(text, context) },
+        { role: "user", content: buildUserMessage(text, context, sceneText) },
       ];
       const res = await simpleLLMCall(config, messages, { temperature: 0, max_tokens: 500 });
       if (res.content) {
