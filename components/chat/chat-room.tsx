@@ -1650,7 +1650,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
 
     const availableShoppingGifts = useMemo(
         () => loadDeliveredShoppingGifts(),
-        [messages],
+        [messages, richModal],
     );
 
     useEffect(() => {

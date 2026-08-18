@@ -93,7 +93,7 @@ function normalizeShippingEvent(value: unknown): ShoppingShippingEvent | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
   const status = cleanText(record.status, 40);
-  if (status !== "ordered" && status !== "shipped" && status !== "delivering" && status !== "delivered") return null;
+  if (status !== "ordered" && status !== "shipped" && status !== "delivering" && status !== "delivered" && status !== "signed") return null;
   const timestamp = cleanText(record.timestamp, 80);
   const time = new Date(timestamp);
   if (!timestamp || Number.isNaN(time.getTime())) return null;

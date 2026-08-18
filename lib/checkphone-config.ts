@@ -288,7 +288,7 @@ export type CheckPhoneShoppingOrderItem = {
   tone: CheckPhoneShoppingTone;
 };
 
-export type CheckPhoneShoppingShippingStage = "ordered" | "shipped" | "delivering" | "delivered";
+export type CheckPhoneShoppingShippingStage = "ordered" | "shipped" | "delivering" | "delivered" | "signed";
 
 export type CheckPhoneShoppingShippingEvent = {
   status: CheckPhoneShoppingShippingStage;

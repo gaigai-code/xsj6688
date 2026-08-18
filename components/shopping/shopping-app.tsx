@@ -962,6 +962,29 @@ export function ShoppingApp({ onClose, visible = true, onIdle, onBusyChange }: S
     setConfirmCheckoutOpen(false);
   }
 
+  function signOrderReceipt(orderId: string) {
+    const signedAt = getNow();
+    persist(current => ({
+      ...current,
+      orders: current.orders.map(order => {
+        if (order.id !== orderId) return order;
+        const timeline = Array.isArray(order.shippingTimeline) ? order.shippingTimeline : [];
+        const signedEvent: ShoppingShippingEvent = {
+          status: "signed",
+          label: "已签收",
+          timeLabel: formatShoppingDateTime(signedAt),
+          timestamp: signedAt.toISOString(),
+        };
+        return {
+          ...order,
+          statusLabel: "已签收",
+          shippingTimeline: [...timeline.filter(event => event.status !== "signed"), signedEvent],
+        };
+      }),
+    }));
+    setNowTick(getNowMs());
+  }
+
   function openProduct(product: ShoppingProduct | ShoppingCartItem | ShoppingOrder["items"][number], defaults?: { tagLabel?: string; detailLabel?: string }) {
     setTranslationPreview(null);
     setSelectedProduct(toProductDetail(product, defaults));
@@ -1440,7 +1463,7 @@ export function ShoppingApp({ onClose, visible = true, onIdle, onBusyChange }: S
                       >
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
                           <strong style={{ fontSize: "calc(13px*var(--app-text-scale,1))", color: "#222" }}>{order.merchantLabel}</strong>
-                          <span style={{ fontSize: "calc(12px*var(--app-text-scale,1))", color: shipping.statusLabel === "已到货" ? "#16a34a" : "#ff6b00", fontWeight: 500 }}>{shipping.statusLabel}</span>
+                          <span style={{ fontSize: "calc(12px*var(--app-text-scale,1))", color: shipping.statusLabel === "已到货" || shipping.statusLabel === "已签收" ? "#16a34a" : "#ff6b00", fontWeight: 500 }}>{shipping.statusLabel}</span>
                         </div>
                         <div style={{ display: "flex", gap: "10px", width: "100%", alignItems: "stretch" }}>
                           <div style={{ width: "56px", height: "56px", background: "#f5f5f5", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "calc(24px*var(--app-text-scale,1))", flexShrink: 0 }}>
@@ -1619,7 +1642,7 @@ export function ShoppingApp({ onClose, visible = true, onIdle, onBusyChange }: S
               <div style={{ background: "#fff", borderRadius: "20px", padding: "20px", boxShadow: "0 4px 20px rgba(0,0,0,0.02)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "16px" }}>
                   <span style={{ fontSize: "calc(12px*var(--app-text-scale,1))", color: "#999" }}>Order Status</span>
-                  <span style={{ fontSize: "calc(12px*var(--app-text-scale,1))", color: activeOrderShipping?.statusLabel === "已到货" ? "#16a34a" : "#ff6b00", fontWeight: 600 }}>{activeOrderShipping?.statusLabel ?? activeOrder.statusLabel}</span>
+                  <span style={{ fontSize: "calc(12px*var(--app-text-scale,1))", color: activeOrderShipping?.statusLabel === "已到货" || activeOrderShipping?.statusLabel === "已签收" ? "#16a34a" : "#ff6b00", fontWeight: 600 }}>{activeOrderShipping?.statusLabel ?? activeOrder.statusLabel}</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
                   <span style={{ fontSize: "calc(12px*var(--app-text-scale,1))", color: "#999" }}>Merchant</span>
@@ -1665,6 +1688,51 @@ export function ShoppingApp({ onClose, visible = true, onIdle, onBusyChange }: S
                       );
                     })}
                   </div>
+                </div>
+              ) : null}
+
+              {activeOrderShipping?.currentStage === "delivered" ? (
+                <button
+                  type="button"
+                  onClick={() => signOrderReceipt(activeOrder.id)}
+                  style={{
+                    width: "100%",
+                    background: "#16a34a",
+                    color: "#fff",
+                    borderRadius: "16px",
+                    padding: "14px 0",
+                    fontSize: "calc(14px*var(--app-text-scale,1))",
+                    fontWeight: "bold",
+                    border: "none",
+                    boxShadow: "0 10px 24px rgba(22,163,74,0.22)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <Check size={18} strokeWidth={2.6} />
+                  确认签收
+                </button>
+              ) : activeOrderShipping?.currentStage === "signed" ? (
+                <div
+                  style={{
+                    width: "100%",
+                    background: "#f0fdf4",
+                    color: "#16a34a",
+                    borderRadius: "16px",
+                    padding: "13px 16px",
+                    fontSize: "calc(13px*var(--app-text-scale,1))",
+                    fontWeight: 600,
+                    border: "1px solid rgba(22,163,74,0.18)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <Check size={16} strokeWidth={2.6} />
+                  已签收
                 </div>
               ) : null}
 

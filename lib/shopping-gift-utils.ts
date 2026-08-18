@@ -1,5 +1,6 @@
 import { loadChatMessages, loadChatSessions } from "./chat-storage";
 import { loadShoppingState } from "./shopping-storage";
+import { getNowMs } from "./virtual-time";
 import type { ShoppingOrder } from "./shopping-types";
 import type { CheckPhoneShoppingTone } from "./checkphone-config";
 
@@ -65,7 +66,7 @@ export function loadSentShoppingGiftIds(): Set<string> {
 }
 
 export function loadDeliveredShoppingGifts(options: LoadShoppingGiftOptions = {}): ShoppingGiftCandidate[] {
-  const nowMs = options.nowMs ?? Date.now();
+  const nowMs = options.nowMs ?? getNowMs();
   const sentIds = options.includeSent ? new Set<string>() : loadSentShoppingGiftIds();
   const state = loadShoppingState();
   const gifts: ShoppingGiftCandidate[] = [];
