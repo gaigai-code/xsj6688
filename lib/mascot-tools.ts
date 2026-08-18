@@ -102,6 +102,7 @@ const GENERATE_IMAGE_ASSET_SCHEMA = {
         kind: { type: "string", enum: IMAGE_ASSET_KIND_ENUM, description: "素材类型：bubble=聊天气泡，icon=图标，texture=纹理，background=背景，misc=其他" },
         label: { type: "string", description: "素材名称，便于后续读取/裁切/上传" },
         characterId: { type: "string", description: "可选：要使用参考图的角色 id。传了该角色在宿主设置里已上传参考图时，会自动带上参考图让画面贴近角色形象" },
+        secondCharacterId: { type: "string", description: "可选：合照的第二个角色 id。与 characterId 一起传时生成两位角色的合照（两位都需已上传参考图）" },
         useReferenceImage: { type: "boolean", description: "默认无需传：传了 characterId 且角色有参考图就会自动使用。只有用户明确要求不用参考图时才传 false" },
     },
     required: ["description"],
@@ -1275,6 +1276,7 @@ async function handleGenerateCssAsset(args: Record<string, unknown>): Promise<To
         kind: args.kind,
         label: typeof args.label === "string" ? args.label : undefined,
         characterId: typeof args.characterId === "string" ? args.characterId : undefined,
+        secondCharacterId: typeof args.secondCharacterId === "string" ? args.secondCharacterId : undefined,
         useReferenceImage: typeof args.useReferenceImage === "boolean" ? args.useReferenceImage : undefined,
     });
 }

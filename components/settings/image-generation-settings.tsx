@@ -14,6 +14,7 @@ import { getChatImageFromIndexedDB, saveChatImageToIndexedDB } from "@/lib/chat-
 import {
     fetchImageGenerationModels,
     filterLikelyImageModels,
+    generateGroupPhotoFromConfiguredApi,
     generateImageFromConfiguredApi,
 } from "@/lib/image-generation-service";
 import { Alert } from "@/components/ui/feedback";
@@ -65,6 +66,13 @@ export function ImageGenerationSettings() {
     const [status, setStatus] = useState<Status | null>(null);
     const [testPreviewUrl, setTestPreviewUrl] = useState<string | null>(null);
 
+    // 双人合照测试
+    const [groupCharA, setGroupCharA] = useState("");
+    const [groupCharB, setGroupCharB] = useState("");
+    const [groupDesc, setGroupDesc] = useState("两位角色站在一起拍一张合影，自然光线，真实照片风格");
+    const [isGroupTesting, setIsGroupTesting] = useState(false);
+    const [groupPreviewUrl, setGroupPreviewUrl] = useState<string | null>(null);
+
     useEffect(() => {
         // Sync the ratio hint to the saved size on load, so the hint is present
         // by default (not only after the user manually switches the size).
@@ -100,8 +108,9 @@ export function ImageGenerationSettings() {
     useEffect(() => {
         return () => {
             if (testPreviewUrl) URL.revokeObjectURL(testPreviewUrl);
+            if (groupPreviewUrl) URL.revokeObjectURL(groupPreviewUrl);
         };
-    }, [testPreviewUrl]);
+    }, [testPreviewUrl, groupPreviewUrl]);
 
     const persist = useCallback((next: ImageGenerationSettingsType) => {
         setSettings(next);
@@ -178,6 +187,44 @@ export function ImageGenerationSettings() {
             setStatus({ success: false, message: err instanceof Error ? err.message : String(err) });
         } finally {
             setIsTesting(false);
+        }
+    };
+
+    const testGroupGeneration = async () => {
+        setStatus(null);
+        if (!groupCharA || !groupCharB) {
+            setStatus({ success: false, message: "请先选择两位角色。" });
+            return;
+        }
+        if (groupCharA === groupCharB) {
+            setStatus({ success: false, message: "两位角色不能相同。" });
+            return;
+        }
+        if (!referencePreviews[groupCharA] || !referencePreviews[groupCharB]) {
+            setStatus({
+                success: false,
+                message: "两位角色都需要先上传参考图（未上传的请在上方「角色参考图」区域补传）。",
+            });
+            return;
+        }
+        setIsGroupTesting(true);
+        try {
+            const result = await generateGroupPhotoFromConfiguredApi({
+                description: groupDesc.trim() || "两位角色站在一起拍一张合影",
+                characterIds: [groupCharA, groupCharB],
+                settings: { ...settings, enabled: true },
+            });
+            if (!result) throw new Error("图像生成未返回结果。");
+            if (groupPreviewUrl) URL.revokeObjectURL(groupPreviewUrl);
+            setGroupPreviewUrl(URL.createObjectURL(result.blob));
+            setStatus({
+                success: true,
+                message: `合照生成成功（已使用 ${result.usedReferenceCount ?? 0} 张角色参考图）。`,
+            });
+        } catch (err) {
+            setStatus({ success: false, message: err instanceof Error ? err.message : String(err) });
+        } finally {
+            setIsGroupTesting(false);
         }
     };
 
@@ -367,6 +414,70 @@ export function ImageGenerationSettings() {
                     <img
                         src={testPreviewUrl}
                         alt="测试生图结果"
+                        className="max-h-[220px] max-w-full self-start rounded-xl border border-[var(--c-card-border)] object-contain"
+                    />
+                )}
+            </div>
+
+            <div className="menu-group p-4 flex flex-col gap-4">
+                <div className="flex flex-col gap-1">
+                    <p className="menu-desc ml-1 font-semibold">双人合照测试</p>
+                    <span className="menu-desc ml-1 opacity-70">
+                        选择两位已上传参考图的角色，系统会把两张参考图横向拼成一张发给生图模型，要求两人同时入镜且形象一致。
+                    </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-1">
+                        <label className="menu-desc ml-1">角色一</label>
+                        <Select value={groupCharA} onChange={(event) => setGroupCharA(event.target.value)}>
+                            <option value="">请选择</option>
+                            {characters.map(character => (
+                                <option key={character.id} value={character.id}>
+                                    {character.name}{referencePreviews[character.id] ? "（已上传参考图）" : "（未传参考图）"}
+                                </option>
+                            ))}
+                        </Select>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <label className="menu-desc ml-1">角色二</label>
+                        <Select value={groupCharB} onChange={(event) => setGroupCharB(event.target.value)}>
+                            <option value="">请选择</option>
+                            {characters.map(character => (
+                                <option key={character.id} value={character.id}>
+                                    {character.name}{referencePreviews[character.id] ? "（已上传参考图）" : "（未传参考图）"}
+                                </option>
+                            ))}
+                        </Select>
+                    </div>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                    <label className="menu-desc ml-1">合照画面描述</label>
+                    <Textarea
+                        value={groupDesc}
+                        onChange={(event) => setGroupDesc(event.target.value)}
+                        rows={2}
+                        placeholder="描述两人合照的画面，例如：一起坐在咖啡馆窗边，午后阳光，近景合照"
+                    />
+                </div>
+
+                <div className="flex gap-3">
+                    <button
+                        type="button"
+                        onClick={testGroupGeneration}
+                        disabled={isGroupTesting}
+                        className="ui-btn ui-btn-success flex-1"
+                    >
+                        <Image size={16} />
+                        {isGroupTesting ? "生成中..." : "生成合照"}
+                    </button>
+                </div>
+
+                {groupPreviewUrl && (
+                    <img
+                        src={groupPreviewUrl}
+                        alt="合照测试结果"
                         className="max-h-[220px] max-w-full self-start rounded-xl border border-[var(--c-card-border)] object-contain"
                     />
                 )}
