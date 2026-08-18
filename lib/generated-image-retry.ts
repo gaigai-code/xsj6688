@@ -53,7 +53,7 @@ export async function generateAndApplyChatGeneratedImage(
         const generated = await generateImageFromConfiguredApi({
             description,
             characterId,
-            useReferenceImage: message.mediaData?.useReferenceImage === true,
+            useReferenceImage: message.mediaData?.useReferenceImage,
             signal: options?.signal,
         });
         if (!generated) throw new Error("生图配置未启用或不完整");
@@ -110,7 +110,7 @@ export async function retryMomentGeneratedPhoto(post: MomentPost, nextDescriptio
         const generated = await generateImageFromConfiguredApi({
             description,
             characterId: post.authorType === "character" ? post.authorId : undefined,
-            useReferenceImage: post.photoUseReferenceImage === true,
+            useReferenceImage: post.photoUseReferenceImage,
         });
         if (!generated) throw new Error("生图配置未启用或不完整");
 

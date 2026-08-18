@@ -61,6 +61,7 @@ export function ImageGenerationSettings() {
     const [models, setModels] = useState<string[]>([]);
     const [isFetchingModels, setIsFetchingModels] = useState(false);
     const [isTesting, setIsTesting] = useState(false);
+    const [testCharacterId, setTestCharacterId] = useState("");
     const [status, setStatus] = useState<Status | null>(null);
     const [testPreviewUrl, setTestPreviewUrl] = useState<string | null>(null);
 
@@ -156,14 +157,23 @@ export function ImageGenerationSettings() {
         setStatus(null);
         setIsTesting(true);
         try {
+            const useCharacter = Boolean(testCharacterId);
             const result = await generateImageFromConfiguredApi({
-                description: "一张放在桌面上的白色咖啡杯，柔和自然光，真实照片风格",
+                description: useCharacter
+                    ? "给角色拍一张日常照片：自然光线，真实照片风格，人物清晰"
+                    : "一张放在桌面上的白色咖啡杯，柔和自然光，真实照片风格",
                 settings: { ...settings, enabled: true },
+                characterId: useCharacter ? testCharacterId : undefined,
             });
             if (!result) throw new Error("图像生成未返回结果。");
             if (testPreviewUrl) URL.revokeObjectURL(testPreviewUrl);
             setTestPreviewUrl(URL.createObjectURL(result.blob));
-            setStatus({ success: true, message: "测试生图成功。" });
+            setStatus({
+                success: true,
+                message: result.usedReferenceImage
+                    ? "测试生图成功（已使用角色参考图）。"
+                    : "测试生图成功（未使用参考图）。",
+            });
         } catch (err) {
             setStatus({ success: false, message: err instanceof Error ? err.message : String(err) });
         } finally {
@@ -318,6 +328,21 @@ export function ImageGenerationSettings() {
                     <p className="menu-desc ml-1 opacity-70">
                         选择尺寸后会自动在末尾追加一句「{RATIO_HINT_MARKER}…」构图提示，用于纠正部分不认 size 参数的接口（如 gpt-image-2）。可手动修改或删除。
                     </p>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                    <label className="menu-desc ml-1">测试角色（可选）</label>
+                    <Select value={testCharacterId} onChange={(event) => setTestCharacterId(event.target.value)}>
+                        <option value="">不指定（纯文字生图）</option>
+                        {characters.map(character => (
+                            <option key={character.id} value={character.id}>
+                                {character.name}{referencePreviews[character.id] ? "（已上传参考图）" : ""}
+                            </option>
+                        ))}
+                    </Select>
+                    <span className="menu-desc ml-1 opacity-70">
+                        选择角色后，测试生图会带上该角色的参考图，用于验证形象一致性是否生效。
+                    </span>
                 </div>
 
                 <div className="flex gap-3">

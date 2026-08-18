@@ -725,7 +725,7 @@ export async function createCssAssetFromGeneratedImage(args: {
     const result = await generateImageFromConfiguredApi({
         description,
         characterId: args.characterId,
-        useReferenceImage: args.useReferenceImage === true,
+        useReferenceImage: args.useReferenceImage,
         settings: { ...settings, enabled: true, extraPrompt: "" },
     });
     if (!result) {

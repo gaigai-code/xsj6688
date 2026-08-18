@@ -146,7 +146,7 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
     const openPostEditor = () => {
         setPostContentDraft(post.content);
         setPostPhotoDescDraft(post.photoDescription || "");
-        setPostUseReferenceDraft(post.photoUseReferenceImage === true);
+        setPostUseReferenceDraft(post.photoUseReferenceImage !== false);
         setPostLocationDraft(post.location || "");
         setShowPostActions(false);
         setEditingPostOpen(true);

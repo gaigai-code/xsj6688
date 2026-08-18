@@ -40,6 +40,13 @@ const IMAGE_MODEL_HINTS = [
   "wan",
 ];
 
+// 使用参考图时追加到提示词的身份保持要求。
+// gpt-image 系等模型把参考图当"弱上下文"，对五官一致性遵循度差；
+// 在提示词里显式点名"人物必须与参考图一致"能显著提升遵循度。
+// 用条件式措辞（"若画面中出现人物"），避免把纯场景照强行塞进角色。
+const REFERENCE_IDENTITY_HINT =
+  "【参考图要求】画面中出现的人物必须与参考图中的角色保持形象一致（脸型、五官、发型、发色、瞳色、体型），不得更换为其他人。";
+
 function mergePrompt(description: string, extraPrompt: string): string {
   const main = description.trim();
   const extra = extraPrompt.trim();
@@ -479,6 +486,13 @@ async function generateImageViaServer(params: {
   }
 }
 
+/**
+ * 调用已配置的生图 API 生成图片。
+ * - characterId：要使用参考图的角色 id（对应设置里「角色参考图」上传的角色）。
+ * - useReferenceImage：undefined/缺省 = 该角色配了参考图就自动使用；true = 强制使用；
+ *   false = 明确不用（例如「不使用参考图」标签或用户手动关闭）。
+ * 返回结果里 usedReferenceImage 表示本次是否真的带上了参考图。
+ */
 export async function generateImageFromConfiguredApi(params: {
   description: string;
   characterId?: string;
@@ -492,8 +506,11 @@ export async function generateImageFromConfiguredApi(params: {
   const description = params.description.trim();
   if (!description || !settings.apiKey.trim() || !settings.baseUrl.trim() || !settings.model.trim()) return null;
 
+  // 参考图策略：角色配了参考图就默认使用（除非调用方明确 useReferenceImage === false）。
+  // 这样聊天里 LLM 漏写「使用参考图」、小卷/自定义应用只传 characterId 时，
+  // 只要该角色在设置里上传过参考图，就会自动带上参考图；显式「不使用参考图」仍然生效。
   const reference = params.characterId ? settings.characterReferences[params.characterId] : undefined;
-  const rawReferenceImageDataUrl = params.useReferenceImage && reference?.assetId
+  const rawReferenceImageDataUrl = reference?.assetId && params.useReferenceImage !== false
     ? await getChatImageFromIndexedDB(reference.assetId)
     : null;
   throwIfAborted(params.signal);
@@ -501,7 +518,10 @@ export async function generateImageFromConfiguredApi(params: {
     ? await normalizeReferenceImageForEdit(rawReferenceImageDataUrl)
     : null;
   throwIfAborted(params.signal);
-  const prompt = mergePrompt(description, settings.extraPrompt);
+  const basePrompt = mergePrompt(description, settings.extraPrompt);
+  const prompt = referenceImageDataUrl
+    ? `${basePrompt}\n\n${REFERENCE_IDENTITY_HINT}`
+    : basePrompt;
 
   const data = settings.requestMode === "direct"
     ? await generateImageDirect({ settings, prompt, referenceImageDataUrl, signal: params.signal })

@@ -550,7 +550,7 @@ const CUSTOM_APP_CREATOR_GUIDE_LINES = [
   "if (image.dataUrl) imgEl.src = image.dataUrl;",
   "```",
   "",
-  "* `prompt`：生图描述，必填。`characterId` + `useReferenceImage: true` 时会带上该角色在宿主设置里配置的参考图，让画面里的人物更贴近角色形象；不传 `useReferenceImage` 或角色没配参考图则按纯文字描述生成。",
+  "* `prompt`：生图描述，必填。传了 `characterId` 且该角色在宿主设置里上传了参考图时，会自动带上参考图，让画面里的人物贴近角色形象；只有用户明确要求不用参考图时才传 `useReferenceImage: false`。角色没配参考图则按纯文字描述生成。",
   "* 返回 `{ ok, dataUrl, mimeType, prompt, revisedPrompt?, usedReferenceImage }`，`dataUrl` 可直接用于 `<img src>`。",
   "* **要长期保存生成的图片时，用 `media.put` 换成引用再存 db**（见 5.10），不要把 `dataUrl` 原样塞进 `db.create/update`——几张图就是几 MB，会把存档拖得又慢又容易崩。",
   "* 用户没有在宿主设置里配置/启用生图 API 时会抛错，请 `try/catch` 并提示用户先去设置里配置，不要假设一定能生图成功。",

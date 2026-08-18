@@ -353,7 +353,7 @@ async function triggerAIPost(characterId: string): Promise<void> {
             authorId: characterId,
             content: parsed.content,
             photoDescription: parsed.photoDescription,
-            photoUseReferenceImage: parsed.photoUseReferenceImage === true,
+            photoUseReferenceImage: parsed.photoUseReferenceImage,
             photoGenerationStatus: parsed.photoDescription ? "pending" : undefined,
             visibility,
         });
@@ -363,7 +363,7 @@ async function triggerAIPost(characterId: string): Promise<void> {
         }
 
         if (parsed.photoDescription) {
-            attachMomentPhotoInBackground(post.id, parsed.photoDescription, characterId, parsed.photoUseReferenceImage === true);
+            attachMomentPhotoInBackground(post.id, parsed.photoDescription, characterId, parsed.photoUseReferenceImage);
         }
 
         // Increment event counter for auto-summarization (native data read at summarization time)
@@ -1159,7 +1159,7 @@ export function parseMomentPostResponse(rawText: string): {
     const photoDescription = explicitPhotoMatch
         ? explicitPhotoMatch[2].trim()
         : legacyPhotoMatch ? legacyPhotoMatch[1].trim() : undefined;
-    const photoUseReferenceImage = explicitPhotoMatch ? explicitPhotoMatch[1] === "使用参考图" : false;
+    const photoUseReferenceImage = explicitPhotoMatch ? explicitPhotoMatch[1] === "使用参考图" : undefined;
 
     const content = text
         .replace(/\[照片[:：]\s*(?:使用参考图|不使用参考图)\s*[:：]\s*[\s\S]*?\]/g, "")
@@ -1182,7 +1182,7 @@ export function attachMomentPhotoInBackground(
     postId: string,
     description: string,
     characterId: string,
-    useReferenceImage: boolean,
+    useReferenceImage: boolean | undefined,
     signal?: AbortSignal,
 ): void {
     void (async () => {
@@ -1203,7 +1203,7 @@ export function attachMomentPhotoInBackground(
 export async function generateMomentPhotoUrl(
     description: string,
     characterId: string,
-    useReferenceImage: boolean,
+    useReferenceImage: boolean | undefined,
     signal?: AbortSignal,
 ): Promise<string | undefined> {
     try {
