@@ -178,6 +178,10 @@ html, body { min-height: 100%; }
       root.style.setProperty('--ai-phone-app-safe-right', String(safeArea.right || '0px'));
       root.style.setProperty('--ai-phone-app-safe-bottom', String(safeArea.bottom || '0px'));
       root.style.setProperty('--ai-phone-app-safe-left', String(safeArea.left || '0px'));
+      root.style.setProperty('--ai-phone-app-bar-top', String(safeArea.barTop || '0px'));
+      root.style.setProperty('--ai-phone-app-bar-height', String(safeArea.barHeight || '0px'));
+      root.style.setProperty('--ai-phone-app-bar-clear-left', String(safeArea.barClearLeft || '0px'));
+      root.style.setProperty('--ai-phone-app-bar-clear-right', String(safeArea.barClearRight || '0px'));
       window.dispatchEvent(new CustomEvent('aiphone:safe-area-change', { detail: safeArea }));
       return;
     }
@@ -750,20 +754,30 @@ export function CustomAppRunner({
   const syncHostedSafeArea = useCallback(() => {
     const frame = iframeRef.current;
     if (!frame) return;
-    // 实测胶囊按钮（菜单/关闭）下沿相对 iframe 的位置，作为顶部安全区；
+    // 实测胶囊按钮（菜单/关闭）几何：top 取其下沿（整体让位的保守值），
+    // bar* 取整行位置和右侧水平占位（供想与胶囊同排摆按钮的应用贴行对齐）。
     // 元素不在（如嵌入模式）时退回 getPwaHostedSafeArea 的估算值。
-    let measuredTop: number | null = null;
+    // 下沿之后只留 4px：这段间隙与胶囊自身的 top 偏移是同一处留白的两半，
+    // 各留 8px 会叠成一整条，存量 APP（都吃 safe-top）的顶栏被整体推下去。
+    let measured;
     const capsule = frame.parentElement?.querySelector(".custom-app-runner-capsule");
     if (capsule) {
       const capsuleRect = capsule.getBoundingClientRect();
       const frameRect = frame.getBoundingClientRect();
-      if (capsuleRect.height > 0) measuredTop = capsuleRect.bottom - frameRect.top + 8;
+      if (capsuleRect.height > 0) {
+        measured = {
+          topPx: capsuleRect.bottom - frameRect.top + 4,
+          barTopPx: capsuleRect.top - frameRect.top,
+          barHeightPx: capsuleRect.height,
+          barClearRightPx: frameRect.right - capsuleRect.left + 8,
+        };
+      }
     }
     frame.contentWindow?.postMessage({
       source: "ai-phone-custom-app-host",
       type: "layout.safe-area",
       frameId,
-      safeArea: getPwaHostedSafeArea("custom-app", effectiveEmbedded, measuredTop),
+      safeArea: getPwaHostedSafeArea("custom-app", effectiveEmbedded, measured),
     }, "*");
   }, [effectiveEmbedded, frameId]);
   const declaredEvents = useMemo(() => getCustomAppDeclaredEventNames(app), [app]);

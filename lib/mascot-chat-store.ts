@@ -481,31 +481,28 @@ export function stopMascotGeneration() {
     abortController?.abort();
 }
 
-export async function sendMascotMessage({
+export async function appendMascotMessage({
     text,
     images = [],
-    context = getMascotContext(),
 }: {
     text: string;
     images?: string[];
-    context?: MascotPageContext;
-}): Promise<void> {
+}): Promise<boolean> {
     await hydrateMascotChat();
     const trimmed = text.trim();
-    if ((!trimmed && images.length === 0) || isThinking) return;
+    if ((!trimmed && images.length === 0) || isThinking) return false;
 
     const userMsg: MascotMsg = images.length > 0
         ? { role: "user", text: trimmed, images, createdAt: getNow().toISOString() }
         : { role: "user", text: trimmed, createdAt: getNow().toISOString() };
     const shouldAutoTitle = !messages.some((msg) => msg.role === "user");
-    let workingMessages = normalizeMessages([...messages, userMsg]);
+    const workingMessages = normalizeMessages([...messages, userMsg]);
     if (shouldAutoTitle && activeSessionId) {
         sessions = sessions.map((session) => session.id === activeSessionId
             ? { ...session, title: autoMascotSessionTitle(trimmed || "（图片）") }
             : session);
     }
     publishMessages(workingMessages);
-    setThinking(true);
 
     // 情绪：分类用户消息并摄入（fire-and-forget，不阻塞回复）
     const affectCtx = messages.slice(-6).filter((m) => m.text?.trim()).map((m) => `${m.role === "user" ? "用户" : "小卷"}: ${m.text!.trim()}`);
@@ -513,12 +510,33 @@ export async function sendMascotMessage({
         ingestUserMessage(MASCOT_OWNER_ID, label, confidence);
     });
 
+    return true;
+}
+
+export async function generateMascotReply({
+    context = getMascotContext(),
+}: {
+    context?: MascotPageContext;
+} = {}): Promise<void> {
+    await hydrateMascotChat();
+    if (isThinking) return;
+    const latestVisibleMessage = [...messages].reverse().find((msg) => !msg.hidden && msg.role !== "tool");
+    if (latestVisibleMessage?.role !== "user") return;
+
+    let workingMessages = normalizeMessages(messages);
+    setThinking(true);
+
     const MAX_ROUNDS = 8;
     abortRequested = false;
     const controller = new AbortController();
     abortController = controller;
     let expandedPackageIds = loadExpandedPackages();
-    const toolCtx: MascotToolContext = { pageContext: context, history: workingMessages };
+    // 每次用户发送消息就是一次独立任务；最多 8 轮工具调用共享同一备份集合。
+    const toolCtx: MascotToolContext = {
+        pageContext: context,
+        history: workingMessages,
+        characterBackupIds: new Set<string>(),
+    };
 
     try {
         for (let round = 0; round < MAX_ROUNDS; round += 1) {
@@ -664,7 +682,9 @@ export async function sendMascotMessage({
                     publishMessages(workingMessages);
                     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
-                    const result = await executeMascotToolCall(call, { ...toolCtx, history: workingMessages });
+                    // 复用同一上下文，确保多轮工具调用共享角色备份状态。
+                    toolCtx.history = workingMessages;
+                    const result = await executeMascotToolCall(call, toolCtx);
                     if (result.success) mascotFillField({ field: call.name, value: result.data || "" });
 
                     const resultText = result.success ? (result.data || "完成") : (result.error || "未知错误");
@@ -707,6 +727,19 @@ export async function sendMascotMessage({
         setThinking(false);
         abortController = null;
     }
+}
+
+export async function sendMascotMessage({
+    text,
+    images = [],
+    context = getMascotContext(),
+}: {
+    text: string;
+    images?: string[];
+    context?: MascotPageContext;
+}): Promise<void> {
+    const accepted = await appendMascotMessage({ text, images });
+    if (accepted) await generateMascotReply({ context });
 }
 
 export function getMascotLastPreview(): string {

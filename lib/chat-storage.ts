@@ -2,6 +2,7 @@ import { getNow } from "./virtual-time";
 // lib/chat-storage.ts
 
 import {
+    chatDb,
     initChatDb,
     dbPutMessage, dbDeleteMessage, dbDeleteMessagesBySession, dbDeleteMessagesByIds,
     dbPutMessages, dbPutSessions, dbPutContacts, dbDeleteSession,
@@ -226,6 +227,7 @@ export type ChatMessage = {
     };
     isTyping?: boolean; // temporary flag for UI rendering
     statusPanel?: string; // AI display-only status content from [状态栏] tags
+    statusRegionMode?: "custom"; // 该消息生成时会话处于自定义状态栏模式（缺省=原生渲染）
     innerMonologue?: string; // AI inner monologue content from [内心] tags
     reasoningText?: string; // 模型思维链（reasoning/CoT）内容，挂在回复批次的第一条气泡上
     stateValues?: StateValue[]; // parsed character state values from inner monologue
@@ -1717,6 +1719,41 @@ export function updateMessageMediaUrl(messageId: string, mediaUrl: string) {
     }
 }
 
+/**
+ * 语音合成结果落库：优先走内存缓存（当前会话可见时同步生效）；缓存里没有
+ * （合成期间用户已切走会话）就直接读库改库——合成一次的音频绝不能丢，
+ * 丢了就是下一次白花钱的重新合成。
+ */
+export async function persistMessageVoiceAudio(
+    messageId: string,
+    mediaUrl: string,
+    synthesizedFromText: string,
+): Promise<void> {
+    const idx = _messagesCache.findIndex(m => m.id === messageId);
+    if (idx !== -1) {
+        const next = {
+            ..._messagesCache[idx],
+            mediaUrl,
+            mediaData: { ..._messagesCache[idx].mediaData, synthesizedFromText },
+        };
+        _messagesCache[idx] = next;
+        dbPutMessage(next);
+        return;
+    }
+    try {
+        const stored = await chatDb.messages.get(messageId);
+        if (stored) {
+            await chatDb.messages.put({
+                ...stored,
+                mediaUrl,
+                mediaData: { ...stored.mediaData, synthesizedFromText },
+            });
+        }
+    } catch (err) {
+        console.warn("[ChatDB] persist voice audio failed:", err);
+    }
+}
+
 export function updateChatMessage(
     messageId: string,
     patch: Partial<Pick<ChatMessage, "content" | "mediaType" | "mediaUrl" | "mediaData">>,
@@ -1866,6 +1903,7 @@ export function replaceResponseBatchWithParts(
     parts: { content: string; mediaType?: ChatMessage["mediaType"]; mediaData?: ChatMessage["mediaData"] }[],
     options?: {
         statusPanel?: string;
+        statusRegionMode?: "custom";
         innerMonologue?: string;
         reasoningText?: string;
         stateValues?: StateValue[];
@@ -1908,6 +1946,7 @@ export function replaceResponseBatchWithParts(
         responseRoundId: firstMessage.responseRoundId,
         editableResponseText: firstMessage.editableResponseText,
         statusPanel: index === (options?.metaPartIndex ?? 0) ? options?.statusPanel : undefined,
+        statusRegionMode: index === (options?.metaPartIndex ?? 0) && options?.statusPanel ? options?.statusRegionMode : undefined,
         innerMonologue: index === (options?.metaPartIndex ?? 0) ? options?.innerMonologue : undefined,
         reasoningText: index === (options?.metaPartIndex ?? 0) ? options?.reasoningText : undefined,
         stateValues: index === (options?.metaPartIndex ?? 0) ? options?.stateValues : undefined,
@@ -1970,6 +2009,7 @@ export function replaceGroupResponseRound(
         rawResponseText?: string;
         responseBatchId?: string;
         statusPanel?: string;
+        statusRegionMode?: "custom";
         innerMonologue?: string;
         reasoningText?: string;
         stateValues?: StateValue[];
@@ -2011,6 +2051,7 @@ export function replaceGroupResponseRound(
         responseRoundId,
         editableResponseText,
         statusPanel: msg.statusPanel,
+        statusRegionMode: msg.statusRegionMode,
         innerMonologue: msg.innerMonologue,
         reasoningText: msg.reasoningText,
         stateValues: msg.stateValues,

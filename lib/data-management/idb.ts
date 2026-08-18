@@ -184,7 +184,12 @@ function getStoreNames(db: IDBDatabase, source: IndexedDbSource): string[] {
 
 async function exportIndexedDbSource(source: IndexedDbSource, collector?: MediaCollector): Promise<IndexedDbSourceBackup> {
   const db = await openDb(source.dbName);
-  if (!db) return { type: "indexeddb", dbName: source.dbName, stores: [] };
+  if (!db) {
+    // 打不开 ≠ 没数据：无版本 open 对不存在的库会新建空库并成功返回，
+    // 走到这里说明是真报错（被浏览器清除中/损坏/被占用）。必须带出错误，
+    // 否则会打出一个"看起来成功、实际缺整库"的备份（用户实报踩坑）。
+    return { type: "indexeddb", dbName: source.dbName, stores: [], error: `无法打开数据库 ${source.dbName}（可能已被浏览器清除或损坏）` };
+  }
 
   try {
     const storeNames = getStoreNames(db, source);
@@ -221,7 +226,12 @@ async function exportIndexedDbSource(source: IndexedDbSource, collector?: MediaC
         request.onerror = () => reject(request.error);
       });
 
-      for (const record of rawRecords) {
+      // 逐条序列化，并立刻松开原始记录的引用。游标必须先排空（IDB 事务里不能 await），
+      // 但排空之后没理由让原始值和序列化结果两份同时活着——大库导出时这份多余的拷贝
+      // 就是压垮移动端的最后一根稻草。原地置空，顺序不变，边走边还内存。
+      for (let index = 0; index < rawRecords.length; index += 1) {
+        const record = rawRecords[index];
+        rawRecords[index] = undefined as unknown as StoreRecordBackup;
         records.push({
           key: await serializeValue(record.key),
           value: await serializeValue(record.value, collector),

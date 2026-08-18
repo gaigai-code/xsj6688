@@ -32,11 +32,13 @@ import { MascotFloat } from "@/components/mascot/mascot-float";
 import { useVirtualNow } from "@/lib/virtual-time-hooks";
 import { isVirtualTimeMode } from "@/lib/virtual-time";
 import { ControlSideRail } from "@/components/control-side-rail";
+import { MascotPreviewHost } from "@/components/mascot/mascot-preview-host";
 import { useMusicControlsOptional } from "@/lib/music-context";
 import { PhoneResourcesApp, type ResourceSubPage } from "@/components/phone-resources-app";
 import { CheckPhoneApp } from "@/components/checkphone/checkphone-app";
 import { ShoppingApp } from "@/components/shopping/shopping-app";
 import { GameHubApp } from "@/components/game/game-hub-app";
+import { MixologyApp } from "@/components/mixology/mixology-app";
 import InterviewMagazineApp from "@/components/interview/interview-magazine-app";
 import { CoCreateApp } from "@/components/cocreate/cocreate-app";
 import { AppMarketApp } from "@/components/app-market/app-market-app";
@@ -3956,6 +3958,10 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
       return <GameHubApp onClose={() => setActiveApp(null)} />;
     }
 
+    if (activeApp === "mixology") {
+      return <MixologyApp onClose={() => setActiveApp(null)} />;
+    }
+
     if (activeApp === "appmarket") {
       return (
         <AppMarketApp
@@ -4056,6 +4062,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                   {notice}
                 </aside>
               ) : null}
+
 
               {customAppUpdatePrompt ? (
                 <div
@@ -4678,6 +4685,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
               <QuickActionFloat />
               <MascotFloat />
               <ControlSideRail />
+              {/* 预览弹窗宿主：独立于桌宠的展开/收起状态，否则桌宠收成小球时弹不出来 */}
+              <MascotPreviewHost />
 
               {/* Widget Picker Bottom Sheet */}
               {showWidgetPicker && (

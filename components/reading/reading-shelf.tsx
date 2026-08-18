@@ -2,12 +2,14 @@
 import { getNow } from "@/lib/virtual-time";
 
 import { useState, useRef, useEffect } from "react";
-import { ChevronLeft, Palette } from "lucide-react";
+import { ChevronLeft, Palette, Settings } from "lucide-react";
 import { loadBooks, addBook, deleteBook, saveChapters, loadProgress, saveRawFile } from "@/lib/reading-storage";
 import { decodeTxtArrayBuffer, parseTxtContent, parseEpubFile, PDF_PAGES_PER_CHAPTER } from "@/lib/reading-parser";
+import { loadReadingInteractionConfig } from "@/lib/reading-storage";
 import type { Book, BookChapter } from "@/lib/reading-types";
 import type { ReadingAppearance } from "@/lib/reading-appearance";
 import { ReadingAppearanceDialog } from "./reading-appearance-dialog";
+import { ReadingInteractionDialog } from "./reading-interaction-dialog";
 import { kvGet, kvSet, kvRemove } from "@/lib/kv-db";
 
 type Props = {
@@ -101,6 +103,7 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
     const [importError, setImportError] = useState<{ summary: string; detail?: string } | null>(null);
     const [search, setSearch] = useState("");
     const [showAppearanceDialog, setShowAppearanceDialog] = useState(false);
+    const [showInteractionDialog, setShowInteractionDialog] = useState(false);
     const fileRef = useRef<HTMLInputElement>(null);
 
     const persistImportDiagnostic = (payload: ImportDiagnostic | null) => {
@@ -200,7 +203,7 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
                     updatedAt: getNow().toISOString(),
                 });
                 const { text } = decodeTxtArrayBuffer(await file.arrayBuffer());
-                parsed = parseTxtContent(text, file.name);
+                parsed = parseTxtContent(text, file.name, loadReadingInteractionConfig().paragraphMode);
                 format = "txt";
             } else if (ext === "epub") {
                 importStage = "读取 EPUB 文件";
@@ -362,6 +365,9 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
                         <ChevronLeft size={22} strokeWidth={2.5} />
                     </button>
                     <div className="reading-shelf-actions">
+                        <button className="reading-shelf-action-btn" type="button" onClick={() => setShowInteractionDialog(true)} aria-label="阅读设置">
+                            <Settings size={16} strokeWidth={1.7} />
+                        </button>
                         <button className="reading-shelf-action-btn" type="button" onClick={() => setShowAppearanceDialog(true)} aria-label="阅读外观">
                             <Palette size={16} strokeWidth={1.7} />
                         </button>
@@ -489,6 +495,10 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
                     onClose={() => setShowAppearanceDialog(false)}
                     onSave={onSaveAppearance}
                 />
+            )}
+
+            {showInteractionDialog && (
+                <ReadingInteractionDialog onClose={() => setShowInteractionDialog(false)} />
             )}
         </div>
     );

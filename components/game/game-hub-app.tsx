@@ -446,6 +446,10 @@ ${body}
       root.style.setProperty('--ai-phone-game-safe-right', String(safeArea.right || '0px'));
       root.style.setProperty('--ai-phone-game-safe-bottom', String(safeArea.bottom || '0px'));
       root.style.setProperty('--ai-phone-game-safe-left', String(safeArea.left || '0px'));
+      root.style.setProperty('--ai-phone-game-bar-top', String(safeArea.barTop || '0px'));
+      root.style.setProperty('--ai-phone-game-bar-height', String(safeArea.barHeight || '0px'));
+      root.style.setProperty('--ai-phone-game-bar-clear-left', String(safeArea.barClearLeft || '0px'));
+      root.style.setProperty('--ai-phone-game-bar-clear-right', String(safeArea.barClearRight || '0px'));
       window.dispatchEvent(new CustomEvent('aiphone:safe-area-change', { detail: safeArea }));
       return;
     }
@@ -543,19 +547,28 @@ function GameIframe({
   const syncHostedSafeArea = useCallback(() => {
     const frame = iframeRef.current;
     if (!frame) return;
-    // 实测悬浮返回钮下沿相对 iframe 的位置，作为顶部安全区；找不到时退回估算值
-    let measuredTop: number | null = null;
+    // 实测悬浮返回钮几何：top 取其下沿（整体让位），bar* 取整行位置和左侧
+    // 水平占位（供想与返回钮同排摆按钮的游戏贴行对齐）；找不到时退回估算值。
+    // 下沿之后只留 4px，与按钮自身的 top 偏移各占一半，两处都留 8px 会叠成一整条。
+    let measured;
     const backBtn = document.querySelector(".game-runtime-floating-back");
     if (backBtn) {
       const backRect = backBtn.getBoundingClientRect();
       const frameRect = frame.getBoundingClientRect();
-      if (backRect.height > 0) measuredTop = backRect.bottom - frameRect.top + 8;
+      if (backRect.height > 0) {
+        measured = {
+          topPx: backRect.bottom - frameRect.top + 4,
+          barTopPx: backRect.top - frameRect.top,
+          barHeightPx: backRect.height,
+          barClearLeftPx: backRect.right - frameRect.left + 8,
+        };
+      }
     }
     frame.contentWindow?.postMessage({
       source: "ai-phone-game-host",
       type: "layout.safe-area",
       id: frameId,
-      safeArea: getPwaHostedSafeArea("game", false, measuredTop),
+      safeArea: getPwaHostedSafeArea("game", false, measured),
     }, "*");
   }, [frameId]);
 

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { AlertCircle, ChevronLeft, Code, Image as ImageIcon, MessageSquare, MoreHorizontal, RotateCcw, Trash2, UserRound } from "lucide-react";
+import { AlertCircle, ChevronLeft, Code, Image as ImageIcon, MessageSquare, MoreHorizontal, RotateCcw, Sparkles, Trash2, UserRound } from "lucide-react";
 import { PageShell } from "@/components/ui/page-shell";
 import { ConfirmDialog } from "@/components/ui/modal";
 import { MediaPreviewOverlay } from "@/components/chat/media-preview-overlay";
@@ -16,11 +16,12 @@ import {
     createMascotSession,
     deleteMascotMessageWithLinkedTools,
     deleteMascotSession,
+    generateMascotReply,
+    sendMascotMessage,
     getMascotChatSnapshot,
     hasMascotToolHistoryMessages,
     hydrateMascotChat,
     renameMascotSession,
-    sendMascotMessage,
     setMascotMessages,
     stopMascotGeneration,
     subscribeMascotChat,
@@ -490,6 +491,8 @@ export function MascotChatRoom({ onBack, onDeleted }: MascotChatRoomProps) {
         allVisibleMessageEntries.slice(-visibleMascotMessageCount)
     ), [allVisibleMessageEntries, visibleMascotMessageCount]);
     const hasMoreMascotMessages = allVisibleMessageEntries.length > visibleMessageEntries.length;
+    const latestVisibleChatMessage = [...chat.messages].reverse().find((msg) => !msg.hidden && msg.role !== "tool");
+    const canGenerateReply = !chat.isThinking && latestVisibleChatMessage?.role === "user";
     const scrollSignature = useMemo(() => {
         const last = visibleMessageEntries[visibleMessageEntries.length - 1]?.msg;
         const lastText = last ? getMascotMessageText(last) : "";
@@ -690,6 +693,12 @@ export function MascotChatRoom({ onBack, onDeleted }: MascotChatRoomProps) {
         setPendingImages([]);
         setShowEmojiPanel(false);
         await sendMascotMessage({ text, images, context });
+    };
+
+    const handleGenerateReply = async () => {
+        if (!canGenerateReply) return;
+        setShowEmojiPanel(false);
+        await generateMascotReply({ context });
     };
 
     const closeMascotContextMenu = useCallback(() => {
@@ -1131,13 +1140,18 @@ export function MascotChatRoom({ onBack, onDeleted }: MascotChatRoomProps) {
                     onKeyDown={(event) => {
                         if (shouldSendChatInputOnEnter(event, enterToSendEnabled)) {
                             event.preventDefault();
+                            // 思考中回车吞掉：不发送，也不能落进 handleSend 的停止分支误停生成（停止只走按钮）
+                            if (chat.isThinking) return;
                             void handleSend();
                         }
                     }}
                     enterKeyHint={enterToSendEnabled ? "send" : "enter"}
                     className="chat-input-textarea"
                     placeholder={`跟${settings.nickname || "AI助手"}聊聊...`}
-                    disabled={chat.isThinking}
+                    /* 思考中不再 disable：禁用聚焦中的元素会强制失焦收键盘且不走正常 blur 事件序列，
+                       在 iOS PWA 上与键盘收起的 viewport 复原竞态，偶发把底部输入栏卡在屏幕外
+                       （表现为发送后整条输入栏消失，退出重进恢复）。对齐普通聊天室：生成中可继续打字，
+                       字留在框里；发送键在思考中仍是停止键。 */
                 />
                 <div className="chat-input-actions">
                     <label
@@ -1184,6 +1198,16 @@ export function MascotChatRoom({ onBack, onDeleted }: MascotChatRoomProps) {
                         ) : (
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
                         )}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => void handleGenerateReply()}
+                        disabled={!canGenerateReply}
+                        className="ui-bare-btn text-[var(--c-text)]"
+                        aria-label="重新生成回复"
+                        title="生成回复（发送后未生成或删除回复后使用）"
+                    >
+                        <Sparkles size={24} strokeWidth={1.5} />
                     </button>
                 </div>
                 {showEmojiPanel && <EmojiPanel onSelect={appendEmoji} />}
