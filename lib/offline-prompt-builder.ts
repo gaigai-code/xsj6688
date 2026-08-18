@@ -6,6 +6,7 @@
 
 import type { ChatSession, ChatMessage } from "./chat-storage";
 import type { ChatOfflineTurn } from "./chat-offline-storage";
+import { getNow } from "./virtual-time";
 
 export function formatOfflineTurnXml(turn: ChatOfflineTurn): string {
     if (turn.rawText?.trim()) return turn.rawText.trim();
@@ -57,7 +58,7 @@ export function buildOfflinePromptHistory(
             role: "user",
             content: pendingUserContent.trim(),
             status: "sent",
-            createdAt: new Date().toISOString(),
+            createdAt: getNow().toISOString(),
         });
     }
     return history;
