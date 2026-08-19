@@ -1,4 +1,5 @@
 "use client";
+
 import { getNow } from "@/lib/virtual-time";
 
 import {
@@ -26,14 +27,22 @@ export type CustomAppMarketUpdateResult = {
   previousVersion: string;
 };
 
-export function appWithCustomAppMarketMetadata(app: InstalledCustomApp, item: CustomAppMarketItem): InstalledCustomApp {
+export function appWithCustomAppMarketMetadata(
+  app: InstalledCustomApp,
+  item: CustomAppMarketItem,
+): InstalledCustomApp {
+  // 合并点 1：上游新增的图标过滤逻辑
+  const marketIconDataUrl = item.iconDataUrl?.startsWith("/api/app-market/icon?")
+    ? undefined
+    : item.iconDataUrl;
+
   return {
     ...app,
     id: item.appId,
     name: item.name,
     version: item.version,
     description: item.description ?? app.description,
-    iconDataUrl: item.iconDataUrl ?? app.iconDataUrl,
+    iconDataUrl: marketIconDataUrl ?? app.iconDataUrl,
     marketItemId: item.id,
     manifest: {
       ...app.manifest,
@@ -45,7 +54,10 @@ export function appWithCustomAppMarketMetadata(app: InstalledCustomApp, item: Cu
   };
 }
 
-export function newestCustomAppMarketItem(items: CustomAppMarketItem[], appId: string): CustomAppMarketItem | null {
+export function newestCustomAppMarketItem(
+  items: CustomAppMarketItem[],
+  appId: string,
+): CustomAppMarketItem | null {
   let match: CustomAppMarketItem | null = null;
   for (const item of items) {
     if (item.appId !== appId) continue;
@@ -78,7 +90,10 @@ export function compareCustomAppVersions(a: string, b: string): number | null {
   return 0;
 }
 
-export function isCustomAppMarketItemNewerThanInstalled(app: InstalledCustomApp, item: CustomAppMarketItem): boolean {
+export function isCustomAppMarketItemNewerThanInstalled(
+  app: InstalledCustomApp,
+  item: CustomAppMarketItem,
+): boolean {
   if (item.appId !== app.id) return false;
   const versionCompare = compareCustomAppVersions(item.version, app.version);
   if (versionCompare !== null) {
@@ -87,7 +102,9 @@ export function isCustomAppMarketItemNewerThanInstalled(app: InstalledCustomApp,
   return item.version.trim() !== app.version.trim();
 }
 
-export async function resolveCustomAppMarketItemForInstalled(appId: string): Promise<CustomAppMarketItem | null> {
+export async function resolveCustomAppMarketItemForInstalled(
+  appId: string,
+): Promise<CustomAppMarketItem | null> {
   let exactError: unknown = null;
   try {
     const exact = await fetchCustomAppMarketItemByAppId(appId);
@@ -124,7 +141,9 @@ async function requestPackageDownloadUrl(itemId: string): Promise<string> {
   return data.url;
 }
 
-export async function loadCustomAppMarketPackageApp(item: CustomAppMarketItem): Promise<InstalledCustomApp> {
+export async function loadCustomAppMarketPackageApp(
+  item: CustomAppMarketItem,
+): Promise<InstalledCustomApp> {
   let url = "";
   try {
     url = await requestPackageDownloadUrl(item.id);
@@ -164,7 +183,7 @@ export async function updateInstalledCustomAppFromMarket(
     const installed = await installCustomAppAsync({
       ...nextApp,
       installedAt: app.installedAt,
-      updatedAt: getNow().toISOString(),
+      updatedAt: getNow().toISOString(), // 合并点 2：保留本地虚拟时间逻辑
     });
     const registration = await applyCustomAppRegistrationsAsync(installed);
     return {
