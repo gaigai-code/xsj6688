@@ -91,6 +91,31 @@ function persistQueue(q: MusicTrack[]): void {
     try { kvSet(QUEUE_STORAGE_KEY, JSON.stringify(q.slice(0, QUEUE_MAX_SIZE))); } catch { /* ignore */ }
 }
 
+// ── Singleton <audio> element ──
+// 播放元素放在模块级单例里并挂到 document.body（隐藏）。
+// 这样切换应用 / 回到虚拟手机主屏幕时，无论 React 组件树发生什么挂载/卸载，
+// 这个 <audio> 都不会被销毁，正在播放的在线流（网易云等）也不会中断。
+let _singletonAudio: HTMLAudioElement | null = null;
+
+function getSingletonAudio(): HTMLAudioElement | null {
+    if (typeof window === "undefined") return null;
+    if (!_singletonAudio) {
+        const audio = new Audio();
+        audio.preload = "auto";
+        audio.volume = 0.8;
+        audio.setAttribute("playsinline", "");
+        // 网易云 CDN 对携带非 music.163.com 的 Referer 会返回 403，
+        // 明确要求不带 Referer 请求，避免在线流被拒。
+        audio.setAttribute("referrerpolicy", "no-referrer");
+        // 挂到文档上（隐藏），避免部分移动端浏览器对「游离」媒体元素做节流/回收。
+        audio.style.display = "none";
+        audio.setAttribute("aria-hidden", "true");
+        document.body.appendChild(audio);
+        _singletonAudio = audio;
+    }
+    return _singletonAudio;
+}
+
 // ── Provider ──
 
 export function MusicProvider({ children }: { children: ReactNode }) {
@@ -117,28 +142,31 @@ export function MusicProvider({ children }: { children: ReactNode }) {
         setQueueRaw(tracks.slice(0, QUEUE_MAX_SIZE));
     }, []);
 
-    // Initialize audio element once
+    // Initialize audio element once (module-level singleton, decoupled from React lifecycle)
     useEffect(() => {
-        const audio = new Audio();
-        audio.volume = 0.8;
+        const audio = getSingletonAudio();
+        if (!audio) return;
         audioRef.current = audio;
 
-        audio.addEventListener("timeupdate", () => {
-            setCurrentTime(audio.currentTime);
-        });
-        audio.addEventListener("loadedmetadata", () => {
-            setDuration(audio.duration || 0);
-        });
-        audio.addEventListener("ended", () => {
-            handleTrackEnd();
-        });
-        audio.addEventListener("pause", () => setIsPlaying(false));
-        audio.addEventListener("play", () => setIsPlaying(true));
+        const onTimeUpdate = () => setCurrentTime(audio.currentTime);
+        const onLoadedMetadata = () => setDuration(audio.duration || 0);
+        const onEnded = () => handleTrackEnd();
+        const onPause = () => setIsPlaying(false);
+        const onPlay = () => setIsPlaying(true);
+
+        audio.addEventListener("timeupdate", onTimeUpdate);
+        audio.addEventListener("loadedmetadata", onLoadedMetadata);
+        audio.addEventListener("ended", onEnded);
+        audio.addEventListener("pause", onPause);
+        audio.addEventListener("play", onPlay);
 
         return () => {
-            audio.pause();
-            audio.src = "";
-            if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+            audio.removeEventListener("timeupdate", onTimeUpdate);
+            audio.removeEventListener("loadedmetadata", onLoadedMetadata);
+            audio.removeEventListener("ended", onEnded);
+            audio.removeEventListener("pause", onPause);
+            audio.removeEventListener("play", onPlay);
+            // 关键：卸载时不再 pause() / src=""，单例元素继续播放，后台不中断。
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
