@@ -11,7 +11,7 @@ import {
 const MATERIAL_KINDS = ["character", "persona", "base", "flavor", "glass", "strength", "ticket", "garnish", "encore", "filter", "mechanism"] as const;
 type HallType = "material" | "recipe";
 type HallListRow = { id?: unknown; kind?: unknown; name?: unknown; hook?: unknown; tags?: unknown; intro?: unknown; char_name?: unknown; part_names?: unknown; author_id?: unknown; author_name?: unknown; author_avatar?: unknown; like_count?: unknown; save_count?: unknown; view_count?: unknown; comment_count?: unknown; created_at?: unknown; updated_at?: unknown; has_cover?: unknown; cover?: unknown };
-const PUBLIC_CACHE_HEADERS = { "Cache-Control": "public, max-age=0, must-revalidate", "Netlify-CDN-Cache-Control": "public, s-maxage=120, stale-while-revalidate=600", "Netlify-Vary": "query" } as const;
+const PUBLIC_CACHE_HEADERS = { "Cache-Control": "public, max-age=0, must-revalidate", "Netlify-CDN-Cache-Control": "public, durable, s-maxage=120, stale-while-revalidate=600", "Netlify-Vary": "query" } as const;
 function cleanText(value: unknown, maxLength: number): string { return String(value ?? "").replace(/\u0000/g, "").trim().slice(0, maxLength); }
 function clampCount(value: unknown): number { const amount = Number(value); return Number.isFinite(amount) ? Math.max(0, Math.round(amount)) : 0; }
 function normalizeTags(value: unknown): string[] { if (!Array.isArray(value)) return []; return value.map(item => cleanText(item, 24)).filter(Boolean).slice(0, 20); }

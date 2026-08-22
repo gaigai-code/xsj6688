@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import type { GameRoleSlot, GameTemplate } from "@/lib/game-types";
 import { formatSupabaseRestError, getSupabaseServerConfig, supabaseRestFetch } from "@/lib/server/supabase-rest";
 const SUMMARY_COLUMNS = "id,title,code_name,subtitle,synopsis,play_note,cover_image,tags,author_id,author_name,author_avatar,source,version,role_slots,allow_external_control,purchase_count,rating,like_count,favorite_count,comment_count,created_at,updated_at";
-const CACHE_HEADERS = { "Cache-Control": "public, max-age=0, must-revalidate", "Netlify-CDN-Cache-Control": "public, s-maxage=120, stale-while-revalidate=600" } as const;
+const CACHE_HEADERS = { "Cache-Control": "public, max-age=0, must-revalidate", "Netlify-CDN-Cache-Control": "public, durable, s-maxage=120, stale-while-revalidate=600" } as const;
 function cleanText(value: unknown, maxLength: number): string { return String(value ?? "").replace(/\u0000/g, "").trim().slice(0, maxLength); }
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number { const amount = Number(value); return Number.isFinite(amount) ? Math.min(max, Math.max(min, Math.round(amount))) : fallback; }
 function normalizeTags(value: unknown): string[] { if (Array.isArray(value)) return value.map(item => cleanText(item, 24)).filter(Boolean).slice(0, 8); if (typeof value === "string") { try { return normalizeTags(JSON.parse(value)); } catch { return value.split(/[,\s，、]+/).map(item => cleanText(item, 24)).filter(Boolean).slice(0, 8); } } return []; }

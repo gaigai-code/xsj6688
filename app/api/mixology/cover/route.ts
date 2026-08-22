@@ -10,7 +10,7 @@ function decodeDataUrl(value: string): { mime: string; bytes: Buffer } | null {
   if (!/^image\/[a-z0-9.+-]+$/i.test(mime)) return null;
   try { const bytes = meta.toLowerCase().includes(";base64") ? Buffer.from(payload, "base64") : Buffer.from(decodeURIComponent(payload), "utf8"); if (bytes.length === 0 || bytes.length > 3 * 1024 * 1024) return null; return { mime, bytes }; } catch { return null; }
 }
-const IMMUTABLE_HEADERS = { "Cache-Control": "public, max-age=31536000, immutable", "Netlify-CDN-Cache-Control": "public, s-maxage=31536000, immutable", "Netlify-Vary": "query" } as const;
+const IMMUTABLE_HEADERS = { "Cache-Control": "public, max-age=31536000, immutable", "Netlify-CDN-Cache-Control": "public, durable, s-maxage=31536000, immutable", "Netlify-Vary": "query" } as const;
 export async function GET(request: Request) {
   try {
     if (!getMixologySupabaseConfig()) return new Response(null, { status: 404 }); const url = new URL(request.url); const type = parseType(url.searchParams.get("type")); const id = cleanText(url.searchParams.get("id"), 160); if (!type || !id) return new Response(null, { status: 400 });
