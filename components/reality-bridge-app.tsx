@@ -36,6 +36,7 @@ import {
   personalPushFetch,
 } from "@/lib/personal-push-cloud";
 import { isValidShortcutEmailAddress, shortcutEmailSubjectTag } from "@/lib/shortcut-email";
+import { loadApiConfigs, loadBindingConfig, resolveBinding } from "@/lib/settings-storage";
 
 type TabId = "main" | "history";
 
@@ -709,7 +710,17 @@ export function RealityBridgeApp({ onClose, onNotice }: {
       setScreenChat(editingScreenChat);
       saveScreenChatSettings(editingScreenChat);
       setEditingScreenChat(null);
-      onNotice?.("屏幕速聊已保存");
+      // 诊断：把角色绑定的识图开关拼进提示，方便在 iPad 上直接看到快照 enableVision 会取到的值。
+      let visionHint = "";
+      try {
+        const char = loadCharacters().find(c => c.id === editingScreenChat.characterId);
+        if (char) {
+          const slot = resolveBinding(loadBindingConfig(), char.id, "chat");
+          const cfg = loadApiConfigs().find(c => c.id === slot.apiConfigId);
+          visionHint = `（识图开关：${cfg?.enableImageRecognition === true ? "开" : "关"}，配置：${cfg?.name ?? "未绑定"} / ${cfg?.defaultModel ?? "-"}）`;
+        }
+      } catch { /* 诊断失败不影响保存 */ }
+      onNotice?.(`屏幕速聊已保存${visionHint}`);
       return;
     }
     const next = screenWizStep + 1;
