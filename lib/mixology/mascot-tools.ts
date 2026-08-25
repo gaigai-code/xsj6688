@@ -10,9 +10,10 @@
 import type { ToolResult } from "../tool-executor";
 import {
     MIX_KIND_LABELS,
-    MIX_SLOT_MAX,
     MIX_SLOT_ORDER,
     createMixId,
+    mixPanelLayoutSummary,
+    normalizeMixPanelLayout,
     normalizeMixTags,
     type MixCharacterCard,
     type MixCondition,
@@ -147,6 +148,7 @@ function describeMaterial(material: MixMaterial): string {
             break;
         case "mechanism":
             field("钩子逻辑", material.script); field("界面代码", material.panelHtml);
+            field("摆放", material.layout ? mixPanelLayoutSummary(material.layout) : undefined);
             break;
         default:
             field(`${MIX_KIND_LABELS[material.kind]}内容`, (material as { content?: string }).content);
@@ -204,6 +206,7 @@ const CONTENT_FIELDS: FieldSpec[] = [
     { key: "rules", kinds: ["filter"] },
     { key: "script", kinds: ["mechanism"] },
     { key: "panelHtml", kinds: ["mechanism"] },
+    { key: "layout", kinds: ["mechanism"] },
 ];
 
 function normalizeOpenings(value: unknown): string[] | { err: string } {
@@ -287,6 +290,12 @@ function applyContentFields(target: Record<string, unknown>, kind: MixMaterialKi
                 const r = normalizeRules(args[spec.key]);
                 if (!Array.isArray(r)) return r.err;
                 target.rules = r;
+                break;
+            }
+            case "layout": {
+                const normalized = normalizeMixPanelLayout(args[spec.key]);
+                if (!normalized) return 'layout 必须是摆放对象，如 {"slot":"inputbar-left","icon":"🎲","autoHeight":true}。';
+                target.layout = normalized;
                 break;
             }
             case "historyFeed": {
@@ -495,9 +504,8 @@ export function mixToolSaveRecipe(args: Record<string, unknown>): ToolResult {
             return { name: NAME, success: false, error: `第 ${i + 1} 个槽位：「${material.name}」是${MIX_KIND_LABELS[material.kind]}，不是${MIX_KIND_LABELS[kind]}。` };
         }
         const entries = slots[kind] ?? (slots[kind] = []);
-        const limit = SINGLE_KINDS.includes(kind) ? 1 : MIX_SLOT_MAX;
-        if (entries.length >= limit) {
-            return { name: NAME, success: false, error: `${MIX_KIND_LABELS[kind]}槽位最多放 ${limit} 件。` };
+        if (SINGLE_KINDS.includes(kind) && entries.length >= 1) {
+            return { name: NAME, success: false, error: `${MIX_KIND_LABELS[kind]}槽位只放 1 件。` };
         }
         const entry: MixSlotEntry = { materialId: material.id };
         if (record?.when !== undefined && !SINGLE_KINDS.includes(kind)) {

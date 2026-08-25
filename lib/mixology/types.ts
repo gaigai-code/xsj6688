@@ -56,9 +56,6 @@ export const MIX_KIND_SECTION_LABELS: Record<MixMaterialKind, string> = {
 /** 必选槽：没配齐不能开局；其余槽可留空 */
 export const MIX_REQUIRED_KINDS: MixMaterialKind[] = ["character"];
 
-/** 一格最多叠几件 */
-export const MIX_SLOT_MAX = 3;
-
 /**
  * 叠放语义：
  * concat = 这一格里条件满足的全部生效，按顺序依次拼接（多段文风叠加、主装饰 + 补丁装饰；
@@ -337,6 +334,30 @@ export type MixPanelLayout = {
     z?: number;
     /** 开局时收起（只有 chrome 为 bar 时才有收起这回事） */
     collapsed?: boolean;
+    /** 挂点（见 MIX_PANEL_SLOTS）；不写 = float 自由悬浮，老材料全部落在这档 */
+    slot?: MixPanelSlot;
+    /** 按钮位（header/inputbar-*）的图标：一两个 emoji 或单字，宿主画在按钮上 */
+    icon?: string;
+};
+
+/**
+ * 机括挂点：面板长在对局画面的哪儿。
+ * float（默认）= 自由悬浮层，位置尺寸全由摆放/mix API 说了算；
+ * header / inputbar-left / inputbar-right = 宿主在标题栏或输入栏画一颗图标按钮，
+ *   点击开合面板（按钮由宿主渲染，样式统一、位置精确，沙盒碰不到宿主排版）；
+ * flow-top / flow-bottom = 面板作为一张内嵌卡直接进滚动流（画布之下 / 轮次流末尾），
+ *   随内容滚动，autoHeight 常开，不可拖不可缩。
+ */
+export const MIX_PANEL_SLOTS = ["float", "header", "inputbar-left", "inputbar-right", "flow-top", "flow-bottom"] as const;
+export type MixPanelSlot = (typeof MIX_PANEL_SLOTS)[number];
+
+export const MIX_PANEL_SLOT_LABELS: Record<MixPanelSlot, string> = {
+    float: "自由悬浮",
+    header: "标题栏按钮",
+    "inputbar-left": "输入栏左侧按钮",
+    "inputbar-right": "输入栏右侧按钮",
+    "flow-top": "正文顶部",
+    "flow-bottom": "正文尾部",
 };
 
 /** 拖丢了捡不回来，所以无论怎么拖都至少留这么多在画面里（百分比） */
@@ -384,7 +405,16 @@ export function normalizeMixPanelLayout(value: unknown): MixPanelLayout | undefi
     const z = clampNum(record.z, 0, MIX_PANEL_MAX_Z, 0);
     if (z) layout.z = z;
     if (record.collapsed === true) layout.collapsed = true;
+    if (typeof record.slot === "string" && record.slot !== "float" && (MIX_PANEL_SLOTS as readonly string[]).includes(record.slot)) {
+        layout.slot = record.slot as MixPanelSlot;
+    }
+    if (typeof record.icon === "string" && record.icon.trim()) layout.icon = record.icon.trim().slice(0, 4);
     return layout;
+}
+
+/** 一份摆放实际落在哪个挂点 */
+export function mixPanelSlotOf(layout: MixPanelLayout | undefined): MixPanelSlot {
+    return layout?.slot ?? "float";
 }
 
 /**
@@ -410,6 +440,10 @@ export function mixPanelLayoutOf(material: { layout?: MixPanelLayout; dock?: Mix
 
 /** 详情页上用一行字说清这份摆放 */
 export function mixPanelLayoutSummary(layout: MixPanelLayout): string {
+    const slot = mixPanelSlotOf(layout);
+    if (slot !== "float") {
+        return `${MIX_PANEL_SLOT_LABELS[slot]}${layout.icon ? ` · 图标 ${layout.icon}` : ""}`;
+    }
     const parts = [
         `左 ${layout.x}% · 上 ${layout.y}%`,
         `${layout.w}% × ${layout.autoHeight ? "随内容" : `${layout.h}%`}`,
@@ -514,7 +548,7 @@ export function mixSlotFirstId(slots: MixSlotsRaw | undefined, kind: MixMaterial
 export function normalizeMixSlots(slots: MixSlotsRaw | undefined): Partial<Record<MixMaterialKind, MixSlotEntry[]>> {
     const out: Partial<Record<MixMaterialKind, MixSlotEntry[]>> = {};
     for (const kind of MIX_SLOT_ORDER) {
-        const entries = mixSlotEntries(slots, kind).slice(0, MIX_SLOT_MAX);
+        const entries = mixSlotEntries(slots, kind);
         if (entries.length) out[kind] = entries;
     }
     return out;
@@ -524,7 +558,7 @@ export function normalizeMixSlots(slots: MixSlotsRaw | undefined): Partial<Recor
 export type MixRecipe = {
     id: string;
     name: string;
-    /** kind → 这一格叠的材料（有序，最多 MIX_SLOT_MAX 件）；角色卡必有，其余可缺 */
+    /** kind → 这一格叠的材料（有序，不设数量上限）；角色卡必有，其余可缺 */
     slots: Partial<Record<MixMaterialKind, MixSlotEntry[]>>;
     /** 作者署名与头像：从配方页入柜时带回；自己的配方展示本地创作者资料 */
     author?: string;
@@ -555,6 +589,13 @@ export type MixTurn = {
     role: "user" | "assistant";
     /** 正文（assistant 侧已剥离小票块） */
     text: string;
+    /**
+     * 这一轮的原始输出（assistant 侧）：进剥离/滤网/机括之前的完整原文，
+     * 含机括标记行与被滤网洗掉的字；状态栏补写的块也并在里面（它算这一轮产出的一部分）。
+     * 「编辑原始输出」展示并回写的就是这一份；老数据没有这个字段，
+     * 编辑时退回用产物拼装（mixTurnRawText 的兜底路径）。
+     */
+    rawText?: string;
     /** 该轮小票壳内原文（有小票材料且 AI 按契约输出时才有）；多块时为第一块，全量见 ticketRaws */
     ticketRaw?: string;
     /** 该轮小剧场壳内原文（尾调写了契约且 AI 输出时才有）；多块时为第一块，全量见 encoreRaws */
@@ -579,6 +620,16 @@ export type MixTurn = {
      * 直接取剩下最后一轮的这份快照还原，数字不会停留在被丢掉的未来。
      */
     state?: MixState;
+    /**
+     * 这一轮结束时的机括存储（与 state 同一套语义，只在 assistant 轮上）。
+     * 有它才谈得上"干净回溯"：机括存储是任意可读写的，不像 turns 那样只增不改，
+     * 砍掉几轮推不出过去的样子，只能当时拍照留档。
+     *
+     * 只留最近 MIX_STORE_SNAPSHOT_TURNS 轮（见 engine.ts）——存储桶单件上限 100KB，
+     * 逐轮全留会把对局存档撑爆。窗口外的回溯退回老行为（不动存储，由机括自己
+     * 按 turnCount 复位）；老对局没有这个字段，同样走老行为，绝不清空。
+     */
+    mechanismStore?: Record<string, Record<string, string>>;
     createdAt: number;
 };
 
@@ -604,16 +655,35 @@ export type MixSession = {
      */
     mechanismStore?: Record<string, Record<string, string>>;
     /**
+     * 最后一轮出杯后钩子跑之前的机括存储快照 + 它属于哪一轮。
+     * 编辑原始输出后的「替换重跑」靠它：先回到这轮记账前的底稿再重跑一次钩子，
+     * 原来那笔账自然作废，反复编辑反复同步也只记一笔。只留最后一轮——
+     * 编辑角色回复本来就会把之后的轮全部截掉，编辑完它一定是最后一轮。
+     */
+    mechanismStorePrev?: Record<string, Record<string, string>>;
+    mechanismStorePrevTurn?: string;
+    /**
      * 玩家自己拖动/缩放过的面板位置（materialId → 摆放），只在这一局有效。
      * 不写回材料：材料是作者的作品，玩家挪一下自己的屏幕不该改到别人的作品。
      */
     panelBox?: Record<string, MixPanelLayout>;
+    /**
+     * 按钮位机括面板的开合状态（materialId → 是否展开），按局记忆。
+     * 只对挂在 header/inputbar-* 的机括有意义；关掉的面板不渲染（重开会重载，
+     * 需要留住的状态放机括存储桶里）。
+     */
+    panelOpen?: Record<string, boolean>;
     /**
      * 退役的渲染皮（materialId → 渲染 HTML）：局中换小票/尾调那一刻，旧件的
      * 渲染代码快照进来，被盖了戳的历史轮（MixTurn.ticketId/encoreId）按这份
      * 皮回放——旧件之后从酒柜删掉也不受影响。每件只存一份，不逐轮存。
      */
     retiredRender?: Record<string, string>;
+    /**
+     * 回传上下文轮数上限（一轮 = 一次 AI 回复）。不设 = 全部历史回传；
+     * 设了只把最近 N 轮发给模型——只影响请求内容，存储与界面回放永远完整。
+     */
+    historyLimit?: number;
     /**
      * 背景观感微调（对局页右上角亮度按钮）：mask = 蒙版亮度 -40~100（0 为默认
      * 三段蒙版原样，负值在蒙版外再压一层匀黑更暗，100 为完全无蒙版）；

@@ -2,7 +2,7 @@
 import { getNow } from "@/lib/virtual-time";
 
 import { useState, useEffect, useRef } from "react";
-import { Plus, Trash2, Wifi, WifiOff, AlertCircle, MessageSquare, Loader2, RefreshCw, Cloud, CloudUpload, Copy, Download, ChevronDown, PlayCircle, Power, PowerOff } from "lucide-react";
+import { Plus, Trash2, Wifi, WifiOff, AlertCircle, MessageSquare, Loader2, RefreshCw, Cloud, CloudUpload, Copy, Download, ChevronDown, PlayCircle } from "lucide-react";
 import QRCode from "qrcode";
 import {
     loadWeixinBots,
@@ -14,9 +14,6 @@ import {
 import {
     isWeixinCloudSupabaseReady,
     buildWeixinLocalAssistantConfigCode,
-    buildWeixinCloudAssistantCronSql,
-    deployWeixinCloudFunction,
-    ensureWeixinCloudCronSecret,
     fetchWeixinCloudAssistantHeartbeat,
     setWeixinCloudAssistantScheduled,
     loadWeixinCloudSyncConfig,
@@ -25,12 +22,11 @@ import {
     syncAllWeixinBotRuntimesToCloud,
     syncWeixinBotRuntimeToCloud,
     testWeixinCloudAssistantOnce,
-    WEIXIN_CLOUD_CRON_JOB_NAME,
-    WEIXIN_CLOUD_FUNCTION_SLUG,
     type WeixinCloudAssistantHeartbeat,
     type WeixinCloudSyncConfig,
 } from "@/lib/weixin-cloud-sync";
 import { getWeixinBotStatus } from "@/lib/use-weixin-bridge";
+import { getWeixinCloudDeployedAt, loadWeixinCloudScheduled, saveWeixinCloudScheduled } from "@/lib/cloud-deploy-status";
 import { getLoginQrCode, pollQrCodeStatus, type QrLoginStatus } from "@/lib/weixin-bridge";
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
@@ -39,13 +35,6 @@ import { ConfirmDialog, ContentDialog } from "@/components/ui/modal";
 import { Alert } from "@/components/ui/feedback";
 
 type AddStep = "select-character" | "scanning" | "done";
-
-const LOCAL_ASSISTANT_CARD_ASSETS = [
-    "generic-red-packet-card-v1.png",
-    "generic-transfer-card-v1.png",
-    "generic-music-card-v1.png",
-    "generic-photo-card-v1.png",
-];
 
 function formatCloudSyncBytes(bytes: number): string {
     if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
@@ -60,6 +49,13 @@ function formatCloudSyncTime(value?: string): string {
     if (Number.isNaN(date.getTime())) return value;
     return date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
+
+const LOCAL_ASSISTANT_CARD_ASSETS = [
+    "generic-red-packet-card-v1.png",
+    "generic-transfer-card-v1.png",
+    "generic-music-card-v1.png",
+    "generic-photo-card-v1.png",
+];
 
 async function copyTextToClipboard(text: string): Promise<void> {
     if (navigator.clipboard?.writeText) {
@@ -146,7 +142,7 @@ function buildLocalAssistantReadme(): string {
 `;
 }
 
-export function WeixinSettings({ onOpenDataManagement }: { onOpenDataManagement?: () => void } = {}) {
+export function WeixinSettings({ onOpenCloudServices }: { onOpenCloudServices?: () => void } = {}) {
     const [bots, setBots] = useState<WeixinBotConfig[]>([]);
     const [characters, setCharacters] = useState<Character[]>([]);
     const [statusTick, setStatusTick] = useState(0);
@@ -155,10 +151,9 @@ export function WeixinSettings({ onOpenDataManagement }: { onOpenDataManagement?
     const [cloudSyncingId, setCloudSyncingId] = useState<string | null>(null);
     const [cloudSyncNotice, setCloudSyncNotice] = useState<{ ok: boolean; text: string } | null>(null);
     const [showLocalAssistantAdvanced, setShowLocalAssistantAdvanced] = useState(false);
+    const [cloudScheduledOn, setCloudScheduledOn] = useState(() => loadWeixinCloudScheduled());
     const [cloudAssistantBusy, setCloudAssistantBusy] = useState<string | null>(null);
     const [showCloudAssistantNotes, setShowCloudAssistantNotes] = useState(false);
-    const [showManualCloudDeploy, setShowManualCloudDeploy] = useState(false);
-    const [cloudDeployToken, setCloudDeployToken] = useState("");
     const [cloudAssistantNotice, setCloudAssistantNotice] = useState<{ ok: boolean; text: string } | null>(null);
     const [cloudHeartbeat, setCloudHeartbeat] = useState<WeixinCloudAssistantHeartbeat | null>(null);
     const [cloudHeartbeatCheckedAt, setCloudHeartbeatCheckedAt] = useState<string | null>(null);
@@ -333,50 +328,6 @@ export function WeixinSettings({ onOpenDataManagement }: { onOpenDataManagement?
         }
     };
 
-    const handleCopyCloudFunctionCode = async () => {
-        if (cloudAssistantBusy) return;
-        setCloudAssistantNotice(null);
-        setCloudAssistantBusy("code");
-        try {
-            const results = await syncAllWeixinBotRuntimesToCloud();
-            if (results.length === 0) {
-                setCloudAssistantNotice({ ok: false, text: "没有可同步的已启用微信 Bot，请先添加并启用微信 Bot。" });
-                return;
-            }
-            await ensureWeixinCloudCronSecret();
-            const res = await fetch("/weixin-local-assistant/cloud-function.mjs", { cache: "no-store" });
-            if (!res.ok) throw new Error("下载云函数代码失败，请重新部署站点后再试。");
-            await copyTextToClipboard(await res.text());
-            setCloudSyncConfig(loadWeixinCloudSyncConfig());
-            setCloudAssistantNotice({
-                ok: true,
-                text: `已复制云函数代码并同步运行包。到 Supabase 控制台 Edge Functions 新建名为「${WEIXIN_CLOUD_FUNCTION_SLUG}」的函数粘贴部署，并关闭该函数的 JWT 校验。`,
-            });
-        } catch (err) {
-            setCloudAssistantNotice({ ok: false, text: err instanceof Error ? err.message : String(err) });
-        } finally {
-            setCloudAssistantBusy(null);
-        }
-    };
-
-    const handleCopyCloudCronSql = async () => {
-        if (cloudAssistantBusy) return;
-        setCloudAssistantNotice(null);
-        setCloudAssistantBusy("sql");
-        try {
-            const token = await ensureWeixinCloudCronSecret();
-            await copyTextToClipboard(buildWeixinCloudAssistantCronSql(token));
-            setCloudAssistantNotice({
-                ok: true,
-                text: "已复制定时 SQL（含专属密钥，不要公开分享）。到 Supabase 控制台 SQL Editor 整段执行即可，每 10 秒轮询一次。",
-            });
-        } catch (err) {
-            setCloudAssistantNotice({ ok: false, text: err instanceof Error ? err.message : String(err) });
-        } finally {
-            setCloudAssistantBusy(null);
-        }
-    };
-
     const refreshCloudHeartbeat = async () => {
         const heartbeat = await fetchWeixinCloudAssistantHeartbeat();
         setCloudHeartbeat(heartbeat);
@@ -404,31 +355,6 @@ export function WeixinSettings({ onOpenDataManagement }: { onOpenDataManagement?
         }
     };
 
-    const handleDeployCloudFunction = async () => {
-        if (cloudAssistantBusy) return;
-        setCloudAssistantNotice(null);
-        setCloudAssistantBusy("deploy");
-        try {
-            const results = await syncAllWeixinBotRuntimesToCloud();
-            if (results.length === 0) {
-                setCloudAssistantNotice({ ok: false, text: "没有可同步的已启用微信 Bot，请先添加并启用微信 Bot。" });
-                return;
-            }
-            await ensureWeixinCloudCronSecret();
-            await deployWeixinCloudFunction(cloudDeployToken);
-            setCloudSyncConfig(loadWeixinCloudSyncConfig());
-            setCloudDeployToken("");
-            setCloudAssistantNotice({
-                ok: true,
-                text: "云函数部署成功（已自动关闭 JWT 校验，Token 未保存）。现在点「开启云端轮询」即可。",
-            });
-        } catch (err) {
-            setCloudAssistantNotice({ ok: false, text: err instanceof Error ? err.message : String(err) });
-        } finally {
-            setCloudAssistantBusy(null);
-        }
-    };
-
     const handleSetCloudSchedule = async (enabled: boolean) => {
         if (cloudAssistantBusy) return;
         setCloudAssistantNotice(null);
@@ -443,11 +369,13 @@ export function WeixinSettings({ onOpenDataManagement }: { onOpenDataManagement?
                 setCloudSyncConfig(loadWeixinCloudSyncConfig());
             }
             await setWeixinCloudAssistantScheduled(enabled);
+            saveWeixinCloudScheduled(enabled);
+            setCloudScheduledOn(enabled);
             setCloudAssistantNotice({
                 ok: true,
                 text: enabled
                     ? "云端轮询已开启，每 10 秒一次。刚开启时微信恢复在线可能需要几分钟，之后回复稳定在 10～60 秒。"
-                    : "云端轮询已停用，不再消耗任何配额。想恢复时点「开启云端轮询」即可，无需重新部署。",
+                    : "云端轮询已停用，不再消耗任何配额，随时可再打开，无需重新部署。",
             });
         } catch (err) {
             setCloudAssistantNotice({ ok: false, text: err instanceof Error ? err.message : String(err) });
@@ -587,6 +515,7 @@ export function WeixinSettings({ onOpenDataManagement }: { onOpenDataManagement?
         c => !boundCharacterIds.has(c.id) || c.id === newCharacterId
     );
     const cloudSupabaseReady = isWeixinCloudSupabaseReady();
+    const weixinCloudDeployed = Boolean(getWeixinCloudDeployedAt()) || Boolean(cloudHeartbeat?.lastRunAt);
 
     const qrStatusText: Record<string, string> = {
         loading: "正在获取二维码…",
@@ -611,6 +540,11 @@ export function WeixinSettings({ onOpenDataManagement }: { onOpenDataManagement?
                 )}
             </div>
 
+            {cloudSyncNotice && (
+                <Alert variant={cloudSyncNotice.ok ? "success" : "danger"}>{cloudSyncNotice.text}</Alert>
+            )}
+
+            {/* 微信本地助手 */}
             <div className="ui-group-card !items-stretch">
                 <div className="flex items-start gap-3">
                     <div className="ui-icon-circle shrink-0"><CloudUpload size={20} /></div>
@@ -700,9 +634,6 @@ export function WeixinSettings({ onOpenDataManagement }: { onOpenDataManagement?
                     {!cloudSupabaseReady && (
                         <Alert variant="warning">请先到「数据管理」配置并测试 Supabase 云端备份。</Alert>
                     )}
-                    {cloudSyncNotice && (
-                        <Alert variant={cloudSyncNotice.ok ? "success" : "danger"}>{cloudSyncNotice.text}</Alert>
-                    )}
                 </div>
             </div>
 
@@ -719,142 +650,44 @@ export function WeixinSettings({ onOpenDataManagement }: { onOpenDataManagement?
                 </div>
 
                 <div className="flex flex-col gap-3 mt-4">
-                    {/* 三步部署引导（参考现实桥快捷指令教程的分步样式） */}
-                    <div className="flex flex-col gap-4 rounded-[18px] bg-black/[0.03] p-4">
-                        <div className="flex items-start gap-3">
-                            <span className={`mt-0.5 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full text-[11px] font-extrabold text-white ${cloudSupabaseReady ? "bg-green-500" : "bg-black"}`}>{cloudSupabaseReady ? "✓" : "1"}</span>
-                            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                                <span className="text-[13px] font-bold leading-snug text-[var(--c-text)]">配置 Supabase</span>
-                                {cloudSupabaseReady ? (
-                                    <span className="menu-desc !mt-0 text-green-600">已检测到 Supabase 云端备份配置，这一步完成了。</span>
-                                ) : (
-                                    <>
-                                        <span className="menu-desc !mt-0">云端助手的数据和函数都放在你自己的 Supabase 项目里（免费注册）。请先到「数据管理」配置并测试 Supabase 云端备份，完成前下面的按钮不可用。</span>
-                                        <button
-                                            type="button"
-                                            className="ui-btn ui-btn-outline mt-0.5 self-start whitespace-nowrap !gap-1.5 !px-3 !text-[12px]"
-                                            onClick={() => onOpenDataManagement?.()}
-                                        >
-                                            去数据管理配置
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-                        <div className="flex items-start gap-3">
-                            <span className="mt-0.5 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-black text-[11px] font-extrabold text-white">2</span>
-                            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                                <span className="text-[13px] font-bold leading-snug text-[var(--c-text)]">一键部署云函数</span>
-                                <span className="menu-desc !mt-0">① 打开 supabase.com → 点右上角<b>头像</b> → 选「Account」进入账户设置 → 再点右上角<b>三横线（☰）菜单</b> → 「Access Tokens」→ 点「Generate new token」（名字随意）→ 复制生成的 token。也可以直接访问 supabase.com/dashboard/account/tokens；</span>
-                                <span className="menu-desc !mt-0">② 粘贴到下方，点「一键部署」。Token 只用这一次，经本站点服务端转发给 Supabase（不存储、不记录），部署时会自动关闭 JWT 校验。用完可随时在 Supabase 里 Revoke。</span>
-                                <span className="menu-desc !mt-0">📌 只需部署这一次：之后小手机每次同步运行包都会把最新逻辑传到云端，函数自动使用。</span>
-                                <input
-                                    type="password"
-                                    className="h-10 w-full rounded-[12px] border border-black/10 bg-white px-3 text-[13px] focus:outline-none focus:ring-1 focus:ring-black/30"
-                                    placeholder="粘贴 Access Token（sbp_ 开头）"
-                                    value={cloudDeployToken}
-                                    onChange={e => setCloudDeployToken(e.target.value)}
-                                    autoComplete="off"
-                                />
-                                <button
-                                    type="button"
-                                    className="ui-btn ui-btn-outline mt-0.5 self-start whitespace-nowrap !gap-1.5 !px-3 !text-[12px]"
-                                    disabled={!cloudSupabaseReady || Boolean(cloudAssistantBusy) || !cloudDeployToken.trim()}
-                                    onClick={() => void handleDeployCloudFunction()}
-                                >
-                                    {cloudAssistantBusy === "deploy"
-                                        ? <><Loader2 size={14} className="animate-spin" /> 部署中…</>
-                                        : <><CloudUpload size={14} /> 一键部署</>}
-                                </button>
-                                <button
-                                    type="button"
-                                    className="ui-link-btn self-start !text-[11px]"
-                                    data-variant="muted"
-                                    onClick={() => setShowManualCloudDeploy(v => !v)}
-                                    aria-expanded={showManualCloudDeploy}
-                                >
-                                    {showManualCloudDeploy ? "收起手动部署方式" : "不想生成 Token？展开手动部署方式"}
-                                </button>
-                                {showManualCloudDeploy && (
-                                    <div className="flex flex-col gap-1.5 rounded-[14px] bg-black/[0.03] p-3">
-                                        <span className="menu-desc !mt-0">① Supabase 控制台 → 左侧「Edge Functions」→ 点绿色「Deploy a new function」→ 选「Via Editor」；</span>
-                                        <span className="menu-desc !mt-0">② 先把函数名改成 <b>{WEIXIN_CLOUD_FUNCTION_SLUG}</b>（不要用自动生成的随机名，部署后改名无效，只能删掉重建）；</span>
-                                        <span className="menu-desc !mt-0">③ 清空编辑器里的示例代码，粘贴下方复制的代码，点「Deploy」（建议在电脑上操作，手机浏览器里代码编辑器很难用）；</span>
-                                        <span className="menu-desc !mt-0">④ 进入函数页 →「Settings」标签 → 关掉「Verify JWT with legacy secret」开关（部分版本叫 Enforce JWT verification）→ 点「Save changes」。</span>
-                                        <button
-                                            type="button"
-                                            className="ui-btn ui-btn-outline mt-0.5 self-start whitespace-nowrap !gap-1.5 !px-3 !text-[12px]"
-                                            disabled={!cloudSupabaseReady || Boolean(cloudAssistantBusy)}
-                                            onClick={() => void handleCopyCloudFunctionCode()}
-                                        >
-                                            {cloudAssistantBusy === "code"
-                                                ? <><Loader2 size={14} className="animate-spin" /> 准备中…</>
-                                                : <><Copy size={14} /> 复制云函数代码</>}
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                        <div className="flex items-start gap-3">
-                            <span className="mt-0.5 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-black text-[11px] font-extrabold text-white">3</span>
-                            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                                <span className="text-[13px] font-bold leading-snug text-[var(--c-text)]">开启 / 停用轮询</span>
-                                <span className="menu-desc !mt-0">开启后云端每 10 秒自动轮询回复；停用立刻生效、零配额消耗，随时可再开启，都不用去 Supabase 操作。</span>
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <button
-                                        type="button"
-                                        className="ui-btn ui-btn-outline mt-0.5 self-start whitespace-nowrap !gap-1.5 !px-3 !text-[12px]"
-                                        disabled={!cloudSupabaseReady || Boolean(cloudAssistantBusy)}
-                                        onClick={() => void handleSetCloudSchedule(true)}
-                                    >
-                                        {cloudAssistantBusy === "enable"
-                                            ? <><Loader2 size={14} className="animate-spin" /> 开启中…</>
-                                            : <><Power size={14} /> 开启云端轮询</>}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="ui-btn ui-btn-outline mt-0.5 self-start whitespace-nowrap !gap-1.5 !px-3 !text-[12px]"
-                                        disabled={!cloudSupabaseReady || Boolean(cloudAssistantBusy)}
-                                        onClick={() => void handleSetCloudSchedule(false)}
-                                    >
-                                        {cloudAssistantBusy === "disable"
-                                            ? <><Loader2 size={14} className="animate-spin" /> 停用中…</>
-                                            : <><PowerOff size={14} /> 停用</>}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="ui-link-btn mt-0.5 shrink-0 !text-[11px]"
-                                        data-variant="muted"
-                                        disabled={!cloudSupabaseReady || Boolean(cloudAssistantBusy)}
-                                        onClick={() => void handleCopyCloudCronSql()}
-                                        title="在线开启失败时的手动方式：复制 SQL 到 SQL Editor 执行"
-                                    >
-                                        {cloudAssistantBusy === "sql"
-                                            ? <><Loader2 size={12} className="animate-spin" /> 生成中…</>
-                                            : "手动方式：复制定时 SQL"}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="flex items-start gap-3">
-                            <span className="mt-0.5 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-black text-[11px] font-extrabold text-white">4</span>
-                            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                                <span className="text-[13px] font-bold leading-snug text-[var(--c-text)]">验证部署</span>
-                                <span className="menu-desc !mt-0">点下方按钮立刻触发一轮「拉消息 → 生成 → 回复」；提示成功后，给 Bot 的微信发条消息试试。</span>
-                                <span className="menu-desc !mt-0">⏳ 刚部署（或停用较久后重新开启）时，微信恢复 Bot 在线状态需要几分钟：第一条回复可能要等上几分钟，期间 Bot 可能显示「暂无法连接」，都是正常现象。恢复后回复会稳定在 10～60 秒内。</span>
-                                <button
-                                    type="button"
-                                    className="ui-btn ui-btn-outline mt-0.5 self-start whitespace-nowrap !gap-1.5 !px-3 !text-[12px]"
-                                    disabled={!cloudSupabaseReady || Boolean(cloudAssistantBusy)}
-                                    onClick={() => void handleTestCloudAssistant()}
-                                >
-                                    {cloudAssistantBusy === "test"
-                                        ? <><Loader2 size={14} className="animate-spin" /> 测试中…</>
-                                        : <><PlayCircle size={14} /> 云端测试一次</>}
-                                </button>
-                            </div>
-                        </div>
+                    <div className="flex items-center gap-3">
+                        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${weixinCloudDeployed ? "bg-green-500" : "bg-black/20"}`} />
+                        <span className="menu-label flex-1">{weixinCloudDeployed ? "已部署" : "未部署"}</span>
+                        <button
+                            type="button"
+                            className="ui-btn ui-btn-outline shrink-0 whitespace-nowrap !gap-1.5 !px-3 !text-[12px]"
+                            onClick={() => onOpenCloudServices?.()}
+                        >
+                            <CloudUpload size={14} /> {weixinCloudDeployed ? "重新部署" : "去部署"}
+                        </button>
                     </div>
+
+                    <div className="flex items-center gap-3">
+                        <div className="flex-1 flex flex-col">
+                            <span className="menu-label">云端轮询</span>
+                            <span className="menu-desc !mt-0">开着才会自动回复；关掉零配额消耗</span>
+                        </div>
+                        {cloudAssistantBusy === "enable" || cloudAssistantBusy === "disable"
+                            ? <Loader2 size={18} className="animate-spin shrink-0" />
+                            : (
+                                <Toggle
+                                    checked={cloudScheduledOn}
+                                    onChange={v => void handleSetCloudSchedule(v)}
+                                    disabled={!cloudSupabaseReady || Boolean(cloudAssistantBusy)}
+                                />
+                            )}
+                    </div>
+
+                    <button
+                        type="button"
+                        className="ui-btn ui-btn-outline w-full justify-center"
+                        disabled={!cloudSupabaseReady || Boolean(cloudAssistantBusy)}
+                        onClick={() => void handleTestCloudAssistant()}
+                    >
+                        {cloudAssistantBusy === "test"
+                            ? <><Loader2 size={15} className="animate-spin" /> 测试中…</>
+                            : <><PlayCircle size={15} /> 云端测试一次</>}
+                    </button>
 
                     {/* 云端心跳状态行 */}
                     <div className="flex items-center gap-2">
@@ -912,7 +745,7 @@ export function WeixinSettings({ onOpenDataManagement }: { onOpenDataManagement?
                             <span className="menu-desc !mt-0">· 角色发出的媒体：支持生图照片（遵循小手机「图像生成」设置）、表情包与语音（遵循语音配置），与本地助手一致。</span>
                             <span className="menu-desc !mt-0">· 微信 token 过期后仍需回到小手机重新扫码。</span>
                             <span className="menu-desc !mt-0">· 角色、API、预设等变更后，记得重新同步运行包。</span>
-                            <span className="menu-desc !mt-0">· 停用：步骤②的「停用」按钮，停用后零配额消耗；也可在 SQL Editor 执行 select cron.unschedule(&apos;{WEIXIN_CLOUD_CRON_JOB_NAME}&apos;);</span>
+                            <span className="menu-desc !mt-0">· 停用：关掉上方「云端轮询」开关即可，停用后零配额消耗。</span>
                         </div>
                     )}
                 </div>
