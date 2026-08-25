@@ -4,6 +4,7 @@ import { simpleLLMCall } from "../api-helpers";
 import { loadApiConfigs, resolveAuxiliaryApiConfig, resolveUserIdentity } from "../settings-storage";
 import { loadCharacters } from "../character-storage";
 import { MacroEngine } from "../macro-engine";
+import { realToVirtualMs } from "../virtual-time";
 import {
   addChatContact,
   CHAT_REQUEST_REPLY_EVENT,
@@ -300,7 +301,11 @@ export async function applyServerBridgeEntry(meta: {
     const historyRole = meta.chat.historyRole && meta.chat.historyRole !== meta.chat.role ? meta.chat.historyRole : undefined;
     const effectiveRole = meta.chat.historyRole || meta.chat.role;
     const sourceMs = Date.parse(item.createdAt);
-    const createdAt = Number.isFinite(sourceMs) ? new Date(sourceMs).toISOString() : new Date().toISOString();
+    // 云端按真实时钟生成的事件时间；回端落库时换算回小手机的虚拟时间轴，
+    // 否则桥输入（用户侧的「我把屏幕发给你」等）会与本地虚拟时间戳错位。
+    const createdAt = Number.isFinite(sourceMs)
+      ? new Date(realToVirtualMs(sourceMs)).toISOString()
+      : new Date().toISOString();
     const fallbackId = `bridge_${String(meta.ruleId || "rule")}_${item.id}`
       .replace(/[^a-zA-Z0-9_-]/g, "_")
       .slice(0, 240);
