@@ -202,6 +202,10 @@ async function buildScreenChatSnapshot(): Promise<Record<string, unknown> | null
             { appTags: ["chat", "text"] },
         );
         const request = buildProviderRequest(config, preset, toLlmRequestMessages(llmMessages));
+        console.log("[ScreenChat] enableVision =", config.enableImageRecognition === true,
+            "| configId =", config.id,
+            "| model =", config.defaultModel,
+            "| enableImageRecognition =", config.enableImageRecognition);
         return {
             replyRequest: {
                 url: request.url,
