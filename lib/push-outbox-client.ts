@@ -8,6 +8,7 @@ import { stripHallucinatedTimestamps } from "./llm-provider-adapter";
 import { MacroEngine } from "./macro-engine";
 import { getActiveAppTags } from "./content-tag-utils";
 import { loadChatMessages, loadChatSessions, reindexSessionMessageOrdersByTime } from "./chat-storage";
+import { realToVirtualMs } from "./virtual-time";
 import { hasAccountPushSubscription } from "./push-client";
 import { isPersonalPushCloudActive, loadPersonalPushCloudState, personalPushFetch } from "./personal-push-cloud";
 import { removeTimedWakeSchedule } from "./timed-wake-storage";
@@ -125,7 +126,11 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                                     {
                                         silent: options?.silent !== false,
                                         responseBatchId,
-                                        createdAt: bridgeMeta.screenChatAssistantAt,
+                                        // 云端按真实时钟生成回复；回端落库时换算回小手机的虚拟时间轴，
+                                        // 否则会与本地虚拟时间戳错位、被排到聊天记录的异常位置。
+                                        createdAt: typeof bridgeMeta.screenChatAssistantAt === "string"
+                                            ? new Date(realToVirtualMs(Date.parse(bridgeMeta.screenChatAssistantAt))).toISOString()
+                                            : undefined,
                                     },
                                 );
                                 if (hasVisible && newCount < 10) scheduleFollowUp(replySessionId, newCount, stateValues);

@@ -102,6 +102,16 @@ export function getNowMs(): number {
   return getNow().getTime();
 }
 
+/** 把真实时间戳映射到当前虚拟时间轴（realtime 模式下原样返回）。
+ *  用于把云端按真实时钟生成的时间戳（如屏幕速聊回复）换算回小手机的虚拟时间轴，
+ *  否则回端合并的消息会与本地虚拟时间戳错位，排到时间线的错误位置。 */
+export function realToVirtualMs(realMs: number): number {
+  if (!Number.isFinite(realMs)) return realMs;
+  const state = loadState();
+  if (state.mode === "realtime") return realMs;
+  return state.anchorVirtualMs + (realMs - state.anchorRealMs) * state.rate;
+}
+
 export function isVirtualTimeMode(): boolean {
   return loadState().mode === "virtual";
 }
