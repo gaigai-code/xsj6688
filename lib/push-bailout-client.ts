@@ -9,6 +9,7 @@ import { buildProviderRequest, toLlmRequestMessages, type LlmRequestPayload } fr
 import { loadChatMessages, loadChatSessions, loadFollowUpSchedule, type ChatMessage, type ChatSession } from "./chat-storage";
 import { hasAccountPushSubscription, isWithinPushQuietHours, loadPushQuietHours, peekAccountPushSubscribed } from "./push-client";
 import { isPersonalPushCloudActive, pushJobsFetch } from "./personal-push-cloud";
+import { getNowMs } from "./virtual-time";
 import {
     buildOfflineShortcutContinuation,
     maybeAppendShortcutCapability,
@@ -257,7 +258,8 @@ export async function armFollowUpBailout(
     if (!bailoutEnabled()) return;
     try {
         if (!(await hasAccountPushSubscription())) return;
-        if (isWithinPushQuietHours(fireAt + FOLLOWUP_BAILOUT_GRACE_MS)) return; // 安静时段不打扰
+        // 安静时段按真实时钟判断：云端在真实时间触发，本地虚拟 fireAt 只作认知基准
+        if (isWithinPushQuietHours(Date.now() + delaySec * 1000 + FOLLOWUP_BAILOUT_GRACE_MS)) return;
         const session = loadChatSessions().find(s => s.id === sessionId);
         if (!session || session.isGroup) return; // 第一期只覆盖单聊追问
         const latestMessages = loadChatMessages(sessionId);
@@ -282,7 +284,8 @@ export async function armFollowUpBailout(
             body: JSON.stringify({
                 triggerKey: `followup:${sessionId}:${count}`,
                 kind: "followup",
-                executeAt: new Date(fireAt + FOLLOWUP_BAILOUT_GRACE_MS).toISOString(),
+                // 云端按真实时间预约（现实接管机制），不能把本地虚拟时间戳喂给服务端 cron
+                executeAt: new Date(Date.now() + delaySec * 1000 + FOLLOWUP_BAILOUT_GRACE_MS).toISOString(),
                 payload: {
                     request: {
                         url: request.url,
@@ -405,8 +408,10 @@ export async function armIdleReconnectBailout(rule: IdleReconnectRule): Promise<
             rule.lastFiredAt ? rule.lastFiredAt + intervalMs : 0,
             rule.suppressedUntil ?? 0,
         );
-        const fireAt = Math.max(nextDueAt, Date.now() + 30_000);
-        if (isWithinPushQuietHours(fireAt)) {
+        // 认知基准跟随虚拟时间（nextDueAt 由虚拟的 lastUserAt 主导）；下限同样用虚拟时钟
+        const fireAt = Math.max(nextDueAt, getNowMs() + 30_000);
+        // 安静时段按真实时钟判断（云端在真实时间触发）
+        if (isWithinPushQuietHours(Date.now() + intervalMs)) {
             // 首发落在安静时段就不挂（本地醒着时会择机触发），存量任务一并清掉
             await cancelBailoutPrefix(`idle:${rule.id}:`);
             return { ok: false, reason: "触发时间落在推送安静时段内" };
@@ -434,7 +439,8 @@ export async function armIdleReconnectBailout(rule: IdleReconnectRule): Promise<
         const posted = await postBailoutJob({
             triggerKey,
             kind: "timed_task",
-            executeAtMs: fireAt + 15_000,
+            // 云端按真实时间预约（现实接管机制），不能使用虚拟时间戳
+            executeAtMs: Date.now() + intervalMs + 15_000,
             request,
             notifyTitle: character.name,
             weixinBotId,
@@ -447,7 +453,7 @@ export async function armIdleReconnectBailout(rule: IdleReconnectRule): Promise<
                 userName: userIdentity?.name ?? "用户",
                 appId: "chat",
                 appTags: ["chat", "text", "idle_wake"],
-                armAt: new Date(fireAt).toISOString(),
+                armAt: new Date().toISOString(),
                 idleReconnect: { ruleId: rule.id, firedAt: fireAt },
                 ...(remaining > 0 ? { idleRepeat: { intervalMs, remaining, quietWin: buildQuietWindowMeta() } } : {}),
             },
@@ -472,7 +478,8 @@ export async function armTimedWakeBailout(schedule: TimedWakeSchedule): Promise<
     if (!bailoutEnabled()) return { ok: false, reason: "当前环境不支持服务端离线预约" };
     try {
         if (!(await hasAccountPushSubscription())) return { ok: false, reason: "当前账号没有可用的离线推送订阅" };
-        if (isWithinPushQuietHours(schedule.fireAt)) return { ok: false, reason: "触发时间落在推送安静时段内" };
+        // 云端在真实时间触发（delay 分钟后），安静时段按真实时钟判断；schedule.fireAt 为虚拟时间戳
+        if (isWithinPushQuietHours(Date.now() + schedule.delayMinutes * 60_000 + 15_000)) return { ok: false, reason: "触发时间落在推送安静时段内" };
         const session = loadChatSessions().find(s => s.id === schedule.sessionId);
         if (!session || session.isGroup || session.contactId !== schedule.characterId) return { ok: false, reason: "找不到对应的单聊会话" };
         const history = loadChatMessages(session.id);
@@ -495,7 +502,8 @@ export async function armTimedWakeBailout(schedule: TimedWakeSchedule): Promise<
         const posted = await postBailoutJob({
             triggerKey: `timedwake:${schedule.id}`,
             kind: "timed_task",
-            executeAtMs: schedule.fireAt + 15_000,
+            // 云端按真实时间预约，不能使用虚拟时间戳
+            executeAtMs: Date.now() + schedule.delayMinutes * 60_000 + 15_000,
             request,
             notifyTitle: character.name,
             weixinBotId,
@@ -508,7 +516,7 @@ export async function armTimedWakeBailout(schedule: TimedWakeSchedule): Promise<
                 userName: userIdentity?.name ?? "用户",
                 appId: "chat",
                 appTags: ["chat", "text", wakeTag],
-                armAt: new Date(schedule.fireAt).toISOString(),
+                armAt: new Date().toISOString(),
             },
         });
         return posted ? { ok: true } : { ok: false, reason: "服务端预约接口没有确认成功" };

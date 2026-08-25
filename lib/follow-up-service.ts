@@ -1,4 +1,4 @@
-import { getNow } from "@/lib/virtual-time";
+import { getNow, getNowMs } from "@/lib/virtual-time";
 /**
  * Background follow-up service.
  * Runs independently of any React component — fires follow-ups
@@ -117,7 +117,7 @@ let scheduledOutboxFocusHandler: (() => void) | null = null;
 let scheduledOutboxPageShowHandler: (() => void) | null = null;
 
 function extendScheduledOutboxGrace(): void {
-    scheduledOutboxGraceUntil = Math.max(scheduledOutboxGraceUntil, Date.now() + SCHEDULED_OUTBOX_GRACE_MS);
+    scheduledOutboxGraceUntil = Math.max(scheduledOutboxGraceUntil, getNowMs() + SCHEDULED_OUTBOX_GRACE_MS);
 }
 
 // ── Public API ─────────────────────────────────────────────
@@ -130,7 +130,7 @@ export function startFollowUpService() {
     if (typeof window !== "undefined") {
         periodCareUpdateHandler = () => {
             lastPeriodCarePollAt = 0;
-            pollMenstrualPeriodCare(Date.now());
+            pollMenstrualPeriodCare();
         };
         window.addEventListener("menstrual-period-care-updated", periodCareUpdateHandler);
         scheduledOutboxVisibilityHandler = () => {
@@ -197,7 +197,7 @@ export function scheduleFollowUp(sessionId: string, count: number, stateValues?:
     const range = 100 - config.anxietyThreshold;
     const t = range > 0 ? (anxietyEntry.value - config.anxietyThreshold) / range : 1;
     const delaySec = Math.round(config.anxietyMaxDelay + t * (config.anxietyMinDelay - config.anxietyMaxDelay));
-    const fireAt = Date.now() + delaySec * 1000;
+    const fireAt = getNowMs() + delaySec * 1000;
     console.log(`[FollowUp] Anxiety-driven: value=${anxietyEntry.value}, delay=${delaySec}s, session=${sessionId}, count=${count}`);
     saveFollowUpSchedule({ sessionId, fireAt, count, delaySec });
     // 离线推送兜底：把本轮追问的完整请求快照预约到服务端，App 被杀时由服务端接管
@@ -353,7 +353,9 @@ async function saveBackgroundCompletionRounds(
 function pollSchedules() {
     try {
         const schedules = loadAllFollowUpSchedules();
-        const now = Date.now();
+        // 调度基准跟随虚拟时间：拨快虚拟时间后，焦虑追发/冷场重连/定时主动消息
+        // 都会按角色世界的节奏提前触发（realtime 模式下与 Date.now() 等价）。
+        const now = getNowMs();
         for (const sched of schedules) {
             if (sched.fireAt > now) {
                 const remainSec = Math.round((sched.fireAt - now) / 1000);
@@ -365,7 +367,7 @@ function pollSchedules() {
             fireFollowUp(sched); // intentionally not awaited — fire & forget
         }
         pollTimedWakeSchedules(now);
-        pollMenstrualPeriodCare(now);
+        pollMenstrualPeriodCare();
         pollIdleReconnect(now);
     } catch (e) {
         console.error("[FollowUp] pollSchedules error:", e);
@@ -383,7 +385,9 @@ function pollTimedWakeSchedules(now: number) {
     }
 }
 
-function pollMenstrualPeriodCare(now: number) {
+function pollMenstrualPeriodCare() {
+    // 经期关心的轮询节流是现实世界的物理节奏，用真实时钟（与虚拟时间无关）。
+    const now = Date.now();
     if (now - lastPeriodCarePollAt < PERIOD_CARE_POLL_INTERVAL_MS) return;
     lastPeriodCarePollAt = now;
 
@@ -440,7 +444,7 @@ async function fireFollowUp(sched: { sessionId: string; count: number; delaySec?
 
         // Find the last user message timestamp to calculate silence duration
         const lastUserMsg = [...latestMessages].reverse().find(m => m.role === "user");
-        const lastUserTime = lastUserMsg ? new Date(lastUserMsg.createdAt).getTime() : Date.now();
+        const lastUserTime = lastUserMsg ? new Date(lastUserMsg.createdAt).getTime() : getNowMs();
 
         // Build message list with follow-up round markers so AI knows its history
         const annotatedMessages: ChatMessage[] = [];
@@ -463,12 +467,12 @@ async function fireFollowUp(sched: { sessionId: string; count: number; delaySec?
             annotatedMessages.push(msg);
         }
 
-        const nowMs = Date.now();
+        const nowMs = getNowMs();
         const finalSilenceSec = Math.round((nowMs - lastUserTime) / 1000);
         const messagesWithHint: ChatMessage[] = [
             ...annotatedMessages,
             {
-                id: `_silence_${nowMs}`,
+                id: `_silence_${Date.now()}`,
                 sessionId: session.id,
                 role: "system",
                 content: `[对方没有回复你的消息，距上次回复已过约${finalSilenceSec}秒]`,
@@ -539,8 +543,9 @@ let lastIdleReconnectPollAt = 0;
 const IDLE_RECONNECT_POLL_INTERVAL_MS = 60_000;
 
 function pollIdleReconnect(now: number) {
-    if (now - lastIdleReconnectPollAt < IDLE_RECONNECT_POLL_INTERVAL_MS) return;
-    lastIdleReconnectPollAt = now;
+    // 轮询节流是现实物理节奏，用真实时钟
+    if (Date.now() - lastIdleReconnectPollAt < IDLE_RECONNECT_POLL_INTERVAL_MS) return;
+    lastIdleReconnectPollAt = Date.now();
 
     for (const rule of loadIdleReconnectRules()) {
         if (idleReconnectFiringSet.has(rule.id)) continue;
@@ -564,7 +569,7 @@ function pollIdleReconnect(now: number) {
         );
         if (now < nextDueAt) continue;
         if (now < scheduledOutboxGraceUntil) continue;
-        if (isWithinPushQuietHours(now)) continue; // 安静时段本地也不打扰，出时段后自然触发
+        if (isWithinPushQuietHours(Date.now())) continue; // 安静时段按真实时钟判断（现实世界别打扰），出时段后自然触发
 
         console.log(`[IdleReconnect] Firing for session=${rule.sessionId}, idle=${Math.round((now - lastUserAt) / 60000)}min`);
         void fireIdleReconnect(rule, lastUserAt);
@@ -581,7 +586,7 @@ async function fireIdleReconnect(rule: IdleReconnectRule, lastUserAt: number) {
         void cancelBailoutPrefix(`idle:${rule.id}:`);
 
         const latestMessages = loadChatMessages(session.id);
-        const elapsedMinutes = Math.max(1, Math.round((Date.now() - lastUserAt) / 60000));
+        const elapsedMinutes = Math.max(1, Math.round((getNowMs() - lastUserAt) / 60000));
 
         backgroundGeneratingSessions.add(session.id);
         window.dispatchEvent(new CustomEvent("followup-started", { detail: { sessionId: session.id } }));
@@ -639,7 +644,7 @@ async function fireTimedWake(sched: TimedWakeSchedule) {
         if (!session || session.contactId !== sched.characterId) return;
 
         const latestMessages = loadChatMessages(session.id);
-        const elapsedMinutes = resolveTimedWakeElapsedMinutes(sched, latestMessages, Date.now());
+        const elapsedMinutes = resolveTimedWakeElapsedMinutes(sched, latestMessages, getNowMs());
 
         console.log("[TimedWake] Dispatching followup-started for session:", session.id);
         backgroundGeneratingSessions.add(session.id);

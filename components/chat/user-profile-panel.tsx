@@ -1,5 +1,7 @@
 "use client";
 
+import { getNowMs } from "@/lib/virtual-time";
+
 import { useState, useEffect, type CSSProperties } from "react";
 import CSSSchemeBar from "@/components/ui/css-scheme-picker";
 import {
@@ -1182,7 +1184,7 @@ function OfflinePushSettingsPage({ onBack }: { onBack: () => void }) {
             intervalMinutes: totalMinutes,
             intent: "",
             consecutiveCount: 0,
-            createdAt: Date.now(),
+            createdAt: getNowMs(),
         };
         upsertIdleReconnectRule(rule);
         setTmBusy(true);
@@ -1211,7 +1213,8 @@ function OfflinePushSettingsPage({ onBack }: { onBack: () => void }) {
         if (delayMs > 7 * 86_400_000) { setTmHint("间隔最长 7 天。"); return; }
         addChatContact(tmCharId);
         const session = createOrGetSession(tmCharId);
-        const now = Date.now();
+        // 定时主动消息的到点时刻跟随虚拟时间：虚拟时间快进后角色会提前"记得"主动联系
+        const now = getNowMs();
         const schedule: TimedWakeSchedule = {
             id: makeTimedWakeId(session.id),
             sessionId: session.id,

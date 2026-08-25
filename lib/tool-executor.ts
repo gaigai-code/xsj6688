@@ -3004,7 +3004,8 @@ async function executeTimedWakeTool(call: ToolCall, context?: ToolExecutionConte
     }
 
     const delayMinutes = numberArg(call.args.delayMinutes ?? call.args.delay_minutes, 1, 10080, 15);
-    const now = Date.now();
+    // 角色世界里的"稍后"：定时唤醒的到点时刻跟随虚拟时间（realtime 模式与真实时间等价）
+    const now = getNowMs();
     const schedule = {
         id: makeTimedWakeId(context.sessionId),
         sessionId: context.sessionId,
