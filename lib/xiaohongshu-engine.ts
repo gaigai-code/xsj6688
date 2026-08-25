@@ -1,4 +1,4 @@
-import { getNow } from "@/lib/virtual-time";
+import { getNow, getNowMs } from "@/lib/virtual-time";
 import { getChatImageFromIndexedDB } from "./chat-asset-storage";
 import { ChatEngineError, previewMessagesForApi, sendLLMRequest } from "./chat-engine";
 import { loadCharacters } from "./character-storage";
@@ -489,7 +489,7 @@ function parseNoteBlock(
     recentSaveNames: [block.fields["收藏用户1"], block.fields["收藏用户2"]].map(name => cleanText(name, 24)).filter(Boolean),
     comments: comments.map((comment, idx) => ({ ...comment, id: `${noteId}_comment_${idx + 1}` })),
     imageDescription: cleanMultiline(block.fields["图片描述"] ?? block.fields["配图"], 500) || undefined,
-    createdAt: new Date(Date.now() - index * 1000 * 60 * 5).toISOString(),
+    createdAt: new Date(getNowMs() - index * 1000 * 60 * 5).toISOString(),
     updatedAt: getNow().toISOString(),
   };
 }

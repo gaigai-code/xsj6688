@@ -1087,7 +1087,7 @@ export function XiaohongshuApp({ onClose, onNotice, visible = true, onIdle, onBu
             threadName,
             unread: selectedDmThreadId !== threadId,
           }),
-          createdAt: new Date(Date.now() + index + 1).toISOString(),
+          createdAt: new Date(getNowMs() + index + 1).toISOString(),
         }));
       if (replies.length > 0) {
         current = saveXiaohongshuState({
