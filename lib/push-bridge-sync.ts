@@ -341,6 +341,8 @@ function scheduleSync(delayMs: number): void {
 export function installBridgeServerSync(): void {
     if (typeof window === "undefined") return;
     window.addEventListener("reality-bridge-rules-updated", () => scheduleSync(3_000));
+    // API 配置变化（识图开关等）会改变屏幕速聊快照的 enableVision，及时重传。
+    window.addEventListener("api-configs-updated", () => scheduleSync(3_000));
     // 唯一聊天窗口一有新增/删除/外部合并就刷新基础快照，云端始终接着本地最新上下文。
     window.addEventListener(CHAT_MESSAGE_PUSHED_EVENT, () => scheduleSync(3_000));
     window.addEventListener(CHAT_MESSAGES_DELETED_EVENT, () => scheduleSync(3_000));

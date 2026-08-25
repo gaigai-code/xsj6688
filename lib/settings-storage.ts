@@ -611,6 +611,9 @@ export function loadApiConfigs(): ApiConfig[] {
 export function saveApiConfigs(configs: ApiConfig[]): void {
     if (typeof window === "undefined") return;
     kvSet(API_CONFIGS_KEY, JSON.stringify(configs.map(normalizeApiConfig)));
+    // API 配置（含「启用图像识别」）变化会改变屏幕速聊快照里的 enableVision，
+    // 通知现实桥同步器重传快照，避免识图开关切换后云端仍沿用旧开关。
+    window.dispatchEvent(new CustomEvent("api-configs-updated"));
 }
 
 // --- Voice Configs ──────────────────────────────────────────
