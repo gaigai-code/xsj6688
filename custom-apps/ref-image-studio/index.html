@@ -95,7 +95,7 @@
 (function () {
   var api = window.AiPhone;
   var $ = function (id) { return document.getElementById(id); };
-  function toast(text) { try { api.ui.toast(text); } catch (e) {} }
+  function toast(text) { try { api.ui.toast(text).catch(function () {}); } catch (e) {} }
   function err(e) { toast(e && e.message ? e.message : String(e)); }
 
   var MAX_REF = 4;
