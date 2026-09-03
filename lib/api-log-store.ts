@@ -4,6 +4,7 @@
 // 通用 LLM 调用）共用这份日志，统一在「底层调用大模型日志」面板查看。
 
 import { kvGet, kvSet, kvRemove, registerKvMigration } from "./kv-db";
+import { getNow } from "./virtual-time";
 
 export type DebugInfo = {
     id: string;
@@ -142,7 +143,7 @@ export function pushApiLog(entry: Omit<DebugInfo, "id" | "timestamp">): void {
         logs.push({
             ...truncateEntryForLog(entry),
             id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            timestamp: new Date().toISOString(),
+            timestamp: getNow().toISOString(),
         });
         _saveLogs(key, trimLogsForStorage(logs, maxCount, maxSerializedChars));
     } catch { /* 日志写入失败不影响主流程 */ }
