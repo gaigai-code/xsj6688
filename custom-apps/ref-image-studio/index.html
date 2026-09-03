@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>参考图生图</title>
+<style>
+  :root {
+    --bg: #0f1218; --card: #181d28; --card2: #222938; --line: rgba(255,255,255,.08);
+    --ink: #eef1f7; --sub: #8b93a7; --acc: #7c5cff; --acc2: #38d39f; --warn: #ff6b6b;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.6 -apple-system, "PingFang SC", sans-serif; min-height: 100vh; }
+  .wrap { max-width: 560px; margin: 0 auto; padding: 16px 14px calc(env(safe-area-inset-bottom, 0px) + 24px); }
+  h1 { font-size: 19px; margin-bottom: 2px; }
+  .sub { color: var(--sub); font-size: 12.5px; margin-bottom: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px; margin-bottom: 12px; }
+  .card h3 { font-size: 14.5px; margin-bottom: 8px; }
+  .hint { color: var(--sub); font-size: 12.5px; line-height: 1.7; }
+  .row { display: flex; gap: 8px; margin-top: 10px; }
+  textarea { width: 100%; min-height: 88px; background: var(--card2); border: 1px solid var(--line); border-radius: 12px; color: var(--ink); padding: 10px 12px; font-size: 14px; outline: none; resize: vertical; font-family: inherit; }
+  button.btn { border: 0; border-radius: 12px; background: var(--acc); color: #fff; font-size: 14px; font-weight: 700; padding: 11px 18px; cursor: pointer; }
+  button.btn.green { background: var(--acc2); color: #06281c; }
+  button.btn.ghost { background: var(--card2); color: var(--ink); border: 1px solid var(--line); }
+  button.btn.warn { background: transparent; color: var(--warn); border: 1px solid rgba(255,107,107,.4); }
+  button.btn:disabled { opacity: .45; cursor: not-allowed; }
+  .char-list { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+  .char-item { position: relative; width: 92px; cursor: pointer; border-radius: 14px; border: 2px solid transparent; padding: 4px; background: var(--card2); transition: border-color .15s, background .15s; }
+  .char-item.on { border-color: var(--acc); background: rgba(124,92,255,.14); }
+  .char-item img { display: block; width: 100%; height: 92px; object-fit: cover; border-radius: 10px; background: #000; }
+  .char-item .nm { display: block; font-size: 11.5px; color: var(--ink); text-align: center; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .char-item .badge { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; background: var(--acc); color: #fff; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; opacity: 0; }
+  .char-item.on .badge { opacity: 1; }
+  .uploadbox { display: flex; align-items: center; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+  .uploadbox img { width: 72px; height: 72px; object-fit: cover; border-radius: 12px; background: #000; border: 1px solid var(--line); }
+  .filebtn { position: relative; overflow: hidden; }
+  .filebtn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .preview { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .preview img { height: 64px; border-radius: 10px; border: 1px solid var(--line); background: #000; }
+  .result { margin-top: 10px; }
+  .result img { display: block; width: 100%; border-radius: 14px; border: 1px solid var(--line); background: #000; }
+  .hidden { display: none !important; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .empty { text-align: center; color: var(--sub); font-size: 13px; padding: 14px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>参考图生图</h1>
+  <p class="sub">选多位角色的参考图，或上传一张图片，让 AI 按参考图生成新图。</p>
+
+  <section class="card">
+    <h3>① 角色参考图（可多选）</h3>
+    <p class="hint">只显示已在「设置 → 生图」里配过参考图的角色，最多同时选 4 位。</p>
+    <div id="charList" class="char-list"><div class="empty">加载中…</div></div>
+  </section>
+
+  <section class="card">
+    <h3>② 上传参考图（可选）</h3>
+    <div class="uploadbox">
+      <label class="btn ghost filebtn">选择图片<input type="file" id="fileInput" accept="image/*" /></label>
+      <img id="uploadThumb" class="hidden" alt="上传参考图预览" />
+      <button class="btn warn" id="btnRemoveUpload" disabled>移除</button>
+    </div>
+    <p class="hint" style="margin-top:6px">上传后会和选中的角色参考图一起拼成参考图。</p>
+  </section>
+
+  <section class="card">
+    <h3>③ 参考图预览</h3>
+    <p class="hint" id="refSummary">尚未选择任何参考图，将按纯文字描述生成。</p>
+    <div class="preview" id="refPreview"></div>
+  </section>
+
+  <section class="card">
+    <h3>④ 生图描述</h3>
+    <textarea id="prompt" rows="4" placeholder="例如：两位少女在樱花树下并肩微笑，动漫风格，精致立绘，人物形象与参考图保持一致"></textarea>
+    <div class="row">
+      <button class="btn green" id="btnGenerate" style="flex:1">生成图片</button>
+    </div>
+    <p class="hint" id="genStatus" style="margin-top:8px"></p>
+  </section>
+
+  <section class="card hidden" id="resultCard">
+    <h3>生成结果</h3>
+    <div class="result"><img id="resultImg" alt="生成结果" /></div>
+    <p class="hint" id="resultMeta" style="margin-top:6px"></p>
+    <div class="row">
+      <button class="btn" id="btnSave" style="flex:1">保存到媒体库</button>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  var api = window.AiPhone;
+  var $ = function (id) { return document.getElementById(id); };
+  function toast(text) { try { api.ui.toast(text); } catch (e) {} }
+  function err(e) { toast(e && e.message ? e.message : String(e)); }
+
+  var MAX_REF = 4;
+  var characters = [];          // [{ characterId, name, dataUrl }]
+  var selected = new Set();     // characterId
+  var uploadedDataUrl = null;
+  var resultDataUrl = null;
+
+  // ── 角色参考图列表 ──
+  function renderCharacters() {
+    var box = $("charList");
+    if (!characters.length) {
+      box.innerHTML = '<div class="empty">暂无角色配置参考图。可先上传图片，或去「设置 → 生图」为角色配置参考图。</div>';
+      return;
+    }
+    box.innerHTML = "";
+    characters.forEach(function (item) {
+      var el = document.createElement("div");
+      el.className = "char-item" + (selected.has(item.characterId) ? " on" : "");
+      var img = document.createElement("img");
+      img.src = item.dataUrl || "";
+      img.alt = item.name;
+      var badge = document.createElement("span");
+      badge.className = "badge"; badge.textContent = "✓";
+      var nm = document.createElement("span");
+      nm.className = "nm"; nm.textContent = item.name;
+      el.appendChild(badge); el.appendChild(img); el.appendChild(nm);
+      el.onclick = function () {
+        if (selected.has(item.characterId)) selected.delete(item.characterId);
+        else {
+          if (selected.size >= MAX_REF) { toast("最多同时选 " + MAX_REF + " 位角色"); return; }
+          selected.add(item.characterId);
+        }
+        renderCharacters();
+        updateRefPreview();
+      };
+      box.appendChild(el);
+    });
+  }
+
+  // ── 上传参考图 ──
+  $("fileInput").onchange = function (e) {
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (!file.type || file.type.indexOf("image/") !== 0) { toast("请选择图片文件"); return; }
+    if (file.size > 8 * 1024 * 1024) { toast("图片不能超过 8MB"); return; }
+    var reader = new FileReader();
+    reader.onload = function () {
+      uploadedDataUrl = String(reader.result || "");
+      var thumb = $("uploadThumb");
+      thumb.src = uploadedDataUrl;
+      thumb.classList.remove("hidden");
+      $("btnRemoveUpload").disabled = false;
+      updateRefPreview();
+    };
+    reader.onerror = function () { toast("读取图片失败"); };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+  $("btnRemoveUpload").onclick = function () {
+    uploadedDataUrl = null;
+    $("uploadThumb").classList.add("hidden");
+    $("uploadThumb").src = "";
+    $("btnRemoveUpload").disabled = true;
+    updateRefPreview();
+  };
+
+  // ── 参考图集合与预览 ──
+  function collectRefs() {
+    var refs = [];
+    characters.forEach(function (item) {
+      if (selected.has(item.characterId) && item.dataUrl) refs.push(item.dataUrl);
+    });
+    if (uploadedDataUrl) refs.push(uploadedDataUrl);
+    return refs;
+  }
+
+  function updateRefPreview() {
+    var refs = collectRefs();
+    var preview = $("refPreview");
+    preview.innerHTML = "";
+    refs.forEach(function (url) {
+      var img = document.createElement("img");
+      img.src = url;
+      preview.appendChild(img);
+    });
+    var summary = $("refSummary");
+    if (!refs.length) summary.textContent = "尚未选择任何参考图，将按纯文字描述生成。";
+    else summary.textContent = "已选 " + refs.length + " 张参考图，生成时会拼成一张参考图交给 AI。";
+  }
+
+  // ── 拼接多张参考图为一张 ──
+  function stitchImages(dataUrls) {
+    return new Promise(function (resolve, reject) {
+      if (dataUrls.length === 1) { resolve(dataUrls[0]); return; }
+      var imgs = [];
+      var loaded = 0;
+      dataUrls.forEach(function (url, i) {
+        var img = new Image();
+        img.onload = function () {
+          imgs[i] = img;
+          loaded += 1;
+          if (loaded === dataUrls.length) {
+            try { resolve(drawStitch(imgs)); } catch (e) { reject(e); }
+          }
+        };
+        img.onerror = function () { reject(new Error("参考图加载失败，请重试")); };
+        img.src = url;
+      });
+    });
+  }
+
+  function drawStitch(imgs) {
+    var H = 512;
+    var gap = 16;
+    var scaled = imgs.map(function (img) {
+      var nw = img.naturalWidth || H;
+      var nh = img.naturalHeight || H;
+      var h = Math.min(H, nh);
+      var w = Math.max(1, Math.round(nw * h / Math.max(1, nh)));
+      return { img: img, w: w, h: h };
+    });
+    var totalW = scaled.reduce(function (s, x) { return s + x.w; }, 0) + gap * (scaled.length - 1);
+    var maxW = 1600;
+    var scale = totalW > maxW ? maxW / totalW : 1;
+    var canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(totalW * scale));
+    canvas.height = Math.max(1, Math.round(H * scale));
+    var ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    var x = 0;
+    scaled.forEach(function (s) {
+      var w = s.w * scale, h = s.h * scale;
+      var y = (canvas.height - h) / 2;
+      ctx.drawImage(s.img, x, y, w, h);
+      x += w + gap * scale;
+    });
+    return canvas.toDataURL("image/png");
+  }
+
+  // ── 生成 ──
+  function setGenerating(on) {
+    $("btnGenerate").disabled = on;
+    if (on) $("genStatus").innerHTML = '<span class="spinner"></span>正在生成，通常需要 10~30 秒…';
+  }
+
+  $("btnGenerate").onclick = async function () {
+    var prompt = $("prompt").value.trim();
+    if (!prompt) { toast("请先填写生图描述"); return; }
+    var refs = collectRefs();
+    setGenerating(true);
+    try {
+      var referenceImageDataUrl = refs.length ? await stitchImages(refs) : undefined;
+      var result = await api.ai.generateImage({
+        prompt: prompt,
+        referenceImageDataUrl: referenceImageDataUrl
+      });
+      if (!result || !result.dataUrl) throw new Error("生图失败，未返回图片");
+      resultDataUrl = result.dataUrl;
+      $("resultImg").src = result.dataUrl;
+      $("resultCard").classList.remove("hidden");
+      var meta = [];
+      if (result.usedReferenceImage) meta.push("已使用参考图");
+      else if (refs.length) meta.push("注意：当前生图接口未使用参考图（可能是 NovelAI 模式或不支持图生图）");
+      if (result.revisedPrompt) meta.push("提示词已由模型改写");
+      $("resultMeta").textContent = meta.join(" · ") || "生成完成";
+      $("genStatus").innerHTML = "";
+      $("resultCard").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } catch (e) {
+      $("genStatus").innerHTML = "";
+      err(e);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  // ── 保存到媒体库 ──
+  $("btnSave").onclick = async function () {
+    if (!resultDataUrl) return;
+    try {
+      var saved = await api.media.put({ dataUrl: resultDataUrl });
+      toast(saved && saved.ref ? "已保存到媒体库" : "保存失败");
+    } catch (e) {
+      err(e);
+    }
+  };
+
+  // ── 初始化 ──
+  async function init() {
+    try {
+      var res = await api.characters.referenceImages();
+      characters = (res && Array.isArray(res.characters) ? res.characters : []).filter(function (c) { return c && c.dataUrl; });
+    } catch (e) {
+      characters = [];
+      toast("读取角色参考图失败：" + (e && e.message ? e.message : String(e)));
+    }
+    renderCharacters();
+  }
+  init();
+})();
+</script>
+</body>
+</html>

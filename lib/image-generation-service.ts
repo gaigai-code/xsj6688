@@ -728,6 +728,8 @@ export async function generateImageFromConfiguredApi(params: {
   description: string;
   characterId?: string;
   useReferenceImage?: boolean;
+  /** 直接指定参考图 dataURL（上传图或拼接图），优先级高于 characterId 参考图查找 */
+  referenceImageDataUrl?: string;
   settings?: ImageGenerationSettings;
   signal?: AbortSignal;
 }): Promise<ImageGenerationResult | null> {
@@ -777,9 +779,11 @@ export async function generateImageFromConfiguredApi(params: {
   if (!settings.apiKey.trim() || !settings.baseUrl.trim() || !settings.model.trim()) return null;
 
   const reference = params.characterId ? settings.characterReferences[params.characterId] : undefined;
-  const rawReferenceImageDataUrl = params.useReferenceImage && reference?.assetId
-    ? await getChatImageFromIndexedDB(reference.assetId)
-    : null;
+  const rawReferenceImageDataUrl = params.referenceImageDataUrl
+    ? params.referenceImageDataUrl
+    : (params.useReferenceImage && reference?.assetId
+      ? await getChatImageFromIndexedDB(reference.assetId)
+      : null);
   throwIfAborted(params.signal);
   const referenceImageDataUrl = rawReferenceImageDataUrl
     ? await normalizeReferenceImageForEdit(rawReferenceImageDataUrl)

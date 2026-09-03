@@ -1,0 +1,16 @@
+{
+  "sdkVersion": "1.0",
+  "id": "ref.image.studio",
+  "name": "参考图生图",
+  "version": "1.0.0",
+  "author": "xsj",
+  "description": "多角色参考图生图工具：可同时选择多位已配置参考图的角色，或自行上传一张图片，把它们拼成参考图，让 AI 助手按参考图生成新图。",
+  "icon": "icon.png",
+  "entry": "index.html",
+  "permissions": [
+    "ai.generateImage",
+    "characters.read",
+    "ui.toast",
+    "app.data.write"
+  ]
+}

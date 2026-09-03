@@ -52,6 +52,7 @@ import {
   readCustomAppBridgeState,
   readCustomAppCalendar,
   readCustomAppChatHistory,
+  readCustomAppCharacterReferenceImages,
   readCustomAppCharacterRelations,
   readCustomAppCharacterState,
   readCustomAppCoreMemory,
@@ -461,7 +462,8 @@ html, body { min-height: 100%; }
       get: function(id){ return request('characters.get', { id: id }); },
       readState: function(payload){ return request('characters.state.read', payload || {}); },
       writeState: function(payload){ return request('characters.state.write', payload || {}); },
-      readRelations: function(payload){ return request('characters.relations.read', payload || {}); }
+      readRelations: function(payload){ return request('characters.relations.read', payload || {}); },
+      referenceImages: function(){ return request('characters.referenceImages'); }
     },
     ui: {
       toast: function(message){ return request('ui.toast', { message: message }); },
@@ -1091,7 +1093,7 @@ export function CustomAppRunner({
           calendar: ["read", "list", "write", "create", "update", "delete", "replaceWeek"],
           world: ["read", "list", "get", "write", "create", "update", "delete", "activate"],
           media: ["pick", "save", "put", "get", "revoke", "delete"],
-          characters: ["list", "get", "readState", "writeState", "readRelations"],
+          characters: ["list", "get", "readState", "writeState", "readRelations", "referenceImages"],
           chat: ["getCurrentSession", "readHistory", "sendMessage", "sendCard", "updateCard", "writeHistory", "requestReply", "openConversation", "setContactState"],
           memory: ["readCore", "readLongTerm", "readShortTerm", "search", "add", "addTimeline", "deleteTimeline", "removeTimeline", "suggest"],
           notifications: ["create", "list", "markRead", "markAllRead", "getBadge", "setBadge", "incrementBadge", "clearBadge"],
@@ -1642,6 +1644,10 @@ export function CustomAppRunner({
     if (action === "characters.relations.read") {
       requirePermission("characters.relations.read");
       return readCustomAppCharacterRelations(record);
+    }
+    if (action === "characters.referenceImages") {
+      requirePermission("characters.read");
+      return readCustomAppCharacterReferenceImages();
     }
 
     if (action === "chat.getCurrentSession") {

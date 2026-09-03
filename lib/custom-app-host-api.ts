@@ -52,6 +52,7 @@ import {
   createWorldBook,
   loadApiConfigs,
   loadBindingConfig,
+  loadImageGenerationSettings,
   loadUserIdentities,
   loadVoiceConfigs,
   loadWorldBooks,
@@ -65,6 +66,7 @@ import {
 import type { ApiConfig, VoiceApiConfig, WorldBookConfig, WorldBookEntry } from "./settings-types";
 import { createSTTSession } from "./stt-service";
 import { generateImageFromConfiguredApi } from "./image-generation-service";
+import { getChatImageFromIndexedDB } from "./chat-asset-storage";
 import { getThemeAssetDataUrl, saveThemeAssetFromBlob } from "./theme-storage";
 import type { ThemeAssetType } from "./theme-types";
 import { synthesizeSpeech } from "./tts-service";
@@ -1372,9 +1374,12 @@ export async function generateCustomAppImage(app: InstalledCustomApp, record: Re
   if (!description) throw new Error("ai.generateImage 需要 prompt。");
   const characterId = cleanText(record.characterId, 160) || undefined;
   const useReferenceImage = record.useReferenceImage === true;
+  // 允许 APP 直接传入参考图 dataURL（自行上传或拼接多角色参考图），
+  // 仅在 data:image/ 且不超过体积上限时采纳，避免把任意字符串塞进生图请求。
+  const referenceImageDataUrl = cleanReferenceImageDataUrl(record.referenceImageDataUrl);
   const timeoutMs = optionalCustomAppTimeoutMs(record.timeoutMs);
   const result = await withOptionalCustomAppTimeout(timeoutMs, "ai.generateImage", signal => (
-    generateImageFromConfiguredApi({ description, characterId, useReferenceImage, signal })
+    generateImageFromConfiguredApi({ description, characterId, useReferenceImage, referenceImageDataUrl, signal })
   ));
   if (!result) throw new Error("生图功能未配置或未启用，请先在小手机设置里配置生图 API。");
   return {
@@ -1385,6 +1390,36 @@ export async function generateCustomAppImage(app: InstalledCustomApp, record: Re
     revisedPrompt: result.revisedPrompt,
     usedReferenceImage: result.usedReferenceImage,
   };
+}
+
+/** 参考图 dataURL 体积上限（base64 字符数，约 25MB 二进制），与 media.put 保持一致。 */
+const CUSTOM_APP_REFERENCE_IMAGE_MAX_LENGTH = 34_000_000;
+
+/** 校验并返回 APP 传入的参考图 dataURL；非法或超大时返回 undefined。 */
+function cleanReferenceImageDataUrl(value: unknown): string | undefined {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text.startsWith("data:image/")) return undefined;
+  if (text.length > CUSTOM_APP_REFERENCE_IMAGE_MAX_LENGTH) return undefined;
+  return text;
+}
+
+/** 返回已配置参考图的角色列表（含参考图 dataURL），供参考图生图类 APP 做多角色选择。 */
+export async function readCustomAppCharacterReferenceImages(): Promise<Record<string, unknown>> {
+  const settings = loadImageGenerationSettings();
+  const references = settings.characterReferences ?? {};
+  const nameById = new Map(loadCharacters().map(character => [character.id, character.name] as const));
+
+  const items: Array<{ characterId: string; name: string; dataUrl: string | null }> = [];
+  for (const [characterId, reference] of Object.entries(references)) {
+    if (!reference?.assetId) continue;
+    const dataUrl = await getChatImageFromIndexedDB(reference.assetId);
+    items.push({
+      characterId,
+      name: nameById.get(characterId) ?? characterId,
+      dataUrl,
+    });
+  }
+  return { characters: items };
 }
 
 export function readCustomAppCharacterState(record: Record<string, unknown>): Record<string, unknown> {
