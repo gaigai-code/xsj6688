@@ -11,8 +11,6 @@ export type ImageGenerationResult = {
   mimeType: string;
   prompt: string;
   usedReferenceImage: boolean;
-  /** 本次实际带上的参考图数量（合照时可能 >1） */
-  usedReferenceCount?: number;
   revisedPrompt?: string;
 };
 
@@ -41,13 +39,6 @@ const IMAGE_MODEL_HINTS = [
   "kolors",
   "wan",
 ];
-
-// 使用参考图时追加到提示词的身份保持要求。
-// gpt-image 系等模型把参考图当"弱上下文"，对五官一致性遵循度差；
-// 在提示词里显式点名"人物必须与参考图一致"能显著提升遵循度。
-// 用条件式措辞（"若画面中出现人物"），避免把纯场景照强行塞进角色。
-const REFERENCE_IDENTITY_HINT =
-  "【参考图要求】画面中出现的人物必须与参考图中的角色保持形象一致（脸型、五官、发型、发色、瞳色、体型），不得更换为其他人。";
 
 function mergePrompt(description: string, extraPrompt: string): string {
   const main = description.trim();
@@ -113,54 +104,6 @@ async function normalizeReferenceImageForEdit(dataUrl: string): Promise<string> 
   } catch {
     return dataUrl;
   }
-}
-
-// ── 多角色合照支持 ──────────────────────────────────────────
-// 大部分生图接口（含 gpt-image 系中转）的 /images/edits 只接受一张输入图。
-// 合照的通用做法：把几位角色的参考图横向拼成一张图作为唯一参考图，
-// 提示词里点名"左图/右图分别是谁"，要求两人同时入镜且各自形象一致。
-
-const GROUP_REF_MAX_HEIGHT = 1024; // 单张参考图拼图前的高度上限
-const GROUP_REF_GAP = 8;           // 拼图间隙像素
-
-/** 把多张参考图横向拼成一张 PNG（带白色底，避免透明区在部分模型里变杂色）。 */
-async function mergeReferenceImages(dataUrls: string[]): Promise<string> {
-  if (dataUrls.length <= 1 || typeof document === "undefined") return dataUrls[0] ?? "";
-  const images = await Promise.all(dataUrls.map(dataUrl => loadDataUrlImage(dataUrl).catch(() => null)));
-  const valid = images.filter((img): img is HTMLImageElement => Boolean(img && img.naturalWidth > 0 && img.naturalHeight > 0));
-  if (valid.length <= 1) return dataUrls[0] ?? "";
-
-  const scaled = valid.map(img => {
-    const scale = img.naturalHeight > GROUP_REF_MAX_HEIGHT ? GROUP_REF_MAX_HEIGHT / img.naturalHeight : 1;
-    return {
-      img,
-      width: Math.max(1, Math.round(img.naturalWidth * scale)),
-      height: Math.max(1, Math.round(img.naturalHeight * scale)),
-    };
-  });
-  const gapTotal = GROUP_REF_GAP * (scaled.length - 1);
-  const totalWidth = scaled.reduce((sum, item) => sum + item.width, 0) + gapTotal;
-  const maxHeight = Math.max(...scaled.map(item => item.height));
-
-  const canvas = document.createElement("canvas");
-  canvas.width = totalWidth;
-  canvas.height = maxHeight;
-  const context = canvas.getContext("2d");
-  if (!context) return dataUrls[0] ?? "";
-  context.fillStyle = "#ffffff";
-  context.fillRect(0, 0, totalWidth, maxHeight);
-  let x = 0;
-  for (const item of scaled) {
-    context.drawImage(item.img, x, 0, item.width, item.height);
-    x += item.width + GROUP_REF_GAP;
-  }
-  return canvas.toDataURL("image/png");
-}
-
-/** 合照时追加到提示词的身份保持要求（按参考图张数生成措辞）。 */
-function buildGroupIdentityHint(count: number): string {
-  if (count <= 1) return REFERENCE_IDENTITY_HINT;
-  return `【参考图要求】参考图从左到右依次是 ${count} 位角色。画面中必须同时出现这 ${count} 位角色，并分别保持与对应参考图一致的形象（脸型、五官、发型、发色、瞳色、体型、服饰风格），所有角色一起入镜、互动自然，不得更换或遗漏任何一人。`;
 }
 
 function imageExtension(mimeType: string): string {
@@ -556,13 +499,6 @@ async function generateImageViaServer(params: {
   }
 }
 
-/**
- * 调用已配置的生图 API 生成图片。
- * - characterId：要使用参考图的角色 id（对应设置里「角色参考图」上传的角色）。
- * - useReferenceImage：undefined/缺省 = 该角色配了参考图就自动使用；true = 强制使用；
- *   false = 明确不用（例如「不使用参考图」标签或用户手动关闭）。
- * 返回结果里 usedReferenceImage 表示本次是否真的带上了参考图。
- */
 export async function generateImageFromConfiguredApi(params: {
   description: string;
   characterId?: string;
@@ -576,11 +512,8 @@ export async function generateImageFromConfiguredApi(params: {
   const description = params.description.trim();
   if (!description || !settings.apiKey.trim() || !settings.baseUrl.trim() || !settings.model.trim()) return null;
 
-  // 参考图策略：角色配了参考图就默认使用（除非调用方明确 useReferenceImage === false）。
-  // 这样聊天里 LLM 漏写「使用参考图」、小卷/自定义应用只传 characterId 时，
-  // 只要该角色在设置里上传过参考图，就会自动带上参考图；显式「不使用参考图」仍然生效。
   const reference = params.characterId ? settings.characterReferences[params.characterId] : undefined;
-  const rawReferenceImageDataUrl = reference?.assetId && params.useReferenceImage !== false
+  const rawReferenceImageDataUrl = params.useReferenceImage && reference?.assetId
     ? await getChatImageFromIndexedDB(reference.assetId)
     : null;
   throwIfAborted(params.signal);
@@ -588,96 +521,26 @@ export async function generateImageFromConfiguredApi(params: {
     ? await normalizeReferenceImageForEdit(rawReferenceImageDataUrl)
     : null;
   throwIfAborted(params.signal);
-  const basePrompt = mergePrompt(description, settings.extraPrompt);
-  const prompt = referenceImageDataUrl
-    ? `${basePrompt}\n\n${REFERENCE_IDENTITY_HINT}`
-    : basePrompt;
+  const prompt = mergePrompt(description, settings.extraPrompt);
 
-  const result = await runImageRequestAndStore({ settings, prompt, referenceImageDataUrl, signal: params.signal });
-  return {
-    ...result,
-    usedReferenceImage: Boolean(referenceImageDataUrl),
-    usedReferenceCount: referenceImageDataUrl ? 1 : 0,
-  };
-}
-
-/** 公共落库逻辑：按请求模式发请求 → 解析图片 → 存媒体库 → 组装结果。 */
-async function runImageRequestAndStore(params: {
-  settings: ImageGenerationSettings;
-  prompt: string;
-  referenceImageDataUrl: string | null;
-  signal?: AbortSignal;
-}): Promise<Omit<ImageGenerationResult, "usedReferenceImage" | "usedReferenceCount">> {
-  const { settings, prompt, referenceImageDataUrl, signal } = params;
   const data = settings.requestMode === "direct"
-    ? await generateImageDirect({ settings, prompt, referenceImageDataUrl, signal })
-    : await generateImageViaServerOrProxy({ settings, prompt, referenceImageDataUrl, signal });
+    ? await generateImageDirect({ settings, prompt, referenceImageDataUrl, signal: params.signal })
+    : await generateImageViaServerOrProxy({ settings, prompt, referenceImageDataUrl, signal: params.signal });
 
-  throwIfAborted(signal);
+  throwIfAborted(params.signal);
   const mimeType = data.mimeType || "image/png";
   const blob = base64ToBlob(data.b64, mimeType);
-  throwIfAborted(signal);
+  throwIfAborted(params.signal);
   const mediaRef = await storeMediaBlob(blob, mimeType, "image");
-  throwIfAborted(signal);
+  throwIfAborted(params.signal);
   return {
     mediaRef,
     dataUrl: `data:${mimeType};base64,${data.b64}`,
     blob,
     mimeType,
     prompt,
+    usedReferenceImage: Boolean(referenceImageDataUrl),
     revisedPrompt: data.revisedPrompt,
-  };
-}
-
-/**
- * 生成多位角色的合照：把每位角色在设置里上传的参考图横向拼成一张图，
- * 作为唯一参考图发给生图 API，并要求所有角色同时入镜且形象一致。
- * 只支持参考图已上传的角色；某角色没传参考图会被跳过（至少需要 1 张才生成）。
- */
-export async function generateGroupPhotoFromConfiguredApi(params: {
-  description: string;
-  characterIds: string[];
-  settings?: ImageGenerationSettings;
-  signal?: AbortSignal;
-}): Promise<ImageGenerationResult | null> {
-  const settings = params.settings ?? loadImageGenerationSettings();
-  if (!settings.enabled) return null;
-
-  const description = params.description.trim();
-  if (!description || !settings.apiKey.trim() || !settings.baseUrl.trim() || !settings.model.trim()) return null;
-
-  const ids = Array.from(new Set(params.characterIds.filter(Boolean)));
-  if (ids.length === 0) return null;
-
-  const loaded: string[] = [];
-  for (const id of ids) {
-    const ref = settings.characterReferences[id];
-    if (!ref?.assetId) {
-      console.warn(`[ImageGeneration] 角色 ${id} 未上传参考图，合照中跳过`);
-      continue;
-    }
-    const raw = await getChatImageFromIndexedDB(ref.assetId);
-    throwIfAborted(params.signal);
-    if (!raw) continue;
-    const normalized = await normalizeReferenceImageForEdit(raw);
-    throwIfAborted(params.signal);
-    if (normalized) loaded.push(normalized);
-  }
-  if (loaded.length === 0) return null;
-
-  const referenceImageDataUrl = loaded.length === 1
-    ? loaded[0]
-    : await mergeReferenceImages(loaded);
-  throwIfAborted(params.signal);
-
-  const basePrompt = mergePrompt(description, settings.extraPrompt);
-  const prompt = `${basePrompt}\n\n${buildGroupIdentityHint(loaded.length)}`;
-
-  const result = await runImageRequestAndStore({ settings, prompt, referenceImageDataUrl, signal: params.signal });
-  return {
-    ...result,
-    usedReferenceImage: true,
-    usedReferenceCount: loaded.length,
   };
 }
 

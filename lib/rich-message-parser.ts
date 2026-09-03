@@ -179,7 +179,7 @@ const RICH_PATTERNS: {
         build: (m) => ({
             content: "",
             mediaType: "image",
-            mediaData: { label: m[1].trim(), useReferenceImage: undefined },
+            mediaData: { label: m[1].trim(), useReferenceImage: false },
         }),
     },
     {

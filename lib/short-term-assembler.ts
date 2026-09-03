@@ -46,8 +46,7 @@ import {
 
 function formatPhotoDirectiveForPrompt(msg: ChatMessage): string {
     const description = msg.mediaData?.label?.trim() || "图片";
-    // 裸 [照片:...]（undefined）现在默认走参考图，历史回填成「使用参考图」更准确
-    const mode = msg.mediaData?.useReferenceImage === false ? "不使用参考图" : "使用参考图";
+    const mode = msg.mediaData?.useReferenceImage === true ? "使用参考图" : "不使用参考图";
     return `[照片:${mode}:${description}]`;
 }
 

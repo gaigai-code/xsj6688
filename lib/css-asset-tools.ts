@@ -1,6 +1,6 @@
 import type { ToolResult } from "./tool-executor";
 import type { CssAssetKind, CssAssetRecord } from "./css-asset-storage";
-import { generatedImageFilename, generateGroupPhotoFromConfiguredApi, generateImageFromConfiguredApi } from "./image-generation-service";
+import { generatedImageFilename, generateImageFromConfiguredApi } from "./image-generation-service";
 import { loadImageGenerationSettings } from "./settings-storage";
 import { loadMediaBlob, storeMediaBlob } from "./media-cache-storage";
 import {
@@ -716,27 +716,18 @@ export async function createCssAssetFromGeneratedImage(args: {
     kind?: unknown;
     label?: string;
     characterId?: string;
-    /** 合照：与 characterId 一起传时生成两位角色的合照 */
-    secondCharacterId?: string;
     useReferenceImage?: boolean;
 }): Promise<ToolResult> {
     const description = args.description.trim();
     if (!description) return { name: "生成图像素材", success: false, error: "description 不能为空。" };
 
     const settings = loadImageGenerationSettings();
-    const characterIds = [args.characterId, args.secondCharacterId].filter((id): id is string => Boolean(id));
-    const result = characterIds.length >= 2
-        ? await generateGroupPhotoFromConfiguredApi({
-            description,
-            characterIds,
-            settings: { ...settings, enabled: true, extraPrompt: "" },
-        })
-        : await generateImageFromConfiguredApi({
-            description,
-            characterId: args.characterId,
-            useReferenceImage: args.useReferenceImage,
-            settings: { ...settings, enabled: true, extraPrompt: "" },
-        });
+    const result = await generateImageFromConfiguredApi({
+        description,
+        characterId: args.characterId,
+        useReferenceImage: args.useReferenceImage === true,
+        settings: { ...settings, enabled: true, extraPrompt: "" },
+    });
     if (!result) {
         return { name: "生成图像素材", success: false, error: "生图配置不完整，请先在 Image Generation 里填写 API、Base URL 和模型名。" };
     }
@@ -755,7 +746,6 @@ export async function createCssAssetFromGeneratedImage(args: {
     });
     const data = [
         "已生成图像素材。",
-        result.usedReferenceCount ? `已使用 ${result.usedReferenceCount} 张角色参考图。` : "",
         formatCssAssetRecord(record),
         result.revisedPrompt ? `模型改写提示词: ${result.revisedPrompt}` : "",
         "下一步可以用「裁切素材」自动裁边，或用「压缩转换素材」转成 WebP，再用「上传图床」拿 CSS URL。",

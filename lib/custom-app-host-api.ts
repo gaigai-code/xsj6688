@@ -1371,8 +1371,7 @@ export async function generateCustomAppImage(app: InstalledCustomApp, record: Re
   const description = cleanText(record.prompt ?? record.description, 4000);
   if (!description) throw new Error("ai.generateImage 需要 prompt。");
   const characterId = cleanText(record.characterId, 160) || undefined;
-  // undefined = 角色配了参考图就自动使用；true/false 按调用方显式意图
-  const useReferenceImage = typeof record.useReferenceImage === "boolean" ? record.useReferenceImage : undefined;
+  const useReferenceImage = record.useReferenceImage === true;
   const timeoutMs = optionalCustomAppTimeoutMs(record.timeoutMs);
   const result = await withOptionalCustomAppTimeout(timeoutMs, "ai.generateImage", signal => (
     generateImageFromConfiguredApi({ description, characterId, useReferenceImage, signal })
