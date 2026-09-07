@@ -73,6 +73,15 @@ export function ImageGenerationSettings() {
     const [cropViewport, setCropViewport] = useState({ width: 0, height: 0 });
     const cropContainerRef = useRef<HTMLDivElement | null>(null);
     const cropDragRef = useRef<{ pointerId: number; startX: number; startY: number; cropX: number; cropY: number } | null>(null);
+    const characterListRef = useRef<HTMLDivElement | null>(null);
+    const characterScrollDragRef = useRef<{
+        pointerId: number;
+        startY: number;
+        startScrollTop: number;
+        maxScroll: number;
+        maxThumbTravel: number;
+    } | null>(null);
+    const [characterScrollMetrics, setCharacterScrollMetrics] = useState({ scrollTop: 0, clientHeight: 0, scrollHeight: 0 });
     const [models, setModels] = useState<string[]>([]);
     const [isFetchingModels, setIsFetchingModels] = useState(false);
     const [naiModels, setNaiModels] = useState<string[]>(NOVELAI_COMMON_MODELS);
@@ -140,6 +149,25 @@ export function ImageGenerationSettings() {
             if (testPreviewUrl) URL.revokeObjectURL(testPreviewUrl);
         };
     }, [testPreviewUrl]);
+
+    const syncCharacterScrollMetrics = useCallback(() => {
+        const list = characterListRef.current;
+        if (!list) return;
+        setCharacterScrollMetrics({
+            scrollTop: list.scrollTop,
+            clientHeight: list.clientHeight,
+            scrollHeight: list.scrollHeight,
+        });
+    }, []);
+
+    useEffect(() => {
+        const frame = window.requestAnimationFrame(syncCharacterScrollMetrics);
+        window.addEventListener("resize", syncCharacterScrollMetrics);
+        return () => {
+            window.cancelAnimationFrame(frame);
+            window.removeEventListener("resize", syncCharacterScrollMetrics);
+        };
+    }, [characters, syncCharacterScrollMetrics]);
 
     const persist = useCallback((next: ImageGenerationSettingsType) => {
         setSettings(next);
@@ -392,8 +420,45 @@ export function ImageGenerationSettings() {
         if (cropDragRef.current?.pointerId === event.pointerId) cropDragRef.current = null;
     };
 
+    const handleCharacterScrollPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+        const list = characterListRef.current;
+        const track = event.currentTarget.parentElement?.getBoundingClientRect();
+        const thumb = event.currentTarget.getBoundingClientRect();
+        if (!list || !track) return;
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        characterScrollDragRef.current = {
+            pointerId: event.pointerId,
+            startY: event.clientY,
+            startScrollTop: list.scrollTop,
+            maxScroll: Math.max(0, list.scrollHeight - list.clientHeight),
+            maxThumbTravel: Math.max(1, track.height - thumb.height),
+        };
+    };
+
+    const handleCharacterScrollPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+        const drag = characterScrollDragRef.current;
+        const list = characterListRef.current;
+        if (!drag || !list || drag.pointerId !== event.pointerId) return;
+        const delta = event.clientY - drag.startY;
+        list.scrollTop = Math.max(0, Math.min(drag.maxScroll, drag.startScrollTop + delta / drag.maxThumbTravel * drag.maxScroll));
+        syncCharacterScrollMetrics();
+    };
+
+    const handleCharacterScrollPointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
+        if (characterScrollDragRef.current?.pointerId === event.pointerId) characterScrollDragRef.current = null;
+    };
+
     const selectedCharacter = characters.find(character => character.id === selectedCharacterId) || null;
     const selectedReference = selectedCharacter ? settings.characterReferences?.[selectedCharacter.id] : undefined;
+    const characterListOverflows = characterScrollMetrics.scrollHeight > characterScrollMetrics.clientHeight + 1;
+    const characterScrollThumbPercent = characterListOverflows
+        ? Math.max(14, characterScrollMetrics.clientHeight / characterScrollMetrics.scrollHeight * 100)
+        : 100;
+    const characterScrollTopPercent = characterListOverflows
+        ? (characterScrollMetrics.scrollTop / Math.max(1, characterScrollMetrics.scrollHeight - characterScrollMetrics.clientHeight))
+            * (100 - characterScrollThumbPercent)
+        : 0;
 
     return (
         <div className="flex flex-col gap-6 pb-8">
@@ -934,44 +999,67 @@ export function ImageGenerationSettings() {
                         <span className="leading-[1.5]">NovelAI 会使用角色专属特征提示词，但暂不读取参考图；切回 OpenAI 兼容引擎后参考图仍会保留。</span>
                     </Alert>
                 )}
-                <div className="menu-group max-h-[292px] overflow-y-auto">
-                    {characters.length === 0 ? (
-                        <div className="ui-empty py-8">
-                            <Camera size={22} />
-                            <span className="menu-desc">暂无角色。</span>
-                        </div>
-                    ) : characters.map(character => {
-                        const preview = referencePreviews[character.id];
-                        const ref = settings.characterReferences?.[character.id];
-                        return (
-                            <button
-                                key={character.id}
-                                type="button"
-                                className={`menu-item w-full text-left ${selectedCharacterId === character.id ? "bg-[var(--c-input)]" : ""}`}
-                                onClick={() => setSelectedCharacterId(character.id)}
-                            >
-                                <span className="h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-[var(--c-input)]">
-                                    {preview ? (
-                                        <img src={preview} alt="" className="h-full w-full object-cover" />
-                                    ) : character.avatar ? (
-                                        <img src={character.avatar} alt="" className="h-full w-full object-cover" />
-                                    ) : (
-                                        <span className="flex h-full w-full items-center justify-center ts-13 font-semibold text-[var(--c-icon)]">
-                                            {character.name.slice(0, 1)}
-                                        </span>
-                                    )}
-                                </span>
-                                <span className="min-w-0 flex flex-1 flex-col">
-                                    <span className="menu-label truncate">{character.name}</span>
-                                    <span className="menu-desc truncate">
-                                        {preview ? (ref?.enabled === false ? "参考图已关闭" : "参考图已启用") : "未上传参考图"}
-                                        {ref?.featurePrompt?.trim() ? " · 已设人物特征" : ""}
+                <div className="relative">
+                    <div
+                        ref={characterListRef}
+                        className="menu-group max-h-[292px] overflow-y-auto overscroll-contain pr-3"
+                        onScroll={syncCharacterScrollMetrics}
+                    >
+                        {characters.length === 0 ? (
+                            <div className="ui-empty py-8">
+                                <Camera size={22} />
+                                <span className="menu-desc">暂无角色。</span>
+                            </div>
+                        ) : characters.map(character => {
+                            const preview = referencePreviews[character.id];
+                            const ref = settings.characterReferences?.[character.id];
+                            return (
+                                <button
+                                    key={character.id}
+                                    type="button"
+                                    className={`menu-item w-full text-left ${selectedCharacterId === character.id ? "bg-[var(--c-input)]" : ""}`}
+                                    onClick={() => setSelectedCharacterId(character.id)}
+                                >
+                                    <span className="h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-[var(--c-input)]">
+                                        {preview ? (
+                                            <img src={preview} alt="" className="h-full w-full object-cover" />
+                                        ) : character.avatar ? (
+                                            <img src={character.avatar} alt="" className="h-full w-full object-cover" />
+                                        ) : (
+                                            <span className="flex h-full w-full items-center justify-center ts-13 font-semibold text-[var(--c-icon)]">
+                                                {character.name.slice(0, 1)}
+                                            </span>
+                                        )}
                                     </span>
-                                </span>
-                                <ChevronDown size={16} className={selectedCharacterId === character.id ? "-rotate-90 opacity-70" : "opacity-40"} />
-                            </button>
-                        );
-                    })}
+                                    <span className="min-w-0 flex flex-1 flex-col">
+                                        <span className="menu-label truncate">{character.name}</span>
+                                        <span className="menu-desc truncate">
+                                            {preview ? (ref?.enabled === false ? "参考图已关闭" : "参考图已启用") : "未上传参考图"}
+                                            {ref?.featurePrompt?.trim() ? " · 已设人物特征" : ""}
+                                        </span>
+                                    </span>
+                                    <ChevronDown size={16} className={selectedCharacterId === character.id ? "-rotate-90 opacity-70" : "opacity-40"} />
+                                </button>
+                            );
+                        })}
+                    </div>
+                    {characterListOverflows && (
+                        <div className="pointer-events-auto absolute bottom-3 right-1 top-3 z-10 w-1.5 rounded-full bg-black/10">
+                            <button
+                                type="button"
+                                aria-label="拖动角色列表滚动条"
+                                className="absolute left-0 w-1.5 touch-none rounded-full bg-black/45 shadow-sm"
+                                style={{
+                                    height: `${characterScrollThumbPercent}%`,
+                                    top: `${characterScrollTopPercent}%`,
+                                }}
+                                onPointerDown={handleCharacterScrollPointerDown}
+                                onPointerMove={handleCharacterScrollPointerMove}
+                                onPointerUp={handleCharacterScrollPointerUp}
+                                onPointerCancel={handleCharacterScrollPointerUp}
+                            />
+                        </div>
+                    )}
                 </div>
 
                 {selectedCharacter && (
