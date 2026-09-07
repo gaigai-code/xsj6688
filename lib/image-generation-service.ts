@@ -95,8 +95,11 @@ function loadDataUrlImage(dataUrl: string): Promise<HTMLImageElement> {
   });
 }
 
-async function normalizeReferenceImageForEdit(dataUrl: string): Promise<string> {
-  if (dataUrlMimeType(dataUrl) === "image/png") return dataUrl;
+async function normalizeReferenceImageForEdit(
+  dataUrl: string,
+  crop?: { x: number; y: number; size: number },
+): Promise<string> {
+  if (!crop && dataUrlMimeType(dataUrl) === "image/png") return dataUrl;
   if (typeof document === "undefined") return dataUrl;
 
   try {
@@ -106,15 +109,31 @@ async function normalizeReferenceImageForEdit(dataUrl: string): Promise<string> 
     if (!width || !height) return dataUrl;
 
     const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
+    const normalizedSize = crop ? Math.max(0.18, Math.min(1, crop.size)) : 1;
+    const sourceSize = Math.max(1, Math.round(Math.min(width, height) * normalizedSize));
+    const sourceX = crop
+      ? Math.round(Math.max(0, Math.min(width - sourceSize, crop.x * width)))
+      : 0;
+    const sourceY = crop
+      ? Math.round(Math.max(0, Math.min(height - sourceSize, crop.y * height)))
+      : 0;
+    canvas.width = crop ? sourceSize : width;
+    canvas.height = crop ? sourceSize : height;
     const context = canvas.getContext("2d");
     if (!context) return dataUrl;
-    context.drawImage(image, 0, 0, width, height);
+    if (crop) {
+      context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, sourceSize, sourceSize);
+    } else {
+      context.drawImage(image, 0, 0, width, height);
+    }
     return canvas.toDataURL("image/png");
   } catch {
     return dataUrl;
   }
+}
+
+function isLikelySelfieDescription(description: string): boolean {
+  return /(自拍|自拍照|对镜|镜子前|手机前置|前置镜头|举着手机|selfie|mirror\s*selfie|front[- ]facing)/i.test(description);
 }
 
 function imageExtension(mimeType: string): string {
@@ -761,6 +780,10 @@ export async function generateImageFromConfiguredApi(params: {
 
     const positiveParts: string[] = [];
     if (activePreset.positivePrompt?.trim()) positiveParts.push(activePreset.positivePrompt.trim());
+    const characterFeaturePrompt = params.characterId
+      ? settings.characterReferences?.[params.characterId]?.featurePrompt?.trim()
+      : "";
+    if (characterFeaturePrompt) positiveParts.push(characterFeaturePrompt);
     if (description) positiveParts.push(description);
     const fullPrompt = positiveParts.join(", ");
 
@@ -791,18 +814,28 @@ export async function generateImageFromConfiguredApi(params: {
   const openaiSettings = openaiPreset ? { ...settings, ...openaiPreset } : settings;
   if (!openaiSettings.apiKey.trim() || !openaiSettings.baseUrl.trim() || !openaiSettings.model.trim()) return null;
 
-  const reference = params.characterId ? settings.characterReferences[params.characterId] : undefined;
+  const reference = params.characterId ? settings.characterReferences?.[params.characterId] : undefined;
+  const shouldUseReference = Boolean(
+    params.useReferenceImage
+    && reference?.assetId
+    && reference.enabled !== false
+    && (reference.selfieOnly === false || isLikelySelfieDescription(description)),
+  );
   const rawReferenceImageDataUrl = params.referenceImageDataUrl
     ? params.referenceImageDataUrl
-    : (params.useReferenceImage && reference?.assetId
+    : (shouldUseReference && reference?.assetId
       ? await getChatImageFromIndexedDB(reference.assetId)
       : null);
   throwIfAborted(params.signal);
   const referenceImageDataUrl = rawReferenceImageDataUrl
-    ? await normalizeReferenceImageForEdit(rawReferenceImageDataUrl)
+    ? await normalizeReferenceImageForEdit(rawReferenceImageDataUrl, reference?.faceCrop)
     : null;
   throwIfAborted(params.signal);
-  const prompt = mergePrompt(description, openaiSettings.extraPrompt);
+  const characterPrompt = reference?.featurePrompt?.trim() || "";
+  const prompt = mergePrompt(
+    characterPrompt ? `${description}\n\n【角色固定外观】${characterPrompt}` : description,
+    openaiSettings.extraPrompt,
+  );
 
   const data = openaiSettings.requestMode === "direct"
     ? await generateImageDirect({ settings: openaiSettings, prompt, referenceImageDataUrl, signal: params.signal })

@@ -14,6 +14,7 @@ import type {
     CharacterBinding,
     Prompt,
     PromptOrderEntry,
+    GenerationParameterKey,
 } from "./settings-types";
 import type { UserIdentity } from "@/components/settings/user-identity";
 import { createBuiltinPreset, BUILTIN_PRESET_VERSION } from "./builtin-preset";
@@ -746,9 +747,29 @@ function normalizeOpenAiPreset(preset: Partial<OpenAiImagePreset> | null | undef
 }
 
 function normalizeImageGenerationSettings(settings: Partial<ImageGenerationSettings> | null | undefined): ImageGenerationSettings {
-    const refs = settings?.characterReferences && typeof settings.characterReferences === "object"
+    const rawRefs = settings?.characterReferences && typeof settings.characterReferences === "object"
         ? settings.characterReferences
         : {};
+    const refs: ImageGenerationSettings["characterReferences"] = {};
+    for (const [characterId, rawRef] of Object.entries(rawRefs)) {
+        if (!rawRef || typeof rawRef !== "object") continue;
+        const crop = rawRef.faceCrop;
+        const size = crop && typeof crop.size === "number" ? Math.max(0.18, Math.min(1, crop.size)) : 0.46;
+        refs[characterId] = {
+            assetId: typeof rawRef.assetId === "string" && rawRef.assetId ? rawRef.assetId : undefined,
+            updatedAt: typeof rawRef.updatedAt === "number" ? rawRef.updatedAt : Date.now(),
+            featurePrompt: typeof rawRef.featurePrompt === "string" ? rawRef.featurePrompt : "",
+            enabled: rawRef.enabled !== false,
+            selfieOnly: rawRef.selfieOnly !== false,
+            faceCrop: crop && typeof crop.x === "number" && typeof crop.y === "number"
+                ? {
+                    x: Math.max(0, Math.min(1, crop.x)),
+                    y: Math.max(0, Math.min(1, crop.y)),
+                    size,
+                }
+                : { x: 0.27, y: 0.12, size: 0.46 },
+        };
+    }
     const provider = settings?.provider === "novelai" ? "novelai" : "openai";
     const requestMode = settings?.requestMode === "server" || settings?.requestMode === "direct"
         ? settings.requestMode

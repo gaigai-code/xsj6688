@@ -45,6 +45,7 @@ import { CharacterComputerPage } from "./character-computer-page";
 import { resolveUserIdentity, loadBindingConfig, loadPresets, resolveBinding } from "@/lib/settings-storage";
 import { clearStatusRegionConfig, getStatusRegionConfig, hasOwnStatusRegionConfig, saveStatusRegionConfig, presetSupportsStatusRegion, isCustomStatusRegionActive, STATUS_REGION_SCHEME_TARGET, STATUS_REGION_UPDATED_EVENT, type StatusRegionConfig } from "@/lib/chat-status-region";
 import { downloadFile } from "@/lib/download-utils";
+import { createChatRecordExport, importChatRecordFile } from "@/lib/chat-record-transfer";
 import { getSchemes, saveScheme, deleteScheme, type CSSScheme } from "@/lib/css-scheme-storage";
 import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
 import { KeyboardAutoSendDebounceItem } from "@/components/chat/keyboard-auto-send-debounce-item";
@@ -559,6 +560,40 @@ export function ChatSettingsPanel({
         ? (groupName || session.groupName || "群聊")
         : (alias || character?.name || `User_${session.contactId.slice(-4)}`);
 
+    const exportChatRecords = async () => {
+        if (chatTransferBusy) return;
+        setChatTransferBusy(true);
+        setChatTransferStatus(null);
+        try {
+            const blob = await createChatRecordExport(session, characterName);
+            const safeName = characterName.replace(/[\\/:*?"<>|]+/g, "-").slice(0, 40) || "聊天";
+            await downloadFile(blob, `Float-${safeName}-聊天记录.json`);
+            setChatTransferStatus({ success: true, message: `已导出 ${loadChatMessages(session.id).length} 条消息。` });
+        } catch (error) {
+            setChatTransferStatus({ success: false, message: error instanceof Error ? error.message : "导出失败" });
+        } finally {
+            setChatTransferBusy(false);
+        }
+    };
+
+    const importChatRecords = async (file: File) => {
+        if (chatTransferBusy) return;
+        setChatTransferBusy(true);
+        setChatTransferStatus(null);
+        try {
+            const result = await importChatRecordFile(file, session);
+            setChatTransferStatus({
+                success: true,
+                message: `已导入 ${result.inserted} 条消息，恢复 ${result.mediaRestored} 个媒体文件${result.skipped ? `，跳过 ${result.skipped} 条重复或无效记录` : ""}。`,
+            });
+        } catch (error) {
+            setChatTransferStatus({ success: false, message: error instanceof Error ? error.message : "导入失败" });
+        } finally {
+            setChatTransferBusy(false);
+            if (chatRecordImportRef.current) chatRecordImportRef.current.value = "";
+        }
+    };
+
     // Group members
     const groupChars = session.isGroup
         ? (session.participantIds || []).map(id => characters.find(c => c.id === id)).filter(Boolean)
@@ -957,6 +992,38 @@ export function ChatSettingsPanel({
                             </div>
                             <div className="menu-right"><ChevronRight size={16} /></div>
                         </button>
+                    )}
+                </div>
+
+                <div className="menu-group">
+                    <button className="menu-item" onClick={exportChatRecords} disabled={chatTransferBusy}>
+                        <ChatInfoIcon icon={Download} color={BINDING_ACCENTS.preset} />
+                        <div className="menu-label-group">
+                            <span className="menu-label">导出聊天记录</span>
+                            <span className="menu-desc">导出当前会话消息及本地媒体</span>
+                        </div>
+                    </button>
+                    <button className="menu-item" onClick={() => chatRecordImportRef.current?.click()} disabled={chatTransferBusy}>
+                        <ChatInfoIcon icon={Upload} color={BINDING_ACCENTS.worldBook} />
+                        <div className="menu-label-group">
+                            <span className="menu-label">导入聊天记录</span>
+                            <span className="menu-desc">合并到当前会话，自动跳过重复消息</span>
+                        </div>
+                    </button>
+                    <input
+                        ref={chatRecordImportRef}
+                        type="file"
+                        accept="application/json,.json"
+                        className="hidden"
+                        onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            if (file) void importChatRecords(file);
+                        }}
+                    />
+                    {chatTransferStatus && (
+                        <div className={`px-4 py-3 text-sm ${chatTransferStatus.success ? "text-emerald-700" : "text-red-600"}`}>
+                            {chatTransferStatus.message}
+                        </div>
                     )}
                 </div>
 

@@ -244,8 +244,20 @@ export type ImageGenerationSettings = {
     // NovelAI 模式配置
     novelai?: NovelAiSettings;
     characterReferences: Record<string, {
-        assetId: string;
+        assetId?: string;
         updatedAt: number;
+        /** 角色固定外观特征，会追加到该角色的每次生图提示词。 */
+        featurePrompt?: string;
+        /** 暂时关闭参考图但保留图片与选脸区域，默认开启。 */
+        enabled?: boolean;
+        /** 开启时，仅自拍语义的图片使用参考图，默认开启。 */
+        selfieOnly?: boolean;
+        /** 归一化的正方形脸部选区。 */
+        faceCrop?: {
+            x: number;
+            y: number;
+            size: number;
+        };
     }>;
     imageHosting: ImageHostingSettings;
 };
