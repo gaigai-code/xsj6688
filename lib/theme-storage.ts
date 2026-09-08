@@ -2,6 +2,7 @@ import { getNow } from "@/lib/virtual-time";
 import { DEFAULT_THEME_PROFILE, normalizeThemeProfile, type ThemeAssetType, type ThemeProfile } from "@/lib/theme-types";
 import { kvGet, kvSet, kvRemove, registerKvMigration } from "./kv-db";
 import { openIndexedDbAtLeast } from "./idb-open";
+import { themePresetUsesAsset } from "./theme-preset-storage";
 
 export const THEME_PROFILE_STORAGE_KEY = "ai_phone_theme_profile_v1";
 registerKvMigration(THEME_PROFILE_STORAGE_KEY);
@@ -280,6 +281,11 @@ export async function writeThemeAssetRecords(records: ThemeAssetRecord[]): Promi
 }
 
 export async function deleteThemeAsset(id: string): Promise<void> {
+  // 本地主题预设只保存资源引用；只要仍有预设使用该资源，就不能物理删除，
+  // 否则用户切回预设时会出现壁纸、图标或字体丢失。
+  if (themePresetUsesAsset(id)) {
+    return;
+  }
   const database = await openThemeDb();
   if (!database) {
     return;

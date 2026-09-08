@@ -5,13 +5,17 @@ import { createPortal } from "react-dom";
 import {
   AlertCircle,
   AppWindow,
+  Bookmark,
+  CheckCircle2,
   Code2,
   Download,
   LayoutGrid,
   PaintBucket,
   Plus,
   RotateCcw,
+  Save,
   Smartphone,
+  Trash2,
   Type,
   Upload,
   Wallpaper,
@@ -60,6 +64,13 @@ import {
   installThemePackageFile,
   resetThemePackageState,
 } from "@/lib/theme-package";
+import {
+  deleteThemePreset,
+  readThemePresets,
+  saveThemePreset,
+  THEME_PRESET_LIMIT,
+  type ThemePreset,
+} from "@/lib/theme-preset-storage";
 
 type ThemeSection =
   | "menu"
@@ -71,7 +82,7 @@ type ThemeSection =
   | "text"
   | "css";
 
-type ThemeMenuItemSection = Exclude<ThemeSection, "menu"> | "transfer" | "reset";
+type ThemeMenuItemSection = Exclude<ThemeSection, "menu"> | "presets" | "transfer" | "reset";
 type WallpaperSliderField = "wallpaperOpacity" | "wallpaperBlur" | "wallpaperScale" | "wallpaperX" | "wallpaperY";
 
 type PhoneThemeAppProps = {
@@ -133,6 +144,10 @@ function IconTransfer() {
   return <Download size={22} strokeWidth={1.75} />;
 }
 
+function IconPresets() {
+  return <Bookmark size={22} strokeWidth={1.75} />;
+}
+
 function IconReset() {
   return <RotateCcw size={22} strokeWidth={1.75} />;
 }
@@ -154,6 +169,7 @@ const MENU_ITEMS: Array<{
   { section: "case", icon: IconCase, label: "状态栏", color: BINDING_ACCENTS.memory, glass: "status-bar" },
   { section: "text", icon: IconText, label: "文字", color: BINDING_ACCENTS.identity, glow: `color-mix(in srgb, ${BINDING_ACCENTS.identity} 35%, transparent)`, glass: "text" },
   { section: "css", icon: IconCode, label: "CSS 变量", desc: "自定义全局样式变量", color: BINDING_ACCENTS.embedding, glow: `color-mix(in srgb, ${BINDING_ACCENTS.embedding} 35%, transparent)`, glass: "css" },
+  { section: "presets", icon: IconPresets, label: "主题预设", desc: "保存、切换与管理", color: BINDING_ACCENTS.preset, glow: `color-mix(in srgb, ${BINDING_ACCENTS.preset} 35%, transparent)`, glass: "theme-transfer" },
   { section: "transfer", icon: IconTransfer, label: "主题导入 / 导出", desc: "备份与迁移", color: BINDING_ACCENTS.api, glow: `color-mix(in srgb, ${BINDING_ACCENTS.api} 35%, transparent)`, glass: "theme-transfer" },
   { section: "reset", icon: IconReset, label: "恢复默认", desc: "重置外观", color: BINDING_ACCENTS.regex, glow: `color-mix(in srgb, ${BINDING_ACCENTS.regex} 30%, transparent)`, glass: "theme-reset" },
 ];
@@ -209,10 +225,73 @@ export function PhoneThemeApp({
   const [showTextAdjust, setShowTextAdjust] = useState(false);
   const [showThemeTransfer, setShowThemeTransfer] = useState(false);
   const [themeTransferBusy, setThemeTransferBusy] = useState(false);
+  const [showThemePresets, setShowThemePresets] = useState(false);
+  const [themePresets, setThemePresets] = useState<ThemePreset[]>([]);
+  const [presetName, setPresetName] = useState("");
+  const [presetBusyId, setPresetBusyId] = useState<string | null>(null);
+  const [presetPendingDelete, setPresetPendingDelete] = useState<ThemePreset | null>(null);
   const [confirmThemeReset, setConfirmThemeReset] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
   const statusBarTop = Number(draft.cssOverrides["--status-bar-top"]?.replace("px", "") || "12");
   const islandHidden = draft.cssOverrides["--status-island-visibility"] === "hidden";
+
+  const openThemePresets = useCallback(() => {
+    setThemePresets(readThemePresets());
+    setPresetName(draft.name === "默认主题" ? "" : draft.name);
+    setShowThemePresets(true);
+  }, [draft.name]);
+
+  const handleSaveThemePreset = useCallback(() => {
+    try {
+      const saved = saveThemePreset(presetName, {
+        themeProfile: draft,
+        iconLayout: pageIcons,
+        widgets,
+      });
+      setThemePresets(readThemePresets());
+      setPresetName(saved.name);
+      onNotice(`已保存主题预设「${saved.name}」`);
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "主题预设保存失败");
+    }
+  }, [draft, onNotice, pageIcons, presetName, widgets]);
+
+  const handleApplyThemePreset = useCallback(async (preset: ThemePreset) => {
+    setPresetBusyId(preset.id);
+    try {
+      const nextThemeProfile = normalizeThemeProfile({
+        ...preset.themeProfile,
+        // 壁纸库是用户的公共素材库，不应因为切换预设而丢掉其他已上传壁纸。
+        wallpaperLibrary: Array.from(new Set([
+          ...draft.wallpaperLibrary,
+          ...preset.themeProfile.wallpaperLibrary,
+        ])),
+      });
+      onDesktopThemeChange({
+        widgets: preset.widgets,
+        iconLayout: preset.iconLayout,
+        dock: preset.dock,
+        folders: preset.folders,
+      });
+      await onApply(nextThemeProfile);
+      onDraftChange(nextThemeProfile);
+      setShowThemePresets(false);
+      onNotice(`已切换到主题预设「${preset.name}」`);
+    } catch (error) {
+      console.error(error);
+      onNotice(error instanceof Error ? error.message : "主题预设应用失败");
+    } finally {
+      setPresetBusyId(null);
+    }
+  }, [draft.wallpaperLibrary, onApply, onDesktopThemeChange, onDraftChange, onNotice]);
+
+  const handleDeleteThemePreset = useCallback(() => {
+    if (!presetPendingDelete) return;
+    deleteThemePreset(presetPendingDelete.id);
+    setThemePresets(readThemePresets());
+    onNotice(`已删除主题预设「${presetPendingDelete.name}」，当前外观不受影响`);
+    setPresetPendingDelete(null);
+  }, [onNotice, presetPendingDelete]);
 
   const handleExportTheme = useCallback(async () => {
     setThemeTransferBusy(true);
@@ -298,7 +377,7 @@ export function PhoneThemeApp({
                     className="app-card card-card"
                     type="button"
                     onClick={() => {
-                      if (item.section !== "transfer" && item.section !== "reset") {
+                      if (item.section !== "transfer" && item.section !== "reset" && item.section !== "presets") {
                         setSection(item.section);
                       }
                     }}
@@ -384,6 +463,30 @@ export function PhoneThemeApp({
 
             {/* Section 3: 高级 — Featured card for CSS */}
             {(() => {
+              const presetItem = MENU_ITEMS.find(i => i.section === "presets")!;
+              return (
+                <div>
+                  <h3 className="appearance-menu-section-title">Theme Presets</h3>
+                  <button
+                    className="app-card card-featured mt-2.5"
+                    type="button"
+                    onClick={openThemePresets}
+                  >
+                    <span className="card-icon" style={menuIconStyle(presetItem.color)}>
+                      <Bookmark size={21} strokeWidth={1.75} />
+                    </span>
+                    <div className="card-featured-body">
+                      <div className="card-featured-label">{presetItem.label}</div>
+                      <div className="card-featured-desc">{presetItem.desc}</div>
+                    </div>
+                    <span className="card-featured-chevron"><IconChevronRight /></span>
+                  </button>
+                </div>
+              );
+            })()}
+
+            {/* Section 4: 高级 — Featured card for CSS */}
+            {(() => {
               const cssItem = MENU_ITEMS.find(i => i.section === "css")!;
               return (
                 <div>
@@ -406,7 +509,7 @@ export function PhoneThemeApp({
               );
             })()}
 
-            {/* Section 4: 系统 — 2-column card grid */}
+            {/* Section 5: 系统 — 2-column card grid */}
             <div>
               <h3 className="appearance-menu-section-title">System</h3>
               <div className="card-grid mt-2.5">
@@ -512,6 +615,102 @@ export function PhoneThemeApp({
           </div>
         </ContentDialog>,
         document.querySelector(".phone-shell") ?? document.body
+      )}
+      {showThemePresets && createPortal(
+        <ContentDialog
+          title="主题预设"
+          confirmLabel={undefined}
+          cancelLabel="关闭"
+          onConfirm={() => setShowThemePresets(false)}
+          onCancel={() => {
+            if (!presetBusyId) setShowThemePresets(false);
+          }}
+        >
+          <div className="flex flex-col gap-4">
+            <div className="flex gap-2">
+              <input
+                className="ui-input min-w-0 flex-1"
+                value={presetName}
+                maxLength={24}
+                placeholder="输入预设名称"
+                onChange={(event) => setPresetName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") handleSaveThemePreset();
+                }}
+              />
+              <button
+                type="button"
+                className="ui-btn ui-btn-primary shrink-0"
+                onClick={handleSaveThemePreset}
+              >
+                <Save size={16} />
+                保存
+              </button>
+            </div>
+            <p className="ts-11 leading-relaxed text-[var(--c-icon)]">
+              保存当前主题色、壁纸、图标、桌面组件、文字与 CSS；同名保存会更新原预设。最多 {THEME_PRESET_LIMIT} 个。
+            </p>
+            <div className="flex max-h-[46vh] flex-col gap-2 overflow-y-auto pr-1">
+              {themePresets.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-[var(--c-card-border)] px-4 py-8 text-center ts-13 text-[var(--c-icon)]">
+                  还没有保存主题预设
+                </div>
+              ) : themePresets.map((preset) => (
+                <div
+                  key={preset.id}
+                  className="flex items-center gap-3 rounded-2xl border border-[var(--c-card-border)] bg-[var(--c-card)] px-3 py-3"
+                >
+                  <span
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+                    style={{ ...menuIconStyle(BINDING_ACCENTS.preset), color: BINDING_ACCENTS.preset, background: `color-mix(in srgb, ${BINDING_ACCENTS.preset} 12%, transparent)` }}
+                  >
+                    <Bookmark size={18} strokeWidth={1.75} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate ts-14 font-semibold text-[var(--c-text-title)]">{preset.name}</div>
+                    <div className="mt-0.5 ts-10 text-[var(--c-icon)]">
+                      {new Date(preset.updatedAt).toLocaleString(undefined, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="inline-flex h-9 min-w-[56px] shrink-0 items-center justify-center gap-1 rounded-xl bg-[var(--c-icon-active)] px-2 ts-11 font-semibold text-white transition active:scale-95 disabled:opacity-40"
+                    disabled={Boolean(presetBusyId)}
+                    onClick={() => void handleApplyThemePreset(preset)}
+                  >
+                    <CheckCircle2 size={15} />
+                    {presetBusyId === preset.id ? "切换中" : "使用"}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`删除${preset.name}`}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--c-danger)] transition active:scale-90 disabled:opacity-40"
+                    disabled={Boolean(presetBusyId)}
+                    onClick={() => setPresetPendingDelete(preset)}
+                  >
+                    <Trash2 size={17} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <p className="ts-11 leading-relaxed text-[var(--c-icon)]">
+              删除预设不会删除当前正在使用的外观，也不会删除壁纸库中的图片。
+            </p>
+          </div>
+        </ContentDialog>,
+        document.querySelector(".phone-shell") ?? document.body
+      )}
+      {presetPendingDelete && (
+        <ConfirmDialog
+          title="删除主题预设？"
+          message={`将删除「${presetPendingDelete.name}」。当前正在使用的外观不会改变。`}
+          icon={Trash2}
+          variant="danger"
+          confirmLabel="删除"
+          cancelLabel="取消"
+          onConfirm={handleDeleteThemePreset}
+          onCancel={() => setPresetPendingDelete(null)}
+        />
       )}
       {confirmThemeReset && (
         <ConfirmDialog
