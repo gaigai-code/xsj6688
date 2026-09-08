@@ -1,5 +1,6 @@
 import type { ImageGenerationSettings, NovelAiPreset } from "./settings-types";
-import { loadImageGenerationSettings, DEFAULT_NOVELAI_PRESET } from "./settings-storage";
+import { loadBindingConfig, loadImageGenerationSettings, resolveBinding, DEFAULT_NOVELAI_PRESET } from "./settings-storage";
+import { applyImageGenerationBinding } from "./image-generation-binding";
 import JSZip from "jszip";
 import { getChatImageFromIndexedDB } from "./chat-asset-storage";
 import { storeMediaBlob } from "./media-cache-storage";
@@ -727,13 +728,22 @@ export async function fetchNovelAiModels(apiKey: string): Promise<string[]> {
 export async function generateImageFromConfiguredApi(params: {
   description: string;
   characterId?: string;
+  /** 内容所属 APP；用于按“角色 > APP > 全局”解析生图方案。 */
+  appId?: string;
   useReferenceImage?: boolean;
   /** 直接指定参考图 dataURL（上传图或拼接图），优先级高于 characterId 参考图查找 */
   referenceImageDataUrl?: string;
   settings?: ImageGenerationSettings;
   signal?: AbortSignal;
 }): Promise<ImageGenerationResult | null> {
-  const settings = params.settings ?? loadImageGenerationSettings();
+  const storedSettings = params.settings ?? loadImageGenerationSettings();
+  // 显式传入 settings 的配置测试/工具调用保持原样；正常业务调用才读取绑定。
+  const settings = params.settings
+    ? storedSettings
+    : applyImageGenerationBinding(
+        storedSettings,
+        resolveBinding(loadBindingConfig(), params.characterId, params.appId).imageConfigId,
+      );
   if (!settings.enabled) return null;
 
   const description = params.description.trim();

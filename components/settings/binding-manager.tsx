@@ -9,6 +9,7 @@ import {
     Check,
     ChevronRight,
     Code2,
+    Image as ImageIcon,
     Languages,
     Layers,
     Mic,
@@ -38,6 +39,7 @@ import type {
     CharacterBinding,
     ContentAppId,
     ApiConfig,
+    ImageGenerationSettings,
     VoiceApiConfig,
     PresetConfig,
     WorldBookConfig,
@@ -51,6 +53,7 @@ import {
     getCharacterBinding,
     setCharacterBinding,
     loadApiConfigs,
+    loadImageGenerationSettings,
     loadVoiceConfigs,
     loadPresets,
     loadWorldBooks,
@@ -58,19 +61,22 @@ import {
     loadUserIdentities,
     ensureSettingsStorageHydrated,
 } from "@/lib/settings-storage";
+import { getActiveImageGenerationBindingId, getImageGenerationBindingOptions } from "@/lib/image-generation-binding";
 import { hydrateKvDb } from "@/lib/kv-db";
 import type { UserIdentity } from "@/components/settings/user-identity";
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 
 type Level = "global" | "character" | "app";
-type SingleBindingField = "apiConfigId" | "voiceConfigId" | "presetId" | "userIdentityId";
+type AppBindingScope = "global" | "character";
+type SingleBindingField = "apiConfigId" | "imageConfigId" | "voiceConfigId" | "presetId" | "userIdentityId";
 type MultiBindingField = "worldBookIds" | "regexIds";
 type BindingField = SingleBindingField | MultiBindingField;
 type AuxBindingField = "memorySummaryApiConfigId" | "embeddingApiConfigId" | "mascotApiConfigId" | "reasoningTranslateApiConfigId" | "qaApiConfigId";
 
 const BINDING_FIELD_VISUALS: Record<BindingField, { icon: LucideIcon; color: string }> = {
     apiConfigId: { icon: Code2, color: BINDING_ACCENTS.api },
+    imageConfigId: { icon: ImageIcon, color: BINDING_ACCENTS.embedding },
     voiceConfigId: { icon: Mic, color: BINDING_ACCENTS.voice },
     presetId: { icon: Layers, color: BINDING_ACCENTS.preset },
     worldBookIds: { icon: BookOpen, color: BINDING_ACCENTS.worldBook },
@@ -109,6 +115,7 @@ export function BindingManager() {
     const [config, setConfig] = useState<BindingConfig>({ globalDefaults: {}, characterBindings: [] });
     const [characters, setCharacters] = useState<Character[]>([]);
     const [apiConfigs, setApiConfigs] = useState<ApiConfig[]>([]);
+    const [imageSettings, setImageSettings] = useState<ImageGenerationSettings | null>(null);
     const [voiceConfigs, setVoiceConfigs] = useState<VoiceApiConfig[]>([]);
     const [presets, setPresets] = useState<PresetConfig[]>([]);
     const [worldBooks, setWorldBooks] = useState<WorldBookConfig[]>([]);
@@ -117,6 +124,7 @@ export function BindingManager() {
     const [customApps, setCustomApps] = useState<InstalledCustomApp[]>([]);
 
     const [level, setLevel] = useState<Level>("global");
+    const [appBindingScope, setAppBindingScope] = useState<AppBindingScope>("global");
     const [selectedCharId, setSelectedCharId] = useState<string>("");
     const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
     const [activeGlobalSheetField, setActiveGlobalSheetField] = useState<BindingField | null>(null);
@@ -127,6 +135,7 @@ export function BindingManager() {
 
     const reloadData = () => {
         setApiConfigs(loadApiConfigs());
+        setImageSettings(loadImageGenerationSettings());
         setVoiceConfigs(loadVoiceConfigs());
         setPresets(loadPresets());
         setWorldBooks(loadWorldBooks());
@@ -171,6 +180,7 @@ export function BindingManager() {
         if (!isLoaded) return;
         const validSets = {
             api: new Set(apiConfigs.map(c => c.id)),
+            image: new Set(imageSettings ? getImageGenerationBindingOptions(imageSettings).map(option => option.id) : []),
             voice: new Set(voiceConfigs.map(c => c.id)),
             preset: new Set(presets.map(p => p.id)),
             identity: new Set(identities.map(i => i.id)),
@@ -181,6 +191,7 @@ export function BindingManager() {
             const s = { ...slot };
             let changed = false;
             if (s.apiConfigId && !validSets.api.has(s.apiConfigId)) { s.apiConfigId = undefined; changed = true; }
+            if (s.imageConfigId && !validSets.image.has(s.imageConfigId)) { s.imageConfigId = undefined; changed = true; }
             if (s.voiceConfigId && !validSets.voice.has(s.voiceConfigId)) { s.voiceConfigId = undefined; changed = true; }
             if (s.presetId && !validSets.preset.has(s.presetId)) { s.presetId = undefined; changed = true; }
             if (s.userIdentityId && !validSets.identity.has(s.userIdentityId)) { s.userIdentityId = undefined; changed = true; }
@@ -200,9 +211,10 @@ export function BindingManager() {
             let dirty = false;
             const [gd, gChanged] = cleanSlot(prev.globalDefaults);
             if (gChanged) dirty = true;
-            // 全局三项「所见即所得」：不允许未设置，缺省/悬空清理后落位为实际兜底值
-            // （API=第一个配置、预设=内置、身份=第一条），界面显示的就是实际生效的
+            // 全局基础项「所见即所得」：缺省/悬空清理后落位为实际兜底值。
             if (apiConfigs.length > 0 && !gd.apiConfigId) { gd.apiConfigId = apiConfigs[0].id; dirty = true; }
+            const activeImageBindingId = imageSettings ? getActiveImageGenerationBindingId(imageSettings) : undefined;
+            if (activeImageBindingId && !gd.imageConfigId) { gd.imageConfigId = activeImageBindingId; dirty = true; }
             if (presets.length > 0 && !gd.presetId) { gd.presetId = (presets.find(p => p.builtIn) ?? presets[0]).id; dirty = true; }
             if (identities.length > 0 && !gd.userIdentityId) { gd.userIdentityId = identities[0].id; dirty = true; }
             const newAppDefaults: Record<string, BindingSlot> = {};
@@ -247,7 +259,7 @@ export function BindingManager() {
             }
             return prev;
         });
-    }, [isLoaded, apiConfigs, voiceConfigs, presets, worldBooks, regexes, identities]);
+    }, [isLoaded, apiConfigs, imageSettings, voiceConfigs, presets, worldBooks, regexes, identities]);
 
     // Navigation management
     useEffect(() => {
@@ -262,15 +274,15 @@ export function BindingManager() {
                 setSelectedCharId("");
             });
         } else if (level === "app") {
-            const charName = characters.find(c => c.id === selectedCharId)?.name || "角色";
             const appLabel = selectedAppId ? getAppLabel(selectedAppId) : "";
-            setSubpageTitle(`${appLabel} · ${charName}`);
+            const charName = characters.find(c => c.id === selectedCharId)?.name || "角色";
+            setSubpageTitle(appBindingScope === "global" ? `${appLabel} · APP绑定` : `${appLabel} · ${charName}`);
             setOverrideBack(() => () => {
-                setLevel("character");
+                setLevel(appBindingScope === "global" ? "global" : "character");
                 setSelectedAppId(null);
             });
         }
-    }, [level, selectedCharId, selectedAppId, characters, customApps, setSubpageTitle, setOverrideBack]);
+    }, [level, appBindingScope, selectedCharId, selectedAppId, characters, customApps, setSubpageTitle, setOverrideBack]);
 
     const persist = (newConfig: BindingConfig) => {
         setConfig(newConfig);
@@ -291,6 +303,15 @@ export function BindingManager() {
 
     const updateAppSlot = (field: keyof BindingSlot, value: string | string[] | undefined) => {
         if (!selectedAppId) return;
+        if (appBindingScope === "global") {
+            const appDefaults = { ...(config.appDefaults ?? {}) };
+            appDefaults[selectedAppId] = {
+                ...(appDefaults[selectedAppId] ?? {}),
+                [field]: value || undefined,
+            };
+            persist({ ...config, appDefaults });
+            return;
+        }
         const binding = getCharacterBinding(config, selectedCharId);
         const appSlot = binding.appOverrides[selectedAppId] || {};
         const newAppSlot = { ...appSlot, [field]: value || undefined };
@@ -301,6 +322,12 @@ export function BindingManager() {
 
     const resetAppBinding = () => {
         if (!selectedAppId) return;
+        if (appBindingScope === "global") {
+            const appDefaults = { ...(config.appDefaults ?? {}) };
+            delete appDefaults[selectedAppId];
+            persist({ ...config, appDefaults });
+            return;
+        }
         const binding = getCharacterBinding(config, selectedCharId);
         const newOverrides = { ...binding.appOverrides };
         delete newOverrides[selectedAppId];
@@ -312,13 +339,18 @@ export function BindingManager() {
         if (level === "global") return config.globalDefaults;
         const binding = getCharacterBinding(config, selectedCharId);
         if (level === "character") return binding.defaults;
-        if (level === "app" && selectedAppId) return binding.appOverrides[selectedAppId] || {};
+        if (level === "app" && selectedAppId) {
+            return appBindingScope === "global"
+                ? config.appDefaults?.[selectedAppId] || {}
+                : binding.appOverrides[selectedAppId] || {};
+        }
         return {};
     };
 
     const mergeSlotInto = (target: BindingSlot, slot?: BindingSlot): BindingSlot => {
         if (!slot) return target;
         if (slot.apiConfigId) target.apiConfigId = slot.apiConfigId;
+        if (slot.imageConfigId) target.imageConfigId = slot.imageConfigId;
         if (slot.voiceConfigId) target.voiceConfigId = slot.voiceConfigId;
         if (slot.presetId) target.presetId = slot.presetId;
         if (slot.userIdentityId) target.userIdentityId = slot.userIdentityId;
@@ -330,24 +362,20 @@ export function BindingManager() {
     const getInheritedSlot = (): BindingSlot => {
         if (level === "global") return {};
         const inherited = mergeSlotInto({}, config.globalDefaults);
+        if (level === "app" && selectedAppId && appBindingScope === "global") return inherited;
         const binding = getCharacterBinding(config, selectedCharId);
         if (level === "character") return inherited;
-        mergeSlotInto(inherited, binding.defaults);
+        // APP 默认先于角色默认；角色绑定优先级更高。
         if (level === "app" && selectedAppId) {
             mergeSlotInto(inherited, config.appDefaults?.[selectedAppId]);
         }
+        mergeSlotInto(inherited, binding.defaults);
         return inherited;
-    };
-
-    const getAppSpecificSlot = (appId: string): BindingSlot => {
-        const binding = getCharacterBinding(config, selectedCharId);
-        const slot = mergeSlotInto({}, config.appDefaults?.[appId]);
-        return mergeSlotInto(slot, binding.appOverrides[appId]);
     };
 
     const getInheritLabel = (): string => {
         if (level === "character") return "继承全局";
-        if (level === "app") return "继承上级绑定";
+        if (level === "app") return appBindingScope === "global" ? "继承全局绑定" : "继承APP/全局绑定";
         return "";
     };
 
@@ -362,6 +390,7 @@ export function BindingManager() {
         if (!slot) return 0;
         let count = 0;
         if (slot.apiConfigId) count++;
+        if (slot.imageConfigId) count++;
         if (slot.voiceConfigId) count++;
         if (slot.presetId) count++;
         if (slot.userIdentityId) count++;
@@ -375,6 +404,7 @@ export function BindingManager() {
         if (!binding) return false;
         return Boolean(
             binding.defaults.apiConfigId ||
+            binding.defaults.imageConfigId ||
             binding.defaults.voiceConfigId ||
             binding.defaults.presetId ||
             binding.defaults.userIdentityId ||
@@ -422,7 +452,8 @@ export function BindingManager() {
 
     const getBindingFieldLabel = (field: BindingField): string => {
         switch (field) {
-            case "apiConfigId": return "API 配置";
+            case "apiConfigId": return "文本 API";
+            case "imageConfigId": return "生图 API";
             case "voiceConfigId": return "语音 API";
             case "presetId": return "预设";
             case "userIdentityId": return "用户身份";
@@ -433,12 +464,13 @@ export function BindingManager() {
 
     const getBindingFieldDescription = (field: BindingField): string => {
         switch (field) {
-            case "apiConfigId": return "全局文本生成接口";
-            case "voiceConfigId": return "全局语音合成接口";
-            case "presetId": return "全局提示词预设";
-            case "userIdentityId": return "全局用户身份";
-            case "worldBookIds": return "全局启用的世界书";
-            case "regexIds": return "全局启用的正则规则";
+            case "apiConfigId": return "文本生成 API 方案";
+            case "imageConfigId": return "图片生成 API 方案";
+            case "voiceConfigId": return "语音合成 API 方案";
+            case "presetId": return "提示词预设";
+            case "userIdentityId": return "用户身份";
+            case "worldBookIds": return "启用的世界书";
+            case "regexIds": return "启用的正则规则";
         }
     };
 
@@ -466,6 +498,8 @@ export function BindingManager() {
         switch (field) {
             case "apiConfigId":
                 return apiConfigs.map(c => ({ id: c.id, name: c.name || c.provider }));
+            case "imageConfigId":
+                return imageSettings ? getImageGenerationBindingOptions(imageSettings) : [];
             case "voiceConfigId":
                 return voiceConfigs.map(c => ({ id: c.id, name: c.name || c.provider }));
             case "presetId":
@@ -575,7 +609,7 @@ export function BindingManager() {
         onOpenField: (field: BindingField) => void,
         options?: { includeRegex?: boolean },
     ) => {
-        const primaryFields: BindingField[] = ["apiConfigId", "voiceConfigId"];
+        const primaryFields: BindingField[] = ["apiConfigId", "imageConfigId", "voiceConfigId"];
         const compactFields: BindingField[] = options?.includeRegex === false
             ? ["presetId", "worldBookIds"]
             : ["presetId", "worldBookIds", "regexIds"];
@@ -613,7 +647,7 @@ export function BindingManager() {
 
         return (
             <div className="binding-global-grid">
-                <div className="binding-global-primary-row">
+                <div className="binding-global-primary-row" data-count={primaryFields.length}>
                     {primaryFields.map(field => renderBindingCard(field, "large"))}
                 </div>
                 <div className="binding-global-compact-row" data-count={compactFields.length}>
@@ -632,10 +666,10 @@ export function BindingManager() {
         renderBindingSlotCards(currentSlot, inheritLabel, setActiveSlotSheetField)
     );
 
-    // 全局层不允许"未设置"的三项（API/预设/身份）：留空只会触发静默兜底，
+    // 全局层不允许"未设置"的四项（文本/生图/预设/身份）：留空只会触发静默兜底，
     // 直接把兜底值落进存储并去掉未设置选项，所见即所得
     const isRequiredGlobalField = (field: BindingField): boolean =>
-        field === "apiConfigId" || field === "presetId" || field === "userIdentityId";
+        field === "apiConfigId" || field === "imageConfigId" || field === "presetId" || field === "userIdentityId";
 
     const renderGlobalPickerSheet = () => {
         if (!activeGlobalSheetField) return null;
@@ -980,6 +1014,44 @@ export function BindingManager() {
                     </section>
 
                     <section className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-1">
+                            <p className="settings-menu-section-title">APP Bindings</p>
+                            <p className="binding-priority-note">调用优先级：角色绑定 ＞ APP绑定 ＞ 全局绑定</p>
+                        </div>
+                        <div className="binding-app-grid">
+                            {appOverrideEntries.map(app => {
+                                const overrideCount = countOverrides(config.appDefaults?.[app.id], app.id);
+                                return (
+                                    <button
+                                        key={app.id}
+                                        type="button"
+                                        onClick={() => {
+                                            setAppBindingScope("global");
+                                            setSelectedCharId("");
+                                            setSelectedAppId(app.id);
+                                            setActiveSlotSheetField(null);
+                                            setLevel("app");
+                                        }}
+                                        className="g-card binding-app-card"
+                                        style={bindingAccentStyle(app.color)}
+                                        aria-label={`${app.label}全局应用绑定`}
+                                    >
+                                        <span className="binding-app-icon">
+                                            {app.iconDataUrl ? (
+                                                <img src={app.iconDataUrl} alt="" className="binding-app-icon-image" />
+                                            ) : (
+                                                <IconGlyph id={app.iconId} className="binding-app-icon-glyph" />
+                                            )}
+                                        </span>
+                                        <span className="binding-app-label">{app.label}</span>
+                                        {overrideCount > 0 && <span className="binding-app-badge">{overrideCount}</span>}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </section>
+
+                    <section className="flex flex-col gap-3">
                         <p className="settings-menu-section-title">Auxiliary API</p>
                         <div className="flex flex-col gap-3">
                             {renderAuxSelect("memorySummaryApiConfigId", "记忆总结 API")}
@@ -1008,12 +1080,14 @@ export function BindingManager() {
                         <p className="settings-menu-section-title">App Bindings</p>
                         <div className="binding-app-grid">
                             {appOverrideEntries.map(app => {
-                                const appSlot = getAppSpecificSlot(app.id);
+                                const appSlot = getCharacterBinding(config, selectedCharId).appOverrides[app.id];
                                 const overrideCount = countOverrides(appSlot, app.id);
                                 return (
                                     <button
                                         key={app.id}
+                                        type="button"
                                         onClick={() => {
+                                            setAppBindingScope("character");
                                             setSelectedAppId(app.id);
                                             setActiveSlotSheetField(null);
                                             setLevel("app");
@@ -1049,7 +1123,10 @@ export function BindingManager() {
             {level === "app" && (
                 <>
                     <section className="flex flex-col gap-3">
-                        <p className="settings-menu-section-title">App Binding</p>
+                        <div className="flex flex-col gap-1">
+                            <p className="settings-menu-section-title">App Binding</p>
+                            <p className="binding-priority-note">调用优先级：角色绑定 ＞ APP绑定 ＞ 全局绑定</p>
+                        </div>
                         {renderBindingSlotCards(currentSlot, inheritLabel, setActiveSlotSheetField, {
                             includeRegex: canBindRegexInApp(selectedAppId),
                         })}
@@ -1059,7 +1136,7 @@ export function BindingManager() {
                         onClick={resetAppBinding}
                         className="ui-btn ui-btn-soft-danger flex justify-center"
                     >
-                        <RotateCcw size={16} /> 重置此应用绑定
+                        <RotateCcw size={16} /> {appBindingScope === "global" ? "重置此APP绑定" : "重置此角色的APP绑定"}
                     </button>
                 </>
             )}

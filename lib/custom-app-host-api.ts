@@ -277,14 +277,14 @@ function resolveCustomAppApiConfig(app: InstalledCustomApp, record: Record<strin
   const apiConfigs = loadApiConfigs();
   const explicitId = cleanText(record.apiConfigId ?? record.configId, 160);
   if (explicitId) return apiConfigs.find(config => config.id === explicitId) ?? null;
-  const characterId = cleanText(record.characterId, 160);
+  const characterId = cleanText(record.characterId, 160) || undefined;
   const bindings = loadBindingConfig();
+  const appSlot = resolveBinding(bindings, characterId, `custom_app:${app.id}`);
+  if (appSlot.apiConfigId) {
+    const found = apiConfigs.find(config => config.id === appSlot.apiConfigId);
+    if (found) return found;
+  }
   if (characterId) {
-    const appSlot = resolveBinding(bindings, characterId, `custom_app:${app.id}`);
-    if (appSlot.apiConfigId) {
-      const found = apiConfigs.find(config => config.id === appSlot.apiConfigId);
-      if (found) return found;
-    }
     const chatSlot = resolveBinding(bindings, characterId, "chat");
     if (chatSlot.apiConfigId) {
       const found = apiConfigs.find(config => config.id === chatSlot.apiConfigId);
@@ -302,14 +302,14 @@ function resolveCustomAppVoiceConfig(app: InstalledCustomApp, record: Record<str
   const configs = loadVoiceConfigs();
   const explicitId = cleanText(record.voiceConfigId ?? record.configId, 160);
   if (explicitId) return configs.find(config => config.id === explicitId) ?? null;
-  const characterId = cleanText(record.characterId, 160);
+  const characterId = cleanText(record.characterId, 160) || undefined;
   const bindings = loadBindingConfig();
+  const appSlot = resolveBinding(bindings, characterId, `custom_app:${app.id}`);
+  if (appSlot.voiceConfigId) {
+    const found = configs.find(config => config.id === appSlot.voiceConfigId);
+    if (found) return found;
+  }
   if (characterId) {
-    const appSlot = resolveBinding(bindings, characterId, `custom_app:${app.id}`);
-    if (appSlot.voiceConfigId) {
-      const found = configs.find(config => config.id === appSlot.voiceConfigId);
-      if (found) return found;
-    }
     const chatSlot = resolveBinding(bindings, characterId, "chat");
     if (chatSlot.voiceConfigId) {
       const found = configs.find(config => config.id === chatSlot.voiceConfigId);
@@ -1379,7 +1379,14 @@ export async function generateCustomAppImage(app: InstalledCustomApp, record: Re
   const referenceImageDataUrl = cleanReferenceImageDataUrl(record.referenceImageDataUrl);
   const timeoutMs = optionalCustomAppTimeoutMs(record.timeoutMs);
   const result = await withOptionalCustomAppTimeout(timeoutMs, "ai.generateImage", signal => (
-    generateImageFromConfiguredApi({ description, characterId, useReferenceImage, referenceImageDataUrl, signal })
+    generateImageFromConfiguredApi({
+      description,
+      characterId,
+      appId: `custom_app:${app.id}`,
+      useReferenceImage,
+      referenceImageDataUrl,
+      signal,
+    })
   ));
   if (!result) throw new Error("生图功能未配置或未启用，请先在小手机设置里配置生图 API。");
   return {

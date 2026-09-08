@@ -379,6 +379,8 @@ function normalizeDeclaredSlot(
   if (worldBookIds.length > 0) slot.worldBookIds = worldBookIds;
   const apiConfigId = cleanText(record.apiConfigId, 160);
   if (apiConfigId) slot.apiConfigId = apiConfigId;
+  const imageConfigId = cleanText(record.imageConfigId, 160);
+  if (imageConfigId) slot.imageConfigId = imageConfigId;
   const voiceConfigId = cleanText(record.voiceConfigId, 160);
   if (voiceConfigId) slot.voiceConfigId = voiceConfigId;
   const userIdentityId = cleanText(record.userIdentityId, 160);
@@ -388,6 +390,7 @@ function normalizeDeclaredSlot(
 
 function isEmptySlot(slot: BindingSlot): boolean {
   return !slot.apiConfigId
+    && !slot.imageConfigId
     && !slot.voiceConfigId
     && !slot.presetId
     && !slot.userIdentityId

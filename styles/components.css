@@ -314,6 +314,22 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.binding-global-primary-row[data-count="3"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.binding-global-primary-row[data-count="3"] > :last-child {
+  grid-column: 1 / -1;
+  min-height: 88px;
+}
+
+.binding-priority-note {
+  margin: 0;
+  color: var(--c-text-muted);
+  font-size: calc(11px * var(--app-text-scale, 1));
+  line-height: 1.5;
+}
+
 .binding-global-compact-row {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;

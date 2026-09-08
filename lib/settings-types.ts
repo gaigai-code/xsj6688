@@ -290,6 +290,8 @@ export const CONTENT_APP_LABELS: Record<ContentAppId, string> = {
 // Binding slot — config selections for a given scope
 export type BindingSlot = {
     apiConfigId?: string;
+    /** 生图方案 ID，格式为 openai:<presetId> 或 novelai:<presetId>。 */
+    imageConfigId?: string;
     voiceConfigId?: string;
     presetId?: string;
     userIdentityId?: string;

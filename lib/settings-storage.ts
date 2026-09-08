@@ -41,6 +41,7 @@ import {
 } from "./settings-db";
 import { kvGet, kvSet, kvRemove, registerKvMigration } from "./kv-db";
 import { isGenerationParameterKey } from "./generation-parameters";
+import { getActiveImageGenerationBindingId, getImageGenerationBindingOptions } from "./image-generation-binding";
 
 // --- Unsupported import format detection ---
 export const UNSUPPORTED_IMPORT_FORMAT = "UNSUPPORTED_IMPORT_FORMAT";
@@ -910,7 +911,7 @@ export function saveBindingConfig(config: BindingConfig, notify: boolean = true)
 }
 
 /**
- * 全局默认绑定「所见即所得」：API 配置 / 预设 / 用户身份三项不再有"未设置"态。
+ * 全局默认绑定「所见即所得」：文本、生图、预设、用户身份不再有"未设置"态。
  * 未设置（或指向已删除对象）时，把实际兜底值写进存储——API=第一个配置、
  * 预设=内置预设、身份=列表第一条——让绑定界面显示的就是实际生效的，
  * 消灭"没绑却悄悄用了第一个"的静默兜底（多身份用户曾因此身份错乱进记忆）。
@@ -925,6 +926,12 @@ export function ensureGlobalBindingDefaults(): void {
     const apiConfigs = loadApiConfigs();
     if (apiConfigs.length > 0 && !apiConfigs.some(c => c.id === global.apiConfigId)) {
         global.apiConfigId = apiConfigs[0].id;
+        changed = true;
+    }
+    const imageSettings = loadImageGenerationSettings();
+    const imageBindingOptions = getImageGenerationBindingOptions(imageSettings);
+    if (imageBindingOptions.length > 0 && !imageBindingOptions.some(option => option.id === global.imageConfigId)) {
+        global.imageConfigId = getActiveImageGenerationBindingId(imageSettings);
         changed = true;
     }
     const presets = loadPresets();
@@ -1005,7 +1012,8 @@ export function setCharacterBinding(config: BindingConfig, binding: CharacterBin
 }
 
 /**
- * Cascade resolution: global defaults → character defaults → app overrides.
+ * Cascade resolution: global defaults → APP defaults → character defaults → character APP overrides.
+ * Effective priority: character binding > APP binding > global binding.
  * undefined/empty fields mean "inherit from parent level".
  */
 export function resolveBinding(
@@ -1018,6 +1026,7 @@ export function resolveBinding(
     // Start with global defaults
     const resolved: BindingSlot = {
         apiConfigId: global.apiConfigId,
+        imageConfigId: global.imageConfigId,
         voiceConfigId: global.voiceConfigId,
         presetId: global.presetId,
         userIdentityId: global.userIdentityId,
@@ -1027,12 +1036,18 @@ export function resolveBinding(
 
     const applySlot = (slot: BindingSlot): void => {
         if (slot.apiConfigId) resolved.apiConfigId = slot.apiConfigId;
+        if (slot.imageConfigId) resolved.imageConfigId = slot.imageConfigId;
         if (slot.voiceConfigId) resolved.voiceConfigId = slot.voiceConfigId;
         if (slot.presetId) resolved.presetId = slot.presetId;
         if (slot.userIdentityId) resolved.userIdentityId = slot.userIdentityId;
         if (slot.worldBookIds && slot.worldBookIds.length > 0) resolved.worldBookIds = [...slot.worldBookIds];
         if (slot.regexIds && slot.regexIds.length > 0) resolved.regexIds = [...slot.regexIds];
     };
+
+    // APP 默认高于全局默认；即使没有角色（例如群聊），也必须生效。
+    if (appId && config.appDefaults?.[appId]) {
+        applySlot(config.appDefaults[appId]!);
+    }
 
     if (!characterId) return resolved;
 
@@ -1042,10 +1057,7 @@ export function resolveBinding(
         applySlot(charBinding.defaults);
     }
 
-    if (appId && config.appDefaults?.[appId]) {
-        applySlot(config.appDefaults[appId]!);
-    }
-
+    // 角色的专属 APP 覆盖是最精确的一层，优先级最高。
     if (appId && charBinding?.appOverrides[appId]) {
         applySlot(charBinding.appOverrides[appId]!);
     }
@@ -1190,7 +1202,7 @@ export const USER_IDENTITIES_UPDATED_EVENT = "user-identities-updated";
 
 /**
  * Resolve user identity through the binding cascade:
- *   global defaults → character defaults → app overrides.
+ *   global defaults → APP defaults → character defaults → character APP overrides.
  * Falls back to first identity if binding has no userIdentityId set.
  */
 export function resolveUserIdentity(characterId?: string, appId?: string): UserIdentity | null {
