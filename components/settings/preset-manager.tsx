@@ -913,12 +913,13 @@ export function PresetManager({ isActive = true }: { isActive?: boolean } = {}) 
             enabled: true,
         };
         const newPrompts = [...(preset.prompts || []), newPrompt];
-        const newOrder = newPrompts.map(p => ({
-            identifier: p.identifier,
-            enabled: preset.prompt_order
-                ? (preset.prompt_order.find(o => o.identifier === p.identifier)?.enabled ?? p.enabled)
-                : p.enabled,
-        }));
+        // 新增条目时保留已有显示顺序，只在末尾追加新条目，避免覆盖用户拖拽排好的顺序
+        let newOrder: PromptOrderEntry[];
+        if (preset.prompt_order && preset.prompt_order.length > 0) {
+            newOrder = [...preset.prompt_order, { identifier: newPrompt.identifier, enabled: true }];
+        } else {
+            newOrder = newPrompts.map(p => ({ identifier: p.identifier, enabled: true }));
+        }
         updatePreset(preset.id, { prompts: newPrompts, prompt_order: newOrder });
     };
 
@@ -940,12 +941,13 @@ export function PresetManager({ isActive = true }: { isActive?: boolean } = {}) 
             return { ...p, identifier: id };
         });
         const newPrompts = [...(preset.prompts || []), ...appended];
-        const newOrder = newPrompts.map(p => ({
-            identifier: p.identifier,
-            enabled: preset.prompt_order
-                ? (preset.prompt_order.find(o => o.identifier === p.identifier)?.enabled ?? p.enabled)
-                : p.enabled,
-        }));
+        // 新增条目时保留已有显示顺序，只在末尾追加新条目，避免覆盖用户拖拽排好的顺序
+        let newOrder: PromptOrderEntry[];
+        if (preset.prompt_order && preset.prompt_order.length > 0) {
+            newOrder = [...preset.prompt_order, ...appended.map(p => ({ identifier: p.identifier, enabled: true }))];
+        } else {
+            newOrder = newPrompts.map(p => ({ identifier: p.identifier, enabled: true }));
+        }
         updatePreset(preset.id, { prompts: newPrompts, prompt_order: newOrder });
         if (appended.length === 1) setEditingPromptId(appended[0].identifier);
         window.setTimeout(() => {
