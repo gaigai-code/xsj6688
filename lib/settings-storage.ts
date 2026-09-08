@@ -1034,10 +1034,10 @@ export function resolveBinding(
         regexIds: global.regexIds ? [...global.regexIds] : undefined,
     };
 
-    const applySlot = (slot: BindingSlot): void => {
+    const applySlot = (slot: BindingSlot, includeVoice = true): void => {
         if (slot.apiConfigId) resolved.apiConfigId = slot.apiConfigId;
         if (slot.imageConfigId) resolved.imageConfigId = slot.imageConfigId;
-        if (slot.voiceConfigId) resolved.voiceConfigId = slot.voiceConfigId;
+        if (includeVoice && slot.voiceConfigId) resolved.voiceConfigId = slot.voiceConfigId;
         if (slot.presetId) resolved.presetId = slot.presetId;
         if (slot.userIdentityId) resolved.userIdentityId = slot.userIdentityId;
         if (slot.worldBookIds && slot.worldBookIds.length > 0) resolved.worldBookIds = [...slot.worldBookIds];
@@ -1046,7 +1046,7 @@ export function resolveBinding(
 
     // APP 默认高于全局默认；即使没有角色（例如群聊），也必须生效。
     if (appId && config.appDefaults?.[appId]) {
-        applySlot(config.appDefaults[appId]!);
+        applySlot(config.appDefaults[appId]!, false);
     }
 
     if (!characterId) return resolved;
@@ -1059,7 +1059,7 @@ export function resolveBinding(
 
     // 角色的专属 APP 覆盖是最精确的一层，优先级最高。
     if (appId && charBinding?.appOverrides[appId]) {
-        applySlot(charBinding.appOverrides[appId]!);
+        applySlot(charBinding.appOverrides[appId]!, false);
     }
 
     return resolved;

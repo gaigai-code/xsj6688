@@ -67,7 +67,7 @@ import type { UserIdentity } from "@/components/settings/user-identity";
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 
-type Level = "global" | "character" | "app";
+type Level = "global" | "app-list" | "character" | "app";
 type AppBindingScope = "global" | "character";
 type SingleBindingField = "apiConfigId" | "imageConfigId" | "voiceConfigId" | "presetId" | "userIdentityId";
 type MultiBindingField = "worldBookIds" | "regexIds";
@@ -207,6 +207,12 @@ export function BindingManager() {
             }
             return [s, changed];
         };
+        const cleanAppSlot = (slot: BindingSlot): [BindingSlot, boolean] => {
+            const [s, slotChanged] = cleanSlot(slot);
+            if (!s.voiceConfigId) return [s, slotChanged];
+            s.voiceConfigId = undefined;
+            return [s, true];
+        };
         setConfig(prev => {
             let dirty = false;
             const [gd, gChanged] = cleanSlot(prev.globalDefaults);
@@ -220,7 +226,7 @@ export function BindingManager() {
             const newAppDefaults: Record<string, BindingSlot> = {};
             for (const [appId, slot] of Object.entries(prev.appDefaults ?? {})) {
                 if (!slot) continue;
-                const [cleaned, aChanged] = cleanSlot(slot);
+                const [cleaned, aChanged] = cleanAppSlot(slot);
                 if (aChanged) dirty = true;
                 newAppDefaults[appId] = cleaned;
             }
@@ -230,7 +236,7 @@ export function BindingManager() {
                 const newOverrides: Record<string, BindingSlot> = {};
                 for (const [k, v] of Object.entries(b.appOverrides)) {
                     if (!v) continue;
-                    const [cleaned, oChanged] = cleanSlot(v);
+                    const [cleaned, oChanged] = cleanAppSlot(v);
                     if (oChanged) dirty = true;
                     newOverrides[k] = cleaned;
                 }
@@ -266,6 +272,9 @@ export function BindingManager() {
         if (level === "global") {
             setOverrideBack(null);
             setSubpageTitle(null);
+        } else if (level === "app-list") {
+            setSubpageTitle("全局APP绑定");
+            setOverrideBack(() => () => setLevel("global"));
         } else if (level === "character") {
             const charName = characters.find(c => c.id === selectedCharId)?.name || "角色";
             setSubpageTitle(`${charName} 的绑定`);
@@ -278,7 +287,7 @@ export function BindingManager() {
             const charName = characters.find(c => c.id === selectedCharId)?.name || "角色";
             setSubpageTitle(appBindingScope === "global" ? `${appLabel} · APP绑定` : `${appLabel} · ${charName}`);
             setOverrideBack(() => () => {
-                setLevel(appBindingScope === "global" ? "global" : "character");
+                setLevel(appBindingScope === "global" ? "app-list" : "character");
                 setSelectedAppId(null);
             });
         }
@@ -391,7 +400,6 @@ export function BindingManager() {
         let count = 0;
         if (slot.apiConfigId) count++;
         if (slot.imageConfigId) count++;
-        if (slot.voiceConfigId) count++;
         if (slot.presetId) count++;
         if (slot.userIdentityId) count++;
         if (slot.worldBookIds && slot.worldBookIds.length > 0) count++;
@@ -607,9 +615,11 @@ export function BindingManager() {
         slot: BindingSlot,
         emptyText: string,
         onOpenField: (field: BindingField) => void,
-        options?: { includeRegex?: boolean },
+        options?: { includeRegex?: boolean; includeVoice?: boolean },
     ) => {
-        const primaryFields: BindingField[] = ["apiConfigId", "imageConfigId", "voiceConfigId"];
+        const primaryFields: BindingField[] = options?.includeVoice === false
+            ? ["apiConfigId", "imageConfigId"]
+            : ["apiConfigId", "imageConfigId", "voiceConfigId"];
         const compactFields: BindingField[] = options?.includeRegex === false
             ? ["presetId", "worldBookIds"]
             : ["presetId", "worldBookIds", "regexIds"];
@@ -1014,40 +1024,36 @@ export function BindingManager() {
                     </section>
 
                     <section className="flex flex-col gap-3">
-                        <div className="flex flex-col gap-1">
-                            <p className="settings-menu-section-title">APP Bindings</p>
-                            <p className="binding-priority-note">调用优先级：角色绑定 ＞ APP绑定 ＞ 全局绑定</p>
-                        </div>
-                        <div className="binding-app-grid">
-                            {appOverrideEntries.map(app => {
-                                const overrideCount = countOverrides(config.appDefaults?.[app.id], app.id);
-                                return (
-                                    <button
-                                        key={app.id}
-                                        type="button"
-                                        onClick={() => {
-                                            setAppBindingScope("global");
-                                            setSelectedCharId("");
-                                            setSelectedAppId(app.id);
-                                            setActiveSlotSheetField(null);
-                                            setLevel("app");
-                                        }}
-                                        className="g-card binding-app-card"
-                                        style={bindingAccentStyle(app.color)}
-                                        aria-label={`${app.label}全局应用绑定`}
-                                    >
-                                        <span className="binding-app-icon">
-                                            {app.iconDataUrl ? (
-                                                <img src={app.iconDataUrl} alt="" className="binding-app-icon-image" />
-                                            ) : (
-                                                <IconGlyph id={app.iconId} className="binding-app-icon-glyph" />
-                                            )}
-                                        </span>
-                                        <span className="binding-app-label">{app.label}</span>
-                                        {overrideCount > 0 && <span className="binding-app-badge">{overrideCount}</span>}
-                                    </button>
-                                );
-                            })}
+                        <p className="settings-menu-section-title">Application Binding</p>
+                        <div className="binding-aux-select">
+                            <button
+                                type="button"
+                                className="binding-aux-trigger"
+                                onClick={() => {
+                                    setAppBindingScope("global");
+                                    setSelectedCharId("");
+                                    setSelectedAppId(null);
+                                    setActiveSlotSheetField(null);
+                                    setLevel("app-list");
+                                }}
+                            >
+                                <span className="binding-choice-icon binding-choice-icon-inline" style={bindingAccentStyle(BINDING_ACCENTS.api)}>
+                                    <Layers size={22} strokeWidth={1.8} />
+                                </span>
+                                <span className="binding-card-copy">
+                                    <span className="binding-choice-label">全局APP绑定</span>
+                                    <span className="binding-choice-desc">分别设置各 APP 的文本与生图方案</span>
+                                </span>
+                                <span className="binding-choice-row">
+                                    <span className="binding-choice-value">
+                                        {(() => {
+                                            const count = appOverrideEntries.filter(app => countOverrides(config.appDefaults?.[app.id], app.id) > 0).length;
+                                            return count > 0 ? `${count} 个` : "未设置";
+                                        })()}
+                                    </span>
+                                    <ChevronRight size={15} strokeWidth={1.7} className="binding-choice-chevron" />
+                                </span>
+                            </button>
                         </div>
                     </section>
 
@@ -1067,6 +1073,44 @@ export function BindingManager() {
             {renderSlotPickerDialog()}
             {renderAuxPickerDialog()}
             {renderCharacterPickerDialog()}
+
+            {/* Level 2: Global APP list */}
+            {level === "app-list" && (
+                <section className="flex flex-col gap-3">
+                    <p className="binding-priority-note">调用优先级：角色绑定 ＞ APP绑定 ＞ 全局绑定</p>
+                    <div className="binding-app-grid">
+                        {appOverrideEntries.map(app => {
+                            const overrideCount = countOverrides(config.appDefaults?.[app.id], app.id);
+                            return (
+                                <button
+                                    key={app.id}
+                                    type="button"
+                                    onClick={() => {
+                                        setAppBindingScope("global");
+                                        setSelectedCharId("");
+                                        setSelectedAppId(app.id);
+                                        setActiveSlotSheetField(null);
+                                        setLevel("app");
+                                    }}
+                                    className="g-card binding-app-card"
+                                    style={bindingAccentStyle(app.color)}
+                                    aria-label={`${app.label}全局应用绑定`}
+                                >
+                                    <span className="binding-app-icon">
+                                        {app.iconDataUrl ? (
+                                            <img src={app.iconDataUrl} alt="" className="binding-app-icon-image" />
+                                        ) : (
+                                            <IconGlyph id={app.iconId} className="binding-app-icon-glyph" />
+                                        )}
+                                    </span>
+                                    <span className="binding-app-label">{app.label}</span>
+                                    {overrideCount > 0 && <span className="binding-app-badge">{overrideCount}</span>}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </section>
+            )}
 
             {/* Level 2: Character binding details */}
             {level === "character" && (
@@ -1129,6 +1173,7 @@ export function BindingManager() {
                         </div>
                         {renderBindingSlotCards(currentSlot, inheritLabel, setActiveSlotSheetField, {
                             includeRegex: canBindRegexInApp(selectedAppId),
+                            includeVoice: false,
                         })}
                     </section>
 
