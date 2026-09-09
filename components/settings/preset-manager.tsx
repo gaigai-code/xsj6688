@@ -584,8 +584,13 @@ export function PresetManager({ isActive = true }: { isActive?: boolean } = {}) 
                         for (let pi = 0; pi < prompts.length; pi++) {
                             prompts[pi] = { ...prompts[pi], system_prompt: pi === firstSystemIdx };
                         }
-                        // Auto-generate prompt_order from array order
-                        preset.prompt_order = prompts.filter(p => p.identifier && !p.identifier.startsWith("_placeholder")).map(p => ({ identifier: p.identifier, enabled: true }));
+                        // 桌宠填表：保留已有显示顺序，只把新出现的条目追加到末尾，避免覆盖用户拖拽排好的顺序
+                        const existingOrder = (preset.prompt_order || []).filter(o => o.identifier && !o.identifier.startsWith("_placeholder"));
+                        const existingIds = new Set(existingOrder.map(o => o.identifier));
+                        const appended = prompts
+                            .filter(p => p.identifier && !p.identifier.startsWith("_placeholder") && !existingIds.has(p.identifier))
+                            .map(p => ({ identifier: p.identifier, enabled: true }));
+                        preset.prompt_order = [...existingOrder, ...appended];
                     }
                 }
 
