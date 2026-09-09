@@ -23,7 +23,7 @@ import {
     isSessionStreamingEnabled,
 } from "./chat-storage";
 import { extractTextToolDirectiveText, stripTextToolDirectives } from "./text-tool-protocol";
-import { findUserAvatarChangeIntent } from "./chat-avatar-intent";
+import { applyWithProtectedAvatarDecisionMarkers, findUserAvatarChangeIntent } from "./chat-avatar-intent";
 import type { ApiConfig, PresetConfig, Prompt, PromptOrderEntry, RegexConfig } from "./settings-types";
 import type { CustomAppPromptProfile } from "./custom-app-types";
 import {
@@ -865,7 +865,10 @@ export async function sendLLMStreamRequest(
                 appTags: options?.appTags,
                 followUpCount: options?.followUpCount,
             });
-            rawOutput = applyOutputRegex(rawOutput, regexes, { macroEngine, activeTags });
+            rawOutput = applyWithProtectedAvatarDecisionMarkers(
+                rawOutput,
+                protectedText => applyOutputRegex(protectedText, regexes, { macroEngine, activeTags }),
+            );
         }
         return { content: rawOutput, rawResponse, providerKind: request.providerKind };
     } catch (error: unknown) {
@@ -1003,7 +1006,10 @@ export async function sendLLMRequest(
             appTags: options?.appTags,
             followUpCount: options?.followUpCount,
         });
-        return applyOutputRegex(rawOutput, regexes, { macroEngine, activeTags });
+        return applyWithProtectedAvatarDecisionMarkers(
+            rawOutput,
+            protectedText => applyOutputRegex(protectedText, regexes, { macroEngine, activeTags }),
+        );
     } catch (error: unknown) {
         if (error instanceof DOMException && (error as DOMException).name === "AbortError") {
             throw new ChatEngineError("AI 回复超时（500秒），请重试。");
@@ -1318,7 +1324,10 @@ export async function sendLLMToolRequest(
                 appTags: options?.appTags,
                 followUpCount: options?.followUpCount,
             });
-            rawOutput = applyOutputRegex(rawOutput, regexes, { macroEngine, activeTags });
+            rawOutput = applyWithProtectedAvatarDecisionMarkers(
+                rawOutput,
+                protectedText => applyOutputRegex(protectedText, regexes, { macroEngine, activeTags }),
+            );
         }
 
         return {
