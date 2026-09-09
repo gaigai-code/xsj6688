@@ -1128,7 +1128,21 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
     avatar: string | null;
     isGroup?: boolean;
   } | null>(null);
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const chatMessageNoticeTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const refreshChatUnread = () => {
+      setChatUnreadCount(loadChatSessions().reduce((sum, session) => sum + Math.max(0, session.unreadCount || 0), 0));
+    };
+    refreshChatUnread();
+    window.addEventListener("chat-messages-updated", refreshChatUnread);
+    window.addEventListener(CHAT_MESSAGE_PUSHED_EVENT, refreshChatUnread);
+    return () => {
+      window.removeEventListener("chat-messages-updated", refreshChatUnread);
+      window.removeEventListener(CHAT_MESSAGE_PUSHED_EVENT, refreshChatUnread);
+    };
+  }, []);
   // Swipe-up-to-dismiss state for the chat message notice banner.
   const [noticeDragY, setNoticeDragY] = useState(0);
   const noticeDragRef = useRef({ startY: 0, dy: 0, dragging: false, far: false });
@@ -4626,7 +4640,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                                 if (!folder) return null;
                                 const folderBadge = folder.icons.reduce((sum, memberId) => {
                                   const appId = customAppIdFromIconId(memberId);
-                                  return sum + (appId ? customAppBadges[appId] ?? 0 : 0);
+                                  if (appId) return sum + (customAppBadges[appId] ?? 0);
+                                  return sum + (memberId === "chat" ? chatUnreadCount : 0);
                                 }, 0);
                                 return (
                                   <button
@@ -4662,7 +4677,9 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                                 : null;
                               const iconImageUrl = iconSkinUrl || customIconUrl;
                               const hasImageIcon = Boolean(iconImageUrl);
-                              const badgeCount = customApp ? customAppBadges[customApp.id] ?? 0 : 0;
+                              const badgeCount = customApp
+                                ? customAppBadges[customApp.id] ?? 0
+                                : (builtinIconId === "chat" ? chatUnreadCount : 0);
                               return (
                                 <button
                                   key={iconId}

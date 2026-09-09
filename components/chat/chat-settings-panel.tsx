@@ -16,6 +16,7 @@ import {
     removeChatContact,
     normalizeVisionImagePromptLimit,
     MAX_VISION_IMAGE_PROMPT_LIMIT,
+    CHAT_REQUEST_REPLY_EVENT,
     type ChatMessage,
 } from "@/lib/chat-storage";
 import {
@@ -36,16 +37,16 @@ import { clearChatOfflineTurns } from "@/lib/chat-offline-storage";
 import { removeChatSessionCompletely } from "@/lib/chat-session-remove";
 import { triggerDeleteFriendReaction } from "@/lib/friend-request-engine";
 import { triggerGroupKickReaction } from "@/lib/group-kick-reaction";
-import { loadCharacters } from "@/lib/character-storage";
+import { loadCharacters, saveCharacters } from "@/lib/character-storage";
 import { isAgentComputerConfigured } from "@/lib/agent-computer";
 import { CharacterComputerPage } from "./character-computer-page";
-import { resolveUserIdentity, loadBindingConfig, loadPresets, resolveBinding } from "@/lib/settings-storage";
+import { resolveUserIdentity, loadBindingConfig, loadPresets, resolveBinding, loadUserIdentities, saveUserIdentities } from "@/lib/settings-storage";
 import { getStatusRegionConfig, saveStatusRegionConfig, presetSupportsStatusRegion, isCustomStatusRegionActive, STATUS_REGION_SCHEME_TARGET, STATUS_REGION_UPDATED_EVENT, type StatusRegionConfig } from "@/lib/chat-status-region";
 import { downloadFile } from "@/lib/download-utils";
 import { getSchemes, saveScheme, deleteScheme, type CSSScheme } from "@/lib/css-scheme-storage";
 import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
 import { KeyboardAutoSendDebounceItem } from "@/components/chat/keyboard-auto-send-debounce-item";
-import { ChevronRight, Image as ImageIcon, Video, Mic, UserMinus, UserPlus, Users, Pin, MessageSquare, Search, AlertCircle, Code, Laptop, Trash2, Smile, Sparkles, X, Play, Upload, Download, Save, FolderOpen, type LucideIcon } from "lucide-react";
+import { ChevronRight, Image as ImageIcon, Video, Mic, UserMinus, UserPlus, Users, Pin, MessageSquare, Search, AlertCircle, Code, Laptop, Trash2, Smile, Sparkles, X, Play, Upload, Download, Save, FolderOpen, Camera, Send, type LucideIcon } from "lucide-react";
 import { BINDING_ACCENTS, CONTENT_APP_ACCENTS } from "@/lib/ui-accent-colors";
 import CSSSchemeBar from "@/components/ui/css-scheme-picker";
 import { ConfirmDialog } from "@/components/ui/modal";
@@ -284,6 +285,29 @@ function ChatInfoIcon({ icon: Icon, color }: { icon: LucideIcon; color: string }
     );
 }
 
+function fileToAvatarDataUrl(file: File, maxSize = 640, quality = 0.86): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = reject;
+        reader.onload = () => {
+            const image = new Image();
+            image.onerror = reject;
+            image.onload = () => {
+                const scale = Math.min(maxSize / image.width, maxSize / image.height, 1);
+                const canvas = document.createElement("canvas");
+                canvas.width = Math.max(1, Math.round(image.width * scale));
+                canvas.height = Math.max(1, Math.round(image.height * scale));
+                const context = canvas.getContext("2d");
+                if (!context) { reject(new Error("无法处理图片")); return; }
+                context.drawImage(image, 0, 0, canvas.width, canvas.height);
+                resolve(canvas.toDataURL("image/webp", quality));
+            };
+            image.src = String(reader.result || "");
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
 export function ChatSettingsPanel({
     session,
     onClose,
@@ -429,6 +453,14 @@ export function ChatSettingsPanel({
     const [searchResults, setSearchResults] = useState<ChatMessage[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const searchRunRef = useRef(0);
+    const chatRecordImportRef = useRef<HTMLInputElement | null>(null);
+    const [chatTransferBusy, setChatTransferBusy] = useState(false);
+    const [chatTransferStatus, setChatTransferStatus] = useState<{ success: boolean; message: string } | null>(null);
+    const [showAvatarDialog, setShowAvatarDialog] = useState(false);
+    const [, setAvatarRevision] = useState(0);
+    const ownAvatarInputRef = useRef<HTMLInputElement | null>(null);
+    const characterAvatarInputRef = useRef<HTMLInputElement | null>(null);
+    const recommendAvatarInputRef = useRef<HTMLInputElement | null>(null);
 
     const loadSearchHistoryWindow = (count = CHAT_INITIAL_VISIBLE_MESSAGE_COUNT) => {
         const visibleMessages = loadChatMessages(session.id).filter(isSearchVisibleMessage);
@@ -525,7 +557,67 @@ export function ChatSettingsPanel({
     const groupChars = session.isGroup
         ? (session.participantIds || []).map(id => characters.find(c => c.id === id)).filter(Boolean)
         : [];
-    const userIdentity = resolveUserIdentity(undefined, session.isGroup ? "group_chat" : "chat");
+    const userIdentity = resolveUserIdentity(session.isGroup ? undefined : session.contactId, session.isGroup ? "group_chat" : "chat");
+
+    const updateOwnAvatar = async (file: File) => {
+        const activeIdentity = resolveUserIdentity(session.contactId, "chat");
+        if (!activeIdentity) { alert("请先在用户身份中创建资料"); return; }
+        const avatarUrl = await fileToAvatarDataUrl(file);
+        const identities = loadUserIdentities();
+        saveUserIdentities(identities.map(identity => identity.id === activeIdentity.id ? { ...identity, avatarUrl } : identity));
+        pushChatMessage({
+            sessionId: session.id,
+            role: "system",
+            content: "用户刚刚更换了自己的头像。你已经注意到这次变化，可在下一次回复中结合你们的关系自然回应。",
+            mediaType: "system_instruction",
+        });
+        setAvatarRevision(value => value + 1);
+    };
+
+    const updateCharacterAvatar = async (file: File) => {
+        const avatar = await fileToAvatarDataUrl(file);
+        const latest = loadCharacters();
+        saveCharacters(latest.map(item => item.id === session.contactId
+            ? { ...item, avatar, updatedAt: new Date().toISOString() }
+            : item));
+        setAvatarRevision(value => value + 1);
+    };
+
+    const recommendAvatar = async (file: File) => {
+        const avatar = await fileToAvatarDataUrl(file);
+        pushChatMessage({
+            sessionId: session.id,
+            role: "user",
+            content: "",
+            mediaType: "image",
+            mediaUrl: avatar,
+            mediaData: {
+                label: "推荐给你作为新头像",
+                avatarRecommendationForCharacterId: session.contactId,
+                avatarRecommendationStatus: "pending",
+            },
+        });
+        setShowAvatarDialog(false);
+        onClose();
+        window.setTimeout(() => {
+            const detail = { source: "avatar_recommendation", sessionId: session.id, characterId: session.contactId, handled: false, busy: false };
+            window.dispatchEvent(new CustomEvent(CHAT_REQUEST_REPLY_EVENT, { detail }));
+        }, 0);
+    };
+
+    const handleAvatarInput = async (event: React.ChangeEvent<HTMLInputElement>, action: "own" | "character" | "recommend") => {
+        const file = event.target.files?.[0];
+        event.target.value = "";
+        if (!file) return;
+        try {
+            if (action === "own") await updateOwnAvatar(file);
+            else if (action === "character") await updateCharacterAvatar(file);
+            else await recommendAvatar(file);
+        } catch (error) {
+            console.error("Failed to update avatar", error);
+            alert("头像图片处理失败，请换一张图片重试");
+        }
+    };
 
     // ── Group member management ──
     const [, setRosterVersion] = useState(0); // bump to re-render after admin actions
@@ -848,6 +940,24 @@ export function ChatSettingsPanel({
                             <ChevronRight size={16} />
                         </div>
                     </button>
+                    {!session.isGroup && (
+                        <button className="menu-item" onClick={() => setShowAvatarDialog(true)}>
+                            <ChatInfoIcon icon={Camera} color={BINDING_ACCENTS.preset} />
+                            <div className="menu-label-group">
+                                <span className="menu-label">设置头像</span>
+                                <span className="menu-desc">我的头像与对方头像</span>
+                            </div>
+                            <div className="menu-right gap-1.5">
+                                <div className="h-7 w-7 overflow-hidden rounded-full bg-[var(--c-input)] ring-2 ring-[var(--c-card-bg)]">
+                                    {userIdentity?.avatarUrl ? <img src={userIdentity.avatarUrl} className="h-full w-full object-cover" alt="我的头像" /> : <ChatFallbackAvatar />}
+                                </div>
+                                <div className="-ml-3 h-7 w-7 overflow-hidden rounded-full bg-[var(--c-input)] ring-2 ring-[var(--c-card-bg)]">
+                                    {character?.avatar ? <img src={character.avatar} className="h-full w-full object-cover" alt="对方头像" /> : <ChatFallbackAvatar />}
+                                </div>
+                                <ChevronRight size={16} />
+                            </div>
+                        </button>
+                    )}
                     <button className="menu-item" onClick={openSearchPanel}>
                         <ChatInfoIcon icon={Search} color={BINDING_ACCENTS.api} />
                         <div className="menu-label-group"><span className="menu-label">查找聊天记录</span></div>
@@ -1664,6 +1774,50 @@ export function ChatSettingsPanel({
                         </div>
                     </PageShell>
                 </div>
+                </div>
+            )}
+            {showAvatarDialog && !session.isGroup && (
+                <div className="fixed inset-0 z-[10035] flex items-end justify-center bg-black/45 sm:items-center" role="dialog" aria-modal="true" aria-label="设置头像" onClick={() => setShowAvatarDialog(false)}>
+                    <div className="w-full max-w-md overflow-hidden rounded-t-[24px] bg-[var(--c-page-body-bg)] px-4 pb-[max(20px,env(safe-area-inset-bottom))] pt-4 text-[var(--c-text)] shadow-2xl sm:rounded-[24px]" onClick={event => event.stopPropagation()}>
+                        <div className="mb-4 flex items-center justify-between px-1">
+                            <div>
+                                <div className="ts-17 font-semibold text-[var(--c-text-title)]">设置头像</div>
+                                <div className="mt-1 ts-12 opacity-55">选择要更换的头像</div>
+                            </div>
+                            <button type="button" className="modal-header-btn modal-header-btn-muted" aria-label="关闭" onClick={() => setShowAvatarDialog(false)}><X size={18} /></button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <button type="button" className="rounded-2xl bg-[var(--c-card-bg)] p-4 text-left shadow-sm" onClick={() => ownAvatarInputRef.current?.click()}>
+                                <div className="mx-auto h-16 w-16 overflow-hidden rounded-full bg-[var(--c-input)]">
+                                    {userIdentity?.avatarUrl ? <img src={userIdentity.avatarUrl} className="h-full w-full object-cover" alt="我的头像" /> : <ChatFallbackAvatar />}
+                                </div>
+                                <div className="mt-3 text-center ts-14 font-medium text-[var(--c-text-title)]">我的头像</div>
+                                <div className="mt-1 text-center ts-11 opacity-50">从相册更换</div>
+                            </button>
+                            <button type="button" className="rounded-2xl bg-[var(--c-card-bg)] p-4 text-left shadow-sm" onClick={() => characterAvatarInputRef.current?.click()}>
+                                <div className="mx-auto h-16 w-16 overflow-hidden rounded-full bg-[var(--c-input)]">
+                                    {character?.avatar ? <img src={character.avatar} className="h-full w-full object-cover" alt="对方头像" /> : <ChatFallbackAvatar />}
+                                </div>
+                                <div className="mt-3 text-center ts-14 font-medium text-[var(--c-text-title)]">{character?.name || "对方"}的头像</div>
+                                <div className="mt-1 text-center ts-11 opacity-50">直接更换</div>
+                            </button>
+                        </div>
+
+                        <button type="button" className="mt-3 flex w-full items-center gap-3 rounded-2xl bg-[var(--c-card-bg)] px-4 py-3 text-left shadow-sm" onClick={() => recommendAvatarInputRef.current?.click()}>
+                            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[var(--c-input)]"><Send size={17} /></span>
+                            <span className="min-w-0 flex-1">
+                                <span className="block ts-13 font-medium text-[var(--c-text-title)]">推荐头像给 {character?.name || "TA"}</span>
+                                <span className="mt-0.5 block ts-11 opacity-55">也可以将头像推荐给 char，看 TA 是否愿意更换～</span>
+                            </span>
+                            <ChevronRight size={16} className="opacity-45" />
+                        </button>
+
+                        <p className="mt-3 px-1 ts-11 leading-5 opacity-45">更换“我的头像”后，角色会知道你刚刚换过头像；推荐头像则由角色根据人设自行决定是否采用。</p>
+                        <input ref={ownAvatarInputRef} type="file" accept="image/*" className="hidden" onChange={event => void handleAvatarInput(event, "own")} />
+                        <input ref={characterAvatarInputRef} type="file" accept="image/*" className="hidden" onChange={event => void handleAvatarInput(event, "character")} />
+                        <input ref={recommendAvatarInputRef} type="file" accept="image/*" className="hidden" onChange={event => void handleAvatarInput(event, "recommend")} />
+                    </div>
                 </div>
             )}
             {showStatusRegionDialog && (

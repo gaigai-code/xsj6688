@@ -595,6 +595,8 @@ function parseSegment(segment: string, parts: ParsedMessagePart[]) {
 // ── Main parser ──────────────────────────────────────────
 
 export function parseAIResponse(rawText: string, previousState: StateValue[]): ParsedAIResponse {
+    const acceptedAvatarRecommendation = /[\[【]\s*接受头像推荐\s*[\]】]/.test(rawText);
+    const declinedAvatarRecommendation = /[\[【]\s*拒绝头像推荐\s*[\]】]/.test(rawText);
     // 0. FIRST: extract ```html blocks and <style>+HTML before any processing
     const htmlBlockPlaceholders: { placeholder: string; original: string }[] = [];
     let protected_ = rawText;
@@ -630,7 +632,13 @@ export function parseAIResponse(rawText: string, previousState: StateValue[]): P
     const stateValues = mergeStateValues(previousState, parsedSV.stateValues);
 
     // 1.5. Strip AI hallucination XML/bracket action shells
-    const actionCleaned = stripActionShells(parsedSV.cleanText);
+    let actionCleaned = stripActionShells(parsedSV.cleanText)
+        .replace(/[\[【]\s*(?:接受|拒绝)头像推荐\s*[\]】]/g, "")
+        .trim();
+    // 模型只返回控制标记时也保留一条自然可见的答复；否则没有消息落库，
+    // 共享消息层便无法执行这次头像选择。
+    if (!actionCleaned && acceptedAvatarRecommendation) actionCleaned = "我换上了你推荐的头像。";
+    if (!actionCleaned && declinedAvatarRecommendation) actionCleaned = "我想继续使用现在的头像。";
 
     // 2. Extract display-only status panel, then inner monologue
     const status = extractBracketBlock(actionCleaned, "状态栏");

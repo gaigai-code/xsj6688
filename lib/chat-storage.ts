@@ -9,7 +9,7 @@ import {
     dbReplaceContacts, dbReplaceSessions,
 } from "./chat-db";
 import { resolveUserIdentity } from "./settings-storage";
-import { loadCharacters } from "./character-storage";
+import { loadCharacters, saveCharacters } from "./character-storage";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { emitChatPluginEvent, runChatPluginTransformSync } from "./chat-plugin-hooks";
 import { parseAIResponse } from "./rich-message-parser";
@@ -233,6 +233,8 @@ export type ChatMessage = {
         appTags?: string[];
         appHistoryText?: string;
         appHistoryRole?: ChatMessageRole;
+        avatarRecommendationForCharacterId?: string;
+        avatarRecommendationStatus?: "pending" | "accepted" | "declined";
     };
     isTyping?: boolean; // temporary flag for UI rendering
     statusPanel?: string; // AI display-only status content from [状态栏] tags
@@ -294,6 +296,70 @@ export const CHAT_MESSAGES_DELETED_EVENT = "chat-messages-deleted";
 export const CHAT_REQUEST_REPLY_EVENT = "chat-request-reply";
 /** 长按编辑整批回复后重建消息：携带新消息与编辑后的原文，供云同步回写。 */
 export const CHAT_RESPONSE_BATCH_REPLACED_EVENT = "chat-response-batch-replaced";
+
+let _activeChatSessionId: string | null = null;
+
+/** 告诉共享消息层当前真正显示在前台的聊天室，供未读计数统一判断。 */
+export function setActiveChatSessionId(sessionId: string | null): void {
+    _activeChatSessionId = sessionId;
+}
+
+export function markChatSessionRead(sessionId: string): void {
+    const session = _sessionsCache.find(item => item.id === sessionId);
+    if (!session || session.unreadCount === 0) return;
+    session.unreadCount = 0;
+    dbPutSessions([session]);
+    if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("chat-messages-updated", { detail: { sessionId } }));
+    }
+}
+
+const AVATAR_ACCEPT_RE = /[\[【]\s*接受头像推荐\s*[\]】]/;
+const AVATAR_DECLINE_RE = /[\[【]\s*拒绝头像推荐\s*[\]】]/;
+
+function resolvePendingAvatarRecommendation(message: ChatMessage): void {
+    if (message.role !== "assistant" || !message.rawResponseText) return;
+    const accepted = AVATAR_ACCEPT_RE.test(message.rawResponseText);
+    const declined = AVATAR_DECLINE_RE.test(message.rawResponseText);
+    if (!accepted && !declined) return;
+
+    const session = _sessionsCache.find(item => item.id === message.sessionId);
+    if (!session || session.isGroup) return;
+    const recommendation = [..._messagesCache].reverse().find(item =>
+        item.sessionId === message.sessionId
+        && item.role === "user"
+        && item.mediaType === "image"
+        && item.mediaData?.avatarRecommendationForCharacterId === session.contactId
+        && item.mediaData?.avatarRecommendationStatus === "pending"
+        && Boolean(item.mediaUrl),
+    );
+    if (!recommendation) return;
+
+    recommendation.mediaData = {
+        ...recommendation.mediaData,
+        avatarRecommendationStatus: accepted ? "accepted" : "declined",
+    };
+    dbPutMessage(recommendation);
+
+    if (accepted && recommendation.mediaUrl) {
+        const characters = loadCharacters();
+        const index = characters.findIndex(character => character.id === session.contactId);
+        if (index >= 0) {
+            characters[index] = {
+                ...characters[index],
+                avatar: recommendation.mediaUrl,
+                updatedAt: new Date().toISOString(),
+            };
+            saveCharacters(characters);
+        }
+    }
+
+    if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("chat-avatar-recommendation-resolved", {
+            detail: { sessionId: message.sessionId, accepted },
+        }));
+    }
+}
 
 // ── Media Preview Map ─────────────────────────
 const MEDIA_PREVIEW_MAP: Record<string, string> = {
@@ -1175,6 +1241,7 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
 
     _messagesCache.push(newMsg);
     dbPutMessage(newMsg);
+    resolvePendingAvatarRecommendation(newMsg);
 
     // Auto update session last message only for records that can produce a list preview.
     // 优化：直接增量更新内存会话缓存并异步写单条，避免每次发送都走 loadChatSessions +
@@ -1186,6 +1253,13 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
         target.lastMessageId = newMsg.id;
         if (preview) target.lastMessagePreview = preview;
         target.updatedAt = newMsg.createdAt;
+        if (
+            newMsg.role === "assistant"
+            && (_activeChatSessionId !== newMsg.sessionId
+                || (typeof document !== "undefined" && document.visibilityState !== "visible"))
+        ) {
+            target.unreadCount = Math.max(0, target.unreadCount || 0) + 1;
+        }
         dbPutSessions([target]);
     } else if (sessIdx === -1) {
         // 缓存未命中（极端情况）：回退全量路径，保证列表预览仍会刷新
@@ -1195,6 +1269,13 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
             sessions[idx2].lastMessageId = newMsg.id;
             if (preview) sessions[idx2].lastMessagePreview = preview;
             sessions[idx2].updatedAt = newMsg.createdAt;
+            if (
+                newMsg.role === "assistant"
+                && (_activeChatSessionId !== newMsg.sessionId
+                    || (typeof document !== "undefined" && document.visibilityState !== "visible"))
+            ) {
+                sessions[idx2].unreadCount = Math.max(0, sessions[idx2].unreadCount || 0) + 1;
+            }
             saveChatSessions(sessions);
         }
     }
