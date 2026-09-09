@@ -15,6 +15,7 @@ import { emitChatPluginEvent, runChatPluginTransformSync } from "./chat-plugin-h
 import { parseAIResponse } from "./rich-message-parser";
 import { extractTextToolDirectiveText } from "./text-tool-protocol";
 import { deleteGroupKickMemoriesForGroup } from "./group-kick-memory";
+import { findUserAvatarChangeIntent } from "./chat-avatar-intent";
 
 export const DEFAULT_VISION_IMAGE_PROMPT_LIMIT = 1;
 export const MAX_VISION_IMAGE_PROMPT_LIMIT = 20;
@@ -325,7 +326,7 @@ function resolvePendingAvatarRecommendation(message: ChatMessage): void {
 
     const session = _sessionsCache.find(item => item.id === message.sessionId);
     if (!session || session.isGroup) return;
-    const recommendation = [..._messagesCache].reverse().find(item =>
+    const legacyRecommendation = [..._messagesCache].reverse().find(item =>
         item.sessionId === message.sessionId
         && item.role === "user"
         && item.mediaType === "image"
@@ -333,10 +334,13 @@ function resolvePendingAvatarRecommendation(message: ChatMessage): void {
         && item.mediaData?.avatarRecommendationStatus === "pending"
         && Boolean(item.mediaUrl),
     );
+    const recommendation = legacyRecommendation
+        || findUserAvatarChangeIntent(_messagesCache, message.sessionId, session.contactId)?.image;
     if (!recommendation) return;
 
     recommendation.mediaData = {
         ...recommendation.mediaData,
+        avatarRecommendationForCharacterId: session.contactId,
         avatarRecommendationStatus: accepted ? "accepted" : "declined",
     };
     dbPutMessage(recommendation);

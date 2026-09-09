@@ -16,7 +16,6 @@ import {
     removeChatContact,
     normalizeVisionImagePromptLimit,
     MAX_VISION_IMAGE_PROMPT_LIMIT,
-    CHAT_REQUEST_REPLY_EVENT,
     type ChatMessage,
 } from "@/lib/chat-storage";
 import {
@@ -46,7 +45,7 @@ import { downloadFile } from "@/lib/download-utils";
 import { getSchemes, saveScheme, deleteScheme, type CSSScheme } from "@/lib/css-scheme-storage";
 import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
 import { KeyboardAutoSendDebounceItem } from "@/components/chat/keyboard-auto-send-debounce-item";
-import { ChevronRight, Image as ImageIcon, Video, Mic, UserMinus, UserPlus, Users, Pin, MessageSquare, Search, AlertCircle, Code, Laptop, Trash2, Smile, Sparkles, X, Play, Upload, Download, Save, FolderOpen, Camera, Send, type LucideIcon } from "lucide-react";
+import { ChevronRight, Image as ImageIcon, Video, Mic, UserMinus, UserPlus, Users, Pin, MessageSquare, Search, AlertCircle, Code, Laptop, Trash2, Smile, Sparkles, X, Play, Upload, Download, Save, FolderOpen, Camera, type LucideIcon } from "lucide-react";
 import { BINDING_ACCENTS, CONTENT_APP_ACCENTS } from "@/lib/ui-accent-colors";
 import CSSSchemeBar from "@/components/ui/css-scheme-picker";
 import { ConfirmDialog } from "@/components/ui/modal";
@@ -460,7 +459,6 @@ export function ChatSettingsPanel({
     const [, setAvatarRevision] = useState(0);
     const ownAvatarInputRef = useRef<HTMLInputElement | null>(null);
     const characterAvatarInputRef = useRef<HTMLInputElement | null>(null);
-    const recommendAvatarInputRef = useRef<HTMLInputElement | null>(null);
 
     const loadSearchHistoryWindow = (count = CHAT_INITIAL_VISIBLE_MESSAGE_COUNT) => {
         const visibleMessages = loadChatMessages(session.id).filter(isSearchVisibleMessage);
@@ -583,36 +581,13 @@ export function ChatSettingsPanel({
         setAvatarRevision(value => value + 1);
     };
 
-    const recommendAvatar = async (file: File) => {
-        const avatar = await fileToAvatarDataUrl(file);
-        pushChatMessage({
-            sessionId: session.id,
-            role: "user",
-            content: "",
-            mediaType: "image",
-            mediaUrl: avatar,
-            mediaData: {
-                label: "推荐给你作为新头像",
-                avatarRecommendationForCharacterId: session.contactId,
-                avatarRecommendationStatus: "pending",
-            },
-        });
-        setShowAvatarDialog(false);
-        onClose();
-        window.setTimeout(() => {
-            const detail = { source: "avatar_recommendation", sessionId: session.id, characterId: session.contactId, handled: false, busy: false };
-            window.dispatchEvent(new CustomEvent(CHAT_REQUEST_REPLY_EVENT, { detail }));
-        }, 0);
-    };
-
-    const handleAvatarInput = async (event: React.ChangeEvent<HTMLInputElement>, action: "own" | "character" | "recommend") => {
+    const handleAvatarInput = async (event: React.ChangeEvent<HTMLInputElement>, action: "own" | "character") => {
         const file = event.target.files?.[0];
         event.target.value = "";
         if (!file) return;
         try {
             if (action === "own") await updateOwnAvatar(file);
-            else if (action === "character") await updateCharacterAvatar(file);
-            else await recommendAvatar(file);
+            else await updateCharacterAvatar(file);
         } catch (error) {
             console.error("Failed to update avatar", error);
             alert("头像图片处理失败，请换一张图片重试");
@@ -1804,19 +1779,9 @@ export function ChatSettingsPanel({
                             </button>
                         </div>
 
-                        <button type="button" className="mt-3 flex w-full items-center gap-3 rounded-2xl bg-[var(--c-card-bg)] px-4 py-3 text-left shadow-sm" onClick={() => recommendAvatarInputRef.current?.click()}>
-                            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[var(--c-input)]"><Send size={17} /></span>
-                            <span className="min-w-0 flex-1">
-                                <span className="block ts-13 font-medium text-[var(--c-text-title)]">推荐头像给 {character?.name || "TA"}</span>
-                                <span className="mt-0.5 block ts-11 opacity-55">也可以将头像推荐给 char，看 TA 是否愿意更换～</span>
-                            </span>
-                            <ChevronRight size={16} className="opacity-45" />
-                        </button>
-
-                        <p className="mt-3 px-1 ts-11 leading-5 opacity-45">更换“我的头像”后，角色会知道你刚刚换过头像；推荐头像则由角色根据人设自行决定是否采用。</p>
+                        <p className="mt-3 rounded-2xl bg-[var(--c-card-bg)] px-4 py-3 ts-11 leading-5 opacity-60">更换“我的头像”后，角色会知道你刚刚换过头像。你也可以直接在聊天中发送图片，并说或暗示让对方换头像，角色会根据人设自行决定是否采用。</p>
                         <input ref={ownAvatarInputRef} type="file" accept="image/*" className="hidden" onChange={event => void handleAvatarInput(event, "own")} />
                         <input ref={characterAvatarInputRef} type="file" accept="image/*" className="hidden" onChange={event => void handleAvatarInput(event, "character")} />
-                        <input ref={recommendAvatarInputRef} type="file" accept="image/*" className="hidden" onChange={event => void handleAvatarInput(event, "recommend")} />
                     </div>
                 </div>
             )}

@@ -23,6 +23,7 @@ import {
     isSessionStreamingEnabled,
 } from "./chat-storage";
 import { extractTextToolDirectiveText, stripTextToolDirectives } from "./text-tool-protocol";
+import { findUserAvatarChangeIntent } from "./chat-avatar-intent";
 import type { ApiConfig, PresetConfig, Prompt, PromptOrderEntry, RegexConfig } from "./settings-types";
 import type { CustomAppPromptProfile } from "./custom-app-types";
 import {
@@ -1938,6 +1939,21 @@ export async function buildChatPromptMessages(
         offlineSummaryTag: preset?.story_summary_tag?.trim() || "summary",
         nativeToolHistory: usesNativeActions,
     });
+    const avatarChangeIntent = !session.isGroup
+        ? findUserAvatarChangeIntent(historyForPrompt, session.id, character.id)
+        : null;
+    if (avatarChangeIntent) {
+        llmMessages.push({
+            role: "system",
+            content: [
+                "用户在本轮发送了图片，并表达或暗示希望你把它换成自己的头像。",
+                "请结合你的人设与关系自主决定是否更换，不要机械接受。",
+                "如果愿意采用，必须在本次自然回复的末尾输出且只输出一次控制标记：[接受头像推荐]。",
+                "如果不愿采用，必须在回复末尾输出：[拒绝头像推荐]。",
+                "控制标记不会展示给用户；不要解释标记，也不要把它写进代码块。",
+            ].join("\n"),
+        });
+    }
     if (promptProfile?.output === "plain_text") {
         llmMessages.push({
             role: "system",
