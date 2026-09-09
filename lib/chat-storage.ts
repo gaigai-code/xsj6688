@@ -45,6 +45,10 @@ export type ChatSession = {
     updatedAt: string; // ISO date
     isPinned: boolean;
     backgroundImage?: string; // Add support for custom background
+    /** 仅当前私聊里展示的用户头像；不修改用户身份、主页或其他会话 */
+    userAvatarOverride?: string;
+    /** 用户更换当前会话头像后是否通知角色。未设置时默认开启 */
+    notifyCharacterOnUserAvatarChange?: boolean;
     autoReplied?: boolean; // Whether the initial greeting auto-reply has been triggered
     alias?: string;
     videoBackground?: string;
@@ -60,6 +64,8 @@ export type ChatSession = {
     offlineBilingualTranslationPrompt?: string;
     nativeExpandedToolSourceIds?: string[];
     visionImagePromptLimit?: number;
+    /** false 表示当前私聊明确覆盖全局最近图片数量；旧会话默认跟随已设置的全局值 */
+    visionImagePromptLimitUsesGlobal?: boolean;
     /** 流式生成（线上）：开启后该会话的线上 AI 回复边生成边显示（默认关，保持原整段请求行为） */
     streamOnline?: boolean;
     /** 流式生成（线下）：开启后该会话的线下 AI 回复边生成边显示（默认关，保持原整段请求行为） */
@@ -267,6 +273,14 @@ export type ChatMessage = {
 
 export type ChatAppSettings = {
     globalAppBackground?: string; // base64 or URL
+    /** 私聊内“我的头像”默认值；单独会话头像优先 */
+    globalChatUserAvatar?: string;
+    /** 私聊背景默认值；单独会话背景优先 */
+    globalChatBackgroundImage?: string;
+    /** 聊天室 CSS 默认值；单独会话 CSS 优先，主页外观 CSS 优先级最低 */
+    globalChatCustomCSS?: string;
+    /** 私聊默认传入的最近图片数量；单独会话设置优先 */
+    globalVisionImagePromptLimit?: number;
     timeAware?: boolean; // When true, inject timestamps into prompt so AI knows message timing (default: true)
     promptViewerEnabled?: boolean; // When true, show the floating prompt viewer entry
     quickActionEnabled?: boolean; // When true, show the floating quick action entry
@@ -283,6 +297,31 @@ export function getMaxToolRounds(): number {
     const raw = loadChatAppSettings().maxToolRounds;
     if (typeof raw !== "number" || !Number.isFinite(raw)) return 5;
     return Math.max(1, Math.min(20, Math.round(raw)));
+}
+
+/** 私聊视觉上下文数量：单独会话 > 全局聊天信息 > 内置默认值。 */
+export function resolveVisionImagePromptLimit(session: Pick<ChatSession, "visionImagePromptLimit" | "visionImagePromptLimitUsesGlobal" | "isGroup"> | null | undefined): number {
+    if (session?.isGroup) return normalizeVisionImagePromptLimit(session.visionImagePromptLimit);
+    const globalValue = loadChatAppSettings().globalVisionImagePromptLimit;
+    if (session?.visionImagePromptLimitUsesGlobal === false) {
+        return normalizeVisionImagePromptLimit(session.visionImagePromptLimit);
+    }
+    return normalizeVisionImagePromptLimit(globalValue ?? session?.visionImagePromptLimit);
+}
+
+/** 私聊用户头像：单独会话 > 全局聊天信息 > 用户资料头像。 */
+export function resolveChatUserAvatar(
+    session: Pick<ChatSession, "userAvatarOverride" | "isGroup"> | null | undefined,
+    identityAvatar?: string | null,
+): string {
+    if (session?.isGroup) return identityAvatar || "";
+    return session?.userAvatarOverride || loadChatAppSettings().globalChatUserAvatar || identityAvatar || "";
+}
+
+/** 私聊背景：单独会话 > 全局聊天信息。群聊不继承私聊全局背景。 */
+export function resolveChatBackgroundImage(session: Pick<ChatSession, "backgroundImage" | "isGroup"> | null | undefined): string {
+    if (session?.backgroundImage) return session.backgroundImage;
+    return session?.isGroup ? "" : (loadChatAppSettings().globalChatBackgroundImage || "");
 }
 
 /** 会话是否开启线上流式生成（默认关；按会话独立控制，单聊/群聊都生效） */
@@ -1151,7 +1190,6 @@ export function createOrGetSession(contactId: string): ChatSession {
         isPinned: false,
         bilingualTranslationEnabled: true,
         collapseBilingualTranslation: true,
-        visionImagePromptLimit: DEFAULT_VISION_IMAGE_PROMPT_LIMIT,
     };
     saveChatSessions([newSession, ...sessions]); // Prepend new session
     return newSession;

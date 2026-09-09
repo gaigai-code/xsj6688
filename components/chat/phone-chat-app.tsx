@@ -257,7 +257,7 @@ export const PhoneChatApp = memo(function PhoneChatApp({ onClose, initialSession
             {...(activeSession || activeMascot ? { "data-room-active": "" } : {})}
             {...(hideTabBar ? { "data-tabbar-hidden": "" } : {})}
         >
-            {/* Chat app-level custom CSS (lower priority than per-session CSS) */}
+            {/* Homepage appearance CSS is the lowest chat styling layer. */}
             {chatAppCSS && <SessionCustomCSS css={chatAppCSS} scope=".chat-app" />}
             {/* The Main Content Area */}
             <div className="chat-main-content relative flex-1 flex flex-col overflow-hidden" {...(activeSession || activeMascot ? { "data-covered-by-room": "" } : {})}>

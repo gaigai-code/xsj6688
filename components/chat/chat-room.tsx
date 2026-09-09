@@ -2,7 +2,7 @@
 import { getNow } from "@/lib/virtual-time";
 
 import { forwardRef, Fragment, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ChatSession, ChatMessage, CHAT_APP_SETTINGS_UPDATED_EVENT, CHAT_INITIAL_VISIBLE_MESSAGE_COUNT, CHAT_LOAD_MORE_MESSAGE_COUNT, CHAT_REQUEST_REPLY_EVENT, loadChatAppSettings, loadChatMessages, loadChatContacts, loadChatSessions, saveChatSessions, pushChatMessage, updateChatMessage, deleteChatMessage, deleteChatMessagesFrom, deleteChatMessagesByIds, retractChatMessage, editChatMessage, updateMessageMediaData, replaceResponseBatchWithParts, replaceGroupResponseRound, isReadingDiscussMessage, isSystemInstructionMessage, createResponseBatchId, createResponseRoundId, getLatestStateValues, getLatestCharacterStateValues, compareChatMessages, isSessionStreamingEnabled } from "@/lib/chat-storage";
+import { ChatSession, ChatMessage, CHAT_APP_SETTINGS_UPDATED_EVENT, CHAT_INITIAL_VISIBLE_MESSAGE_COUNT, CHAT_LOAD_MORE_MESSAGE_COUNT, CHAT_REQUEST_REPLY_EVENT, loadChatAppSettings, loadChatMessages, loadChatContacts, loadChatSessions, saveChatSessions, pushChatMessage, updateChatMessage, deleteChatMessage, deleteChatMessagesFrom, deleteChatMessagesByIds, retractChatMessage, editChatMessage, updateMessageMediaData, replaceResponseBatchWithParts, replaceGroupResponseRound, isReadingDiscussMessage, isSystemInstructionMessage, createResponseBatchId, createResponseRoundId, getLatestStateValues, getLatestCharacterStateValues, compareChatMessages, isSessionStreamingEnabled, resolveChatBackgroundImage, resolveChatUserAvatar } from "@/lib/chat-storage";
 import { cleanStreamText, splitStreamPreviewSegments, stripLiteralTexts, stripXmlTagBlocks } from "@/lib/stream-preview";
 import type { StateValue } from "@/lib/chat-storage";
 import { parseStateValues, mergeStateValues } from "@/lib/state-value-parser";
@@ -17,7 +17,7 @@ import { StickerSearchSuggest } from "./sticker-search-suggest";
 import { StateValuesPanel } from "./state-values-panel";
 import { generateChatCompletion, generateOfflineChatCompletion, flattenCompletionResult, ChatEngineError } from "@/lib/chat-engine";
 import { formatOfflineTurnXml as formatOfflineTurnXmlShared, buildOfflinePromptHistory as buildOfflinePromptHistoryShared } from "@/lib/offline-prompt-builder";
-import { getStatusRegionConfig, isCustomStatusRegionActive } from "@/lib/chat-status-region";
+import { getStatusRegionConfig, isCustomStatusRegionActive, STATUS_REGION_UPDATED_EVENT } from "@/lib/chat-status-region";
 import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
 import { sendBrowserNotification } from "@/lib/browser-notification";
 import { dispatchChatMessageNotice } from "@/lib/chat-notification-events";
@@ -1130,6 +1130,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     const [callInitiatorName, setCallInitiatorName] = useState<string>("");
     const [userIdentity, setUserIdentity] = useState<UserIdentity | null>(null);
     const [enterToSendEnabled, setEnterToSendEnabled] = useState(() => loadChatAppSettings().enterToSendEnabled === true);
+    const [chatAppSettingsRevision, setChatAppSettingsRevision] = useState(0);
 
     // Rich media input modals
     const [richModal, setRichModal] = useState<RichModalKind | null>(null);
@@ -1147,9 +1148,16 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     useEffect(() => {
         const syncEnterToSend = () => {
             setEnterToSendEnabled(loadChatAppSettings().enterToSendEnabled === true);
+            setChatAppSettingsRevision(value => value + 1);
         };
         window.addEventListener(CHAT_APP_SETTINGS_UPDATED_EVENT, syncEnterToSend);
         return () => window.removeEventListener(CHAT_APP_SETTINGS_UPDATED_EVENT, syncEnterToSend);
+    }, []);
+
+    useEffect(() => {
+        const syncStatusRegion = () => setChatAppSettingsRevision(value => value + 1);
+        window.addEventListener(STATUS_REGION_UPDATED_EVENT, syncStatusRegion);
+        return () => window.removeEventListener(STATUS_REGION_UPDATED_EVENT, syncStatusRegion);
     }, []);
 
     useEffect(() => {
@@ -1197,8 +1205,20 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         return () => window.removeEventListener(CHAT_PLUGIN_TOAST_EVENT, handler);
     }, []);
 
+    const effectiveBackgroundImage = useMemo(
+        () => resolveChatBackgroundImage(session),
+        [session.backgroundImage, session.isGroup, chatAppSettingsRevision],
+    );
+    const effectiveUserAvatar = useMemo(
+        () => resolveChatUserAvatar(session, userIdentity?.avatarUrl),
+        [session.userAvatarOverride, session.isGroup, userIdentity?.avatarUrl, chatAppSettingsRevision],
+    );
+    const globalChatCSS = useMemo(
+        () => session.isGroup ? "" : (loadChatAppSettings().globalChatCustomCSS || ""),
+        [session.isGroup, chatAppSettingsRevision],
+    );
     const [bgImageResolved, setBgImageResolved] = useState<string | null>(null);
-    const [bgLoading, setBgLoading] = useState(!!session.backgroundImage);
+    const [bgLoading, setBgLoading] = useState(!!effectiveBackgroundImage);
 
     const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -1257,27 +1277,27 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     }, [messages]);
 
     useEffect(() => {
-        if (!session.backgroundImage) {
+        if (!effectiveBackgroundImage) {
             setBgImageResolved(null);
             setBgLoading(false);
             return;
         }
-        if (session.backgroundImage.startsWith("data:") || session.backgroundImage.startsWith("http")) {
-            setBgImageResolved(session.backgroundImage);
+        if (effectiveBackgroundImage.startsWith("data:") || effectiveBackgroundImage.startsWith("http")) {
+            setBgImageResolved(effectiveBackgroundImage);
             setBgLoading(false);
             return;
         }
         // It's an ID — load from IndexedDB
         setBgLoading(true);
         import("@/lib/chat-asset-storage").then(({ getChatImageFromIndexedDB }) => {
-            getChatImageFromIndexedDB(session.backgroundImage!).then(dataUrl => {
+            getChatImageFromIndexedDB(effectiveBackgroundImage).then(dataUrl => {
                 if (dataUrl) {
                     setBgImageResolved(dataUrl);
                 }
                 setBgLoading(false);
             });
         });
-    }, [session.backgroundImage]);
+    }, [effectiveBackgroundImage]);
 
     // Message Actions state
     const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
@@ -4051,7 +4071,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     // 线下 XML 构造与提示词查看器共用 lib/offline-prompt-builder（社区 #108），
     // 保证「预览 = 真实发出的提示词」；此处仅包一层稳定引用。
     // 自定义状态栏：custom 生效时新消息盖戳，折叠区改走用户渲染代码；旧消息按原生渲染
-    const statusRegionCfg = getStatusRegionConfig(session.id);
+    const statusRegionCfg = getStatusRegionConfig(session.id, !session.isGroup);
     const customStatusActive = isCustomStatusRegionActive(statusRegionCfg);
 
     const formatOfflineTurnXml = useCallback((turn: ChatOfflineTurn): string => formatOfflineTurnXmlShared(turn), []);
@@ -5454,7 +5474,10 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
 
     return (
         <div ref={wrapperRef} className={`session-${session.id} chat-room-wrapper page-shell inset-0 flex flex-col z-20`} style={chatRoomBackgroundStyle} {...(bgLoading ? { "data-loading": "" } : {})} {...(bgImageResolved ? { "data-has-bg-image": "" } : {})} {...(showSettings ? { "data-settings-open": "" } : {})}>
-            {/* Custom CSS Injection for this session — scoped to prevent leaking */}
+            {/* CSS priority: session > global chat info > homepage appearance CSS. */}
+            {globalChatCSS && (
+                <SessionCustomCSS css={globalChatCSS} scope={`.session-${session.id}`} />
+            )}
             {liveCSS && (
                 <SessionCustomCSS css={liveCSS} scope={`.session-${session.id}`} />
             )}
@@ -5538,7 +5561,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                 <div className="chat-offline-entry" data-role="user" style={offlineDisplay.userContent.trim() ? undefined : { display: "none" }}>
                                     {/* 头像占位：默认 display:none（见 chat.css），供自定义 CSS 显示 */}
                                     <div className="chat-offline-avatar" aria-hidden="true">
-                                        {userIdentity?.avatarUrl ? <img src={userIdentity.avatarUrl} alt="" /> : <User size={18} color="var(--c-text)" />}
+                                        {effectiveUserAvatar ? <img src={effectiveUserAvatar} alt="" /> : <User size={18} color="var(--c-text)" />}
                                     </div>
                                     <div className="chat-offline-label">你</div>
                                     <div
@@ -5653,7 +5676,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                 <div className="chat-offline-entry" data-role="user" style={pendingOfflineUserText ? undefined : { display: "none" }}>
                                     {/* 头像占位：默认 display:none（见 chat.css），供自定义 CSS 显示 */}
                                     <div className="chat-offline-avatar" aria-hidden="true">
-                                        {userIdentity?.avatarUrl ? <img src={userIdentity.avatarUrl} alt="" /> : <User size={18} color="var(--c-text)" />}
+                                        {effectiveUserAvatar ? <img src={effectiveUserAvatar} alt="" /> : <User size={18} color="var(--c-text)" />}
                                     </div>
                                     <div className="chat-offline-label">你</div>
                                     <div className="chat-offline-text">
@@ -6096,8 +6119,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                         )}
                                         {msg.role === "user" && !isEmptyBubble && (
                                             <div className="chat-msg-avatar w-[40px] h-[40px] rounded-[20px] bg-[var(--c-page-body-bg)] shrink-0 flex items-center justify-center overflow-hidden">
-                                                {userIdentity?.avatarUrl ? (
-                                                    <img src={userIdentity.avatarUrl} alt="Me" className="w-full h-full object-cover rounded-[20px]" />
+                                                {effectiveUserAvatar ? (
+                                                    <img src={effectiveUserAvatar} alt="Me" className="w-full h-full object-cover rounded-[20px]" />
                                                 ) : (
                                                     <User size={20} color="var(--c-text)" />
                                                 )}

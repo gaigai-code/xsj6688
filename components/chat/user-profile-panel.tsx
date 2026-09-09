@@ -20,6 +20,7 @@ import { Toggle } from "@/components/ui/form";
 import { StickerManager } from "./sticker-manager";
 import { ChatPluginManager } from "./chat-plugin-manager";
 import { ChatPluginPageBoundary } from "./chat-plugin-page-boundary";
+import { GlobalChatInfoSettings } from "./global-chat-info-settings";
 import { WalletPanel } from "./wallet-panel";
 import { loadMomentsConfig, saveMomentsConfig, DEFAULT_MOMENTS_CONFIG, type MomentsInteractionConfig, getAllPosts } from "@/lib/moments-storage";
 import { loadChatContacts } from "@/lib/chat-storage";
@@ -163,6 +164,7 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
     const [notifHint, setNotifHint] = useState<string | null>(null);
     const [notifChecking, setNotifChecking] = useState(false);
     const [showPushSettings, setShowPushSettings] = useState(false);
+    const [showGlobalChatInfo, setShowGlobalChatInfo] = useState(false);
     const [enterToSendEnabled, setEnterToSendEnabled] = useState(false);
     const [callVibrationEnabled, setCallVibrationEnabled] = useState(true);
     const [userStats, setUserStats] = useState({ chats: 0, moments: 0, visitors: 1234 });
@@ -258,6 +260,9 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
     }
     if (showPushSettings) {
         return <OfflinePushSettingsPage onBack={() => { window.dispatchEvent(new CustomEvent("chat-hide-tabbar", { detail: false })); setShowPushSettings(false); }} />;
+    }
+    if (showGlobalChatInfo) {
+        return <GlobalChatInfoSettings onBack={() => { window.dispatchEvent(new CustomEvent("chat-hide-tabbar", { detail: false })); setShowGlobalChatInfo(false); }} />;
     }
     if (showPluginManager) {
         return (
@@ -423,6 +428,14 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
                             <div className="flex flex-col flex-1 text-left gap-0.5">
                                 <span className="ts-14 font-semibold text-[var(--c-text-title)]">离线推送与定时消息</span>
                                 <span className="ts-11 text-[var(--c-text)] opacity-70">关掉后台也能收到推送、安静时段、定时主动消息</span>
+                            </div>
+                            <ChevronRight size={16} className="text-[var(--c-icon)] opacity-50" />
+                        </button>
+                        <button className="flex items-center gap-3 py-3.5 w-full border-t border-[color-mix(in_srgb,var(--c-card-border)_20%,transparent)]" onClick={() => { window.dispatchEvent(new CustomEvent("chat-hide-tabbar", { detail: true })); setShowGlobalChatInfo(true); }}>
+                            <SlidersHorizontal size={18} className="text-[var(--c-icon)] opacity-70" strokeWidth={1.25}/>
+                            <div className="flex flex-col flex-1 text-left gap-0.5">
+                                <span className="ts-14 font-semibold text-[var(--c-text-title)]">全局聊天信息</span>
+                                <span className="ts-11 text-[var(--c-text)] opacity-70">私聊默认头像、状态栏、背景、CSS 与最近图片</span>
                             </div>
                             <ChevronRight size={16} className="text-[var(--c-icon)] opacity-50" />
                         </button>

@@ -16,6 +16,9 @@ import {
     removeChatContact,
     normalizeVisionImagePromptLimit,
     MAX_VISION_IMAGE_PROMPT_LIMIT,
+    loadChatAppSettings,
+    resolveChatUserAvatar,
+    resolveVisionImagePromptLimit,
     type ChatMessage,
 } from "@/lib/chat-storage";
 import {
@@ -39,8 +42,8 @@ import { triggerGroupKickReaction } from "@/lib/group-kick-reaction";
 import { loadCharacters, saveCharacters } from "@/lib/character-storage";
 import { isAgentComputerConfigured } from "@/lib/agent-computer";
 import { CharacterComputerPage } from "./character-computer-page";
-import { resolveUserIdentity, loadBindingConfig, loadPresets, resolveBinding, loadUserIdentities, saveUserIdentities } from "@/lib/settings-storage";
-import { getStatusRegionConfig, saveStatusRegionConfig, presetSupportsStatusRegion, isCustomStatusRegionActive, STATUS_REGION_SCHEME_TARGET, STATUS_REGION_UPDATED_EVENT, type StatusRegionConfig } from "@/lib/chat-status-region";
+import { resolveUserIdentity, loadBindingConfig, loadPresets, resolveBinding } from "@/lib/settings-storage";
+import { clearStatusRegionConfig, getStatusRegionConfig, hasOwnStatusRegionConfig, saveStatusRegionConfig, presetSupportsStatusRegion, isCustomStatusRegionActive, STATUS_REGION_SCHEME_TARGET, STATUS_REGION_UPDATED_EVENT, type StatusRegionConfig } from "@/lib/chat-status-region";
 import { downloadFile } from "@/lib/download-utils";
 import { getSchemes, saveScheme, deleteScheme, type CSSScheme } from "@/lib/css-scheme-storage";
 import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
@@ -324,6 +327,7 @@ export function ChatSettingsPanel({
     const [isPinned, setIsPinned] = useState(session.isPinned || false);
     // 自定义状态栏（状态区）
     const [statusRegion, setStatusRegion] = useState<StatusRegionConfig>(() => getStatusRegionConfig(session.id));
+    const [statusUsesGlobal, setStatusUsesGlobal] = useState(() => !hasOwnStatusRegionConfig(session.id));
     const [showStatusRegionDialog, setShowStatusRegionDialog] = useState(false);
     const [draftContract, setDraftContract] = useState("");
     const [draftRender, setDraftRender] = useState("");
@@ -384,6 +388,7 @@ export function ChatSettingsPanel({
     const saveStatusRegion = (next: StatusRegionConfig) => {
         setStatusRegion(next);
         saveStatusRegionConfig(session.id, next);
+        setStatusUsesGlobal(!hasOwnStatusRegionConfig(session.id));
     };
     // 小卷的状态栏工具写入后广播，这里同步刷新——否则本页状态只在挂载时初始化一次，
     // 面板开着的时候被写入就会停在旧值，表现为「后台写了、前台看不到」。
@@ -394,6 +399,7 @@ export function ChatSettingsPanel({
             if (detail?.sessionId && detail.sessionId !== session.id) return;
             const next = getStatusRegionConfig(session.id);
             setStatusRegion(next);
+            setStatusUsesGlobal(!hasOwnStatusRegionConfig(session.id));
             if (showStatusRegionDialog) {
                 setDraftContract(next.contract || STATUS_REGION_STARTER_CONTRACT);
                 setDraftRender(next.renderHtml || STATUS_REGION_STARTER_RENDER);
@@ -412,7 +418,8 @@ export function ChatSettingsPanel({
         setPreviewHtml("");
         setShowStatusRegionDialog(true);
     };
-    const [visionImagePromptLimit, setVisionImagePromptLimit] = useState(() => normalizeVisionImagePromptLimit(session.visionImagePromptLimit));
+    const [visionImagePromptLimit, setVisionImagePromptLimit] = useState(() => resolveVisionImagePromptLimit(session));
+    const [visionLimitUsesGlobal, setVisionLimitUsesGlobal] = useState(session.visionImagePromptLimitUsesGlobal !== false);
     const [bilingualTranslationEnabled, setBilingualTranslationEnabled] = useState(session.bilingualTranslationEnabled !== false);
     const [offlineSummaryRetry, setOfflineSummaryRetry] = useState(session.offlineSummaryRetry !== false);
     const [collapseBilingualTranslation, setCollapseBilingualTranslation] = useState(session.collapseBilingualTranslation !== false);
@@ -556,19 +563,20 @@ export function ChatSettingsPanel({
         ? (session.participantIds || []).map(id => characters.find(c => c.id === id)).filter(Boolean)
         : [];
     const userIdentity = resolveUserIdentity(session.isGroup ? undefined : session.contactId, session.isGroup ? "group_chat" : "chat");
+    const effectiveUserAvatar = resolveChatUserAvatar(session, userIdentity?.avatarUrl);
+    const [notifyAvatarChange, setNotifyAvatarChange] = useState(session.notifyCharacterOnUserAvatarChange !== false);
 
     const updateOwnAvatar = async (file: File) => {
-        const activeIdentity = resolveUserIdentity(session.contactId, "chat");
-        if (!activeIdentity) { alert("请先在用户身份中创建资料"); return; }
         const avatarUrl = await fileToAvatarDataUrl(file);
-        const identities = loadUserIdentities();
-        saveUserIdentities(identities.map(identity => identity.id === activeIdentity.id ? { ...identity, avatarUrl } : identity));
-        pushChatMessage({
-            sessionId: session.id,
-            role: "system",
-            content: "用户刚刚更换了自己的头像。你已经注意到这次变化，可在下一次回复中结合你们的关系自然回应。",
-            mediaType: "system_instruction",
-        });
+        updateSession({ userAvatarOverride: avatarUrl });
+        if (notifyAvatarChange) {
+            pushChatMessage({
+                sessionId: session.id,
+                role: "system",
+                content: `${userIdentity?.name || "user"}更新了头像`,
+                mediaType: "system_instruction",
+            });
+        }
         setAvatarRevision(value => value + 1);
     };
 
@@ -736,7 +744,8 @@ export function ChatSettingsPanel({
     const updateVisionImagePromptLimit = (value: unknown) => {
         const next = normalizeVisionImagePromptLimit(value);
         setVisionImagePromptLimit(next);
-        updateSession({ visionImagePromptLimit: next });
+        setVisionLimitUsesGlobal(false);
+        updateSession({ visionImagePromptLimit: next, visionImagePromptLimitUsesGlobal: false });
     };
 
     const openBilingualPromptEditor = () => {
@@ -886,8 +895,8 @@ export function ChatSettingsPanel({
                         </div>
                         {resultRole === "user" && (
                             <div className="chat-msg-avatar w-[40px] h-[40px] rounded-[20px] bg-[var(--c-page-body-bg)] shrink-0 flex items-center justify-center overflow-hidden">
-                                {userIdentity?.avatarUrl ? (
-                                    <img src={userIdentity.avatarUrl} alt="Me" className="w-full h-full object-cover rounded-[20px]" />
+                                {effectiveUserAvatar ? (
+                                    <img src={effectiveUserAvatar} alt="Me" className="w-full h-full object-cover rounded-[20px]" />
                                 ) : (
                                     <ChatFallbackAvatar />
                                 )}
@@ -924,7 +933,7 @@ export function ChatSettingsPanel({
                             </div>
                             <div className="menu-right gap-1.5">
                                 <div className="h-7 w-7 overflow-hidden rounded-full bg-[var(--c-input)] ring-2 ring-[var(--c-card-bg)]">
-                                    {userIdentity?.avatarUrl ? <img src={userIdentity.avatarUrl} className="h-full w-full object-cover" alt="我的头像" /> : <ChatFallbackAvatar />}
+                                    {effectiveUserAvatar ? <img src={effectiveUserAvatar} className="h-full w-full object-cover" alt="我的头像" /> : <ChatFallbackAvatar />}
                                 </div>
                                 <div className="-ml-3 h-7 w-7 overflow-hidden rounded-full bg-[var(--c-input)] ring-2 ring-[var(--c-card-bg)]">
                                     {character?.avatar ? <img src={character.avatar} className="h-full w-full object-cover" alt="对方头像" /> : <ChatFallbackAvatar />}
@@ -1038,6 +1047,7 @@ export function ChatSettingsPanel({
                                 <span className="menu-desc">{statusPresetSupported ? "状态值与内心的默认输出（关闭后整块从提示词移除）" : "当前预设未声明状态区宏，仅默认预设支持"}</span>
                             </div>
                             <div className="menu-right">
+                                {statusUsesGlobal && <span className="menu-desc mr-2">跟随全局</span>}
                                 <Toggle
                                     checked={statusRegion.mode === "native"}
                                     disabled={!statusPresetSupported}
@@ -1077,6 +1087,13 @@ export function ChatSettingsPanel({
                                 </div>
                             </div>
                         )}
+                        {statusPresetSupported && !statusUsesGlobal && (
+                            <button className="menu-item" onClick={() => { clearStatusRegionConfig(session.id); setStatusRegion(getStatusRegionConfig(session.id)); setStatusUsesGlobal(true); }}>
+                                <ChatInfoIcon icon={Sparkles} color={BINDING_ACCENTS.preset} />
+                                <div className="menu-label-group"><span className="menu-label">状态栏恢复全局</span><span className="menu-desc">删除当前会话覆盖设置</span></div>
+                                <div className="menu-right"><ChevronRight size={16} /></div>
+                            </button>
+                        )}
                     </div>
                 )}
 
@@ -1093,7 +1110,7 @@ export function ChatSettingsPanel({
                         <ChatInfoIcon icon={ImageIcon} color={BINDING_ACCENTS.api} />
                         <div className="menu-label-group">
                             <span className="menu-label">传入最近图片数</span>
-                            <span className="menu-desc">进入模型视觉上下文的最近图片数量，0 表示不传图片内容</span>
+                            <span className="menu-desc">进入模型视觉上下文的最近图片数量；当前{visionLimitUsesGlobal ? "跟随全局" : "由本会话覆盖全局"}</span>
                         </div>
                         <div className="menu-right gap-2">
                             <button
@@ -1120,6 +1137,14 @@ export function ChatSettingsPanel({
                             >
                                 +
                             </button>
+                            {!visionLimitUsesGlobal && (
+                                <button type="button" className="ui-btn ui-btn-ghost h-8 px-2" onClick={() => {
+                                    const next = normalizeVisionImagePromptLimit(loadChatAppSettings().globalVisionImagePromptLimit);
+                                    setVisionImagePromptLimit(next);
+                                    setVisionLimitUsesGlobal(true);
+                                    updateSession({ visionImagePromptLimitUsesGlobal: true });
+                                }}>全局</button>
+                            )}
                         </div>
                     </div>
                     <>
@@ -1254,7 +1279,7 @@ export function ChatSettingsPanel({
                         <ChatInfoIcon icon={ImageIcon} color={BINDING_ACCENTS.api} />
                         <div className="menu-label-group"><span className="menu-label">聊天背景</span></div>
                         <div className="menu-right">
-                            {backgroundImage && <><span className="menu-desc mr-1">已设置</span><button className="menu-desc mr-1 text-[var(--c-danger)]" onClick={e => { e.preventDefault(); setBackgroundImage(""); updateSession({ backgroundImage: "" }); }}>清除</button></>}
+                            {backgroundImage ? <><span className="menu-desc mr-1">本会话</span><button className="menu-desc mr-1 text-[var(--c-danger)]" onClick={e => { e.preventDefault(); setBackgroundImage(""); updateSession({ backgroundImage: "" }); }}>恢复全局</button></> : <span className="menu-desc mr-1">跟随全局</span>}
                             <ChevronRight size={16} />
                         </div>
                         <input type="file" accept="image/*" onChange={e => handleImageUpload(e, setBackgroundImage, "backgroundImage")} className="hidden" />
@@ -1321,7 +1346,7 @@ export function ChatSettingsPanel({
                     <KeyboardAutoSendDebounceItem sessionId={session.id} />
                     <button className="menu-item" onClick={() => setEditingCSS(true)}>
                         <ChatInfoIcon icon={Code} color={BINDING_ACCENTS.embedding} />
-                        <div className="menu-label-group"><span className="menu-label">自定义 CSS 样式</span></div>
+                        <div className="menu-label-group"><span className="menu-label">自定义 CSS 样式</span><span className="menu-desc">{customCSS ? "本会话覆盖全局" : "跟随全局聊天室 CSS"}</span></div>
                         <div className="menu-right">
                             {customCSS && <span className="menu-desc mr-1">已设置</span>}
                             <ChevronRight size={16} />
@@ -1765,7 +1790,7 @@ export function ChatSettingsPanel({
                         <div className="grid grid-cols-2 gap-3">
                             <button type="button" className="rounded-2xl bg-[var(--c-card-bg)] p-4 text-left shadow-sm" onClick={() => ownAvatarInputRef.current?.click()}>
                                 <div className="mx-auto h-16 w-16 overflow-hidden rounded-full bg-[var(--c-input)]">
-                                    {userIdentity?.avatarUrl ? <img src={userIdentity.avatarUrl} className="h-full w-full object-cover" alt="我的头像" /> : <ChatFallbackAvatar />}
+                                    {effectiveUserAvatar ? <img src={effectiveUserAvatar} className="h-full w-full object-cover" alt="我的头像" /> : <ChatFallbackAvatar />}
                                 </div>
                                 <div className="mt-3 text-center ts-14 font-medium text-[var(--c-text-title)]">我的头像</div>
                                 <div className="mt-1 text-center ts-11 opacity-50">从相册更换</div>
@@ -1779,7 +1804,17 @@ export function ChatSettingsPanel({
                             </button>
                         </div>
 
-                        <p className="mt-3 rounded-2xl bg-[var(--c-card-bg)] px-4 py-3 ts-11 leading-5 opacity-60">更换“我的头像”后，角色会知道你刚刚换过头像。你也可以直接在聊天中发送图片，并说或暗示让对方换头像，角色会根据人设自行决定是否采用。</p>
+                        {session.userAvatarOverride && (
+                            <button type="button" className="mt-3 w-full rounded-xl py-2 ts-12 text-[var(--c-danger)]" onClick={() => { updateSession({ userAvatarOverride: "" }); setAvatarRevision(value => value + 1); }}>我的头像恢复全局设置</button>
+                        )}
+                        <div className="mt-3 flex items-center gap-3 rounded-2xl bg-[var(--c-card-bg)] px-4 py-3">
+                            <div className="min-w-0 flex-1">
+                                <div className="ts-13 font-medium text-[var(--c-text-title)]">我更换头像后希望对方做出反应</div>
+                                <div className="mt-1 ts-11 opacity-55">默认开启，关闭后不会通知对方</div>
+                            </div>
+                            <Toggle checked={notifyAvatarChange} onChange={checked => { setNotifyAvatarChange(checked); updateSession({ notifyCharacterOnUserAvatarChange: checked }); }} />
+                        </div>
+                        <p className="mt-3 px-1 ts-11 leading-5 opacity-55">你也可以在聊天中发送图片并暗示对方换头像，角色会根据人设自行决定是否采用。</p>
                         <input ref={ownAvatarInputRef} type="file" accept="image/*" className="hidden" onChange={event => void handleAvatarInput(event, "own")} />
                         <input ref={characterAvatarInputRef} type="file" accept="image/*" className="hidden" onChange={event => void handleAvatarInput(event, "character")} />
                     </div>

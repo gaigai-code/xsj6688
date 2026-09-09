@@ -252,7 +252,7 @@ export function GroupCallScreen({ type, session, characters, onEnd, initiator = 
                     content: displayText,
                     statusPanel: statusPanel || undefined,
                     // 自定义状态栏渲染戳：不盖的话 custom 模式下 [状态栏] 原文按 markdown 渲染
-                    statusRegionMode: statusPanel && isCustomStatusRegionActive(getStatusRegionConfig(session.id))
+                    statusRegionMode: statusPanel && isCustomStatusRegionActive(getStatusRegionConfig(session.id, false))
                         ? ("custom" as const)
                         : undefined,
                     innerMonologue: innerMonologue || undefined,
