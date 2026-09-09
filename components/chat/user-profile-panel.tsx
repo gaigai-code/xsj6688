@@ -2,14 +2,18 @@
 
 import { getNowMs } from "@/lib/virtual-time";
 
-import { useState, useEffect, useMemo, type CSSProperties } from "react";
+import { useState, useEffect, useMemo, useRef, type CSSProperties } from "react";
 import CSSSchemeBar from "@/components/ui/css-scheme-picker";
 import {
     loadFollowUpConfig,
     saveFollowUpConfig,
     getDefaultFollowUpConfig,
+    loadUserIdentities,
     resolveUserIdentity,
+    saveUserIdentities,
+    USER_IDENTITIES_UPDATED_EVENT,
 } from "@/lib/settings-storage";
+import { fileToUserAvatarDataUrl } from "@/lib/user-avatar-image";
 import { loadChatAppSettings, saveChatAppSettings } from "@/lib/chat-storage";
 import type { UserIdentity } from "@/components/settings/user-identity";
 import { getApiLogs, clearApiLogs, type DebugInfo } from "@/lib/chat-engine";
@@ -41,6 +45,7 @@ import { ChatFallbackAvatar } from "./chat-fallback-avatar";
 import {
     Loader2,
     Bell,
+    Camera,
     CloudUpload,
     ChevronRight,
     Clock,
@@ -165,6 +170,7 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
     const [notifChecking, setNotifChecking] = useState(false);
     const [showPushSettings, setShowPushSettings] = useState(false);
     const [showGlobalChatInfo, setShowGlobalChatInfo] = useState(false);
+    const profileAvatarInputRef = useRef<HTMLInputElement>(null);
     const [enterToSendEnabled, setEnterToSendEnabled] = useState(false);
     const [callVibrationEnabled, setCallVibrationEnabled] = useState(true);
     const [userStats, setUserStats] = useState({ chats: 0, moments: 0, visitors: 1234 });
@@ -203,6 +209,31 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
             });
         } catch (e) { }
     }, []);
+
+    useEffect(() => {
+        const syncIdentity = () => setIdentity(resolveUserIdentity());
+        window.addEventListener(USER_IDENTITIES_UPDATED_EVENT, syncIdentity);
+        return () => window.removeEventListener(USER_IDENTITIES_UPDATED_EVENT, syncIdentity);
+    }, []);
+
+    const handleProfileAvatarChange = async (file?: File) => {
+        if (!file) return;
+        const currentIdentity = resolveUserIdentity();
+        if (!currentIdentity) {
+            window.alert("请先在设置的“用户信息”中创建用户身份");
+            return;
+        }
+        try {
+            const avatarUrl = await fileToUserAvatarDataUrl(file);
+            const identities = loadUserIdentities();
+            saveUserIdentities(identities.map(item => (
+                item.id === currentIdentity.id ? { ...item, avatarUrl } : item
+            )));
+        } catch (error) {
+            console.error("更新用户资料头像失败", error);
+            window.alert("头像读取失败，请换一张图片后重试");
+        }
+    };
 
     useEffect(() => {
         const syncWallet = () => {
@@ -333,14 +364,34 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
                     <div className="flex items-center gap-5 px-6 pt-2 pb-4">
                         {/* Avatar */}
                         <div className="relative shrink-0">
-                            <div className="w-[84px] h-[84px] rounded-full overflow-hidden bg-[var(--c-card)] border-2 border-white/50 shadow-sm flex items-center justify-center relative"
-                                 style={{ boxShadow: "0 4px 20px rgba(0,0,0,0.06)" }}>
+                            <button
+                                type="button"
+                                className="w-[84px] h-[84px] rounded-full overflow-hidden bg-[var(--c-card)] border-2 border-white/50 shadow-sm flex items-center justify-center relative active:scale-[0.97] transition-transform"
+                                style={{ boxShadow: "0 4px 20px rgba(0,0,0,0.06)" }}
+                                onClick={() => profileAvatarInputRef.current?.click()}
+                                aria-label="更换用户资料头像"
+                                title="点击更换用户资料头像"
+                            >
                                 {identity?.avatarUrl ? (
                                     <img src={identity.avatarUrl} alt="User Avatar" className="w-full h-full object-cover" />
                                 ) : (
                                     <User size={38} color="var(--c-icon)" />
                                 )}
-                            </div>
+                                <span className="absolute right-0 bottom-0 w-6 h-6 rounded-full bg-black/65 text-white flex items-center justify-center border-2 border-white/80">
+                                    <Camera size={12} />
+                                </span>
+                            </button>
+                            <input
+                                ref={profileAvatarInputRef}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={event => {
+                                    const file = event.target.files?.[0];
+                                    event.target.value = "";
+                                    void handleProfileAvatarChange(file);
+                                }}
+                            />
                         </div>
 
                         {/* Info & Stats */}

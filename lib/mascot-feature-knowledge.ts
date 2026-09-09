@@ -23,7 +23,7 @@ type MascotFeatureKnowledgeRecord = {
 
 const OWNER_FEATURES: MascotFeatureKnowledgeRecord = {
     key: OWNER_FEATURES_KEY,
-    revision: "2026-09-09.3",
+    revision: "2026-09-09.4",
     updatedAt: "2026-09-09T00:00:00.000Z",
     entries: [
         {
@@ -73,6 +73,16 @@ const OWNER_FEATURES: MascotFeatureKnowledgeRecord = {
             ],
         },
         {
+            id: "profile-avatar",
+            title: "用户资料头像",
+            location: "聊天 → 我的 → 点击主页头像，或设置 → 用户信息",
+            facts: [
+                "点击“我的”主页头像可以快速从相册更换用户资料头像；用户信息编辑页仍然可以更换头像。",
+                "主页头像、消息列表上方头像和朋友圈中的用户头像共用同一份资料，会一起更新。",
+                "聊天气泡内的用户头像是另一套系统，可由单独会话头像或全局聊天头像覆盖，不会反向修改用户资料头像。",
+            ],
+        },
+        {
             id: "chat-avatars",
             title: "私聊双方头像与角色自主换头像",
             location: "私聊 → 右上角聊天信息 → 设置头像",
@@ -88,9 +98,9 @@ const OWNER_FEATURES: MascotFeatureKnowledgeRecord = {
             title: "全局聊天信息",
             location: "聊天 → 我的 → 离线推送与定时消息下方 → 全局聊天信息",
             facts: [
-                "可以设置所有私聊默认使用的用户头像、状态栏、聊天背景、聊天室 CSS 与传入最近图片数量，且不会修改主页用户资料。",
-                "优先级为：单独私聊设置 ＞ 全局聊天信息；CSS 额外遵循：单独私聊 CSS ＞ 全局聊天室 CSS ＞ 主页外观 CSS。",
-                "全局状态栏和全局聊天室 CSS 可以从与单独私聊相同的资源方案中导入。",
+                "用户头像、聊天背景、聊天室 CSS 与传入最近图片数量对私聊和群聊通用；全局状态栏只对私聊生效。",
+                "优先级为：单独会话设置 ＞ 全局聊天信息；CSS 额外遵循：单独会话 CSS ＞ 全局聊天室 CSS ＞ 主页外观 CSS。",
+                "全局状态栏和全局聊天室 CSS 可以从与单独会话相同的资源方案中导入。",
             ],
         },
         {

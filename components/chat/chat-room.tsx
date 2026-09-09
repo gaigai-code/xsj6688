@@ -1214,8 +1214,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         [session.userAvatarOverride, session.isGroup, userIdentity?.avatarUrl, chatAppSettingsRevision],
     );
     const globalChatCSS = useMemo(
-        () => session.isGroup ? "" : (loadChatAppSettings().globalChatCustomCSS || ""),
-        [session.isGroup, chatAppSettingsRevision],
+        () => loadChatAppSettings().globalChatCustomCSS || "",
+        [chatAppSettingsRevision],
     );
     const [bgImageResolved, setBgImageResolved] = useState<string | null>(null);
     const [bgLoading, setBgLoading] = useState(!!effectiveBackgroundImage);

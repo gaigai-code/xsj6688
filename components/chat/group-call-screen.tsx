@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ChatSession, ChatMessage, loadChatMessages, pushChatMessage, getLatestCharacterStateValues } from "@/lib/chat-storage";
+import { ChatSession, ChatMessage, loadChatMessages, pushChatMessage, getLatestCharacterStateValues, resolveChatUserAvatar } from "@/lib/chat-storage";
 import { getStatusRegionConfig, isCustomStatusRegionActive } from "@/lib/chat-status-region";
 import { generateGroupChatCompletion } from "@/lib/group-chat-engine";
 import { parseAIResponse } from "@/lib/rich-message-parser";
@@ -165,7 +165,7 @@ export function GroupCallScreen({ type, session, characters, onEnd, initiator = 
         cancelFollowUp(session.id);
         const ui = resolveUserIdentity(undefined, "group_chat");
         userNameRef.current = ui?.name || "你";
-        userAvatarRef.current = ui?.avatarUrl || null;
+        userAvatarRef.current = resolveChatUserAvatar(session, ui?.avatarUrl) || null;
         messagesRef.current = loadChatMessages(session.id);
 
         const lastMsg = messagesRef.current[messagesRef.current.length - 1];

@@ -326,8 +326,8 @@ export function ChatSettingsPanel({
     const [voiceBackground, setVoiceBackground] = useState<string>(session.voiceBackground || "");
     const [isPinned, setIsPinned] = useState(session.isPinned || false);
     // 自定义状态栏（状态区）
-    const [statusRegion, setStatusRegion] = useState<StatusRegionConfig>(() => getStatusRegionConfig(session.id));
-    const [statusUsesGlobal, setStatusUsesGlobal] = useState(() => !hasOwnStatusRegionConfig(session.id));
+    const [statusRegion, setStatusRegion] = useState<StatusRegionConfig>(() => getStatusRegionConfig(session.id, !session.isGroup));
+    const [statusUsesGlobal, setStatusUsesGlobal] = useState(() => !session.isGroup && !hasOwnStatusRegionConfig(session.id));
     const [showStatusRegionDialog, setShowStatusRegionDialog] = useState(false);
     const [draftContract, setDraftContract] = useState("");
     const [draftRender, setDraftRender] = useState("");
@@ -388,7 +388,7 @@ export function ChatSettingsPanel({
     const saveStatusRegion = (next: StatusRegionConfig) => {
         setStatusRegion(next);
         saveStatusRegionConfig(session.id, next);
-        setStatusUsesGlobal(!hasOwnStatusRegionConfig(session.id));
+        setStatusUsesGlobal(!session.isGroup && !hasOwnStatusRegionConfig(session.id));
     };
     // 小卷的状态栏工具写入后广播，这里同步刷新——否则本页状态只在挂载时初始化一次，
     // 面板开着的时候被写入就会停在旧值，表现为「后台写了、前台看不到」。
@@ -397,9 +397,9 @@ export function ChatSettingsPanel({
         const onExternalWrite = (event: Event) => {
             const detail = (event as CustomEvent<{ sessionId?: string }>).detail;
             if (detail?.sessionId && detail.sessionId !== session.id) return;
-            const next = getStatusRegionConfig(session.id);
+            const next = getStatusRegionConfig(session.id, !session.isGroup);
             setStatusRegion(next);
-            setStatusUsesGlobal(!hasOwnStatusRegionConfig(session.id));
+            setStatusUsesGlobal(!session.isGroup && !hasOwnStatusRegionConfig(session.id));
             if (showStatusRegionDialog) {
                 setDraftContract(next.contract || STATUS_REGION_STARTER_CONTRACT);
                 setDraftRender(next.renderHtml || STATUS_REGION_STARTER_RENDER);
@@ -409,7 +409,7 @@ export function ChatSettingsPanel({
         };
         window.addEventListener(STATUS_REGION_UPDATED_EVENT, onExternalWrite);
         return () => window.removeEventListener(STATUS_REGION_UPDATED_EVENT, onExternalWrite);
-    }, [session.id, showStatusRegionDialog]);
+    }, [session.id, session.isGroup, showStatusRegionDialog]);
     const openStatusRegionDialog = () => {
         setDraftContract(statusRegion.contract || STATUS_REGION_STARTER_CONTRACT);
         setDraftRender(statusRegion.renderHtml || STATUS_REGION_STARTER_RENDER);
@@ -621,7 +621,7 @@ export function ChatSettingsPanel({
             ...(session.isSpectator ? [] : [{
                 key: GROUP_SELF_KEY,
                 name: `${userName}（我）`,
-                avatar: userIdentity?.avatarUrl || undefined,
+                avatar: effectiveUserAvatar || undefined,
                 muteMs: getGroupMuteRemainingMs(session, GROUP_SELF_KEY),
             }]),
             ...groupChars.map(c => ({
@@ -1087,8 +1087,8 @@ export function ChatSettingsPanel({
                                 </div>
                             </div>
                         )}
-                        {statusPresetSupported && !statusUsesGlobal && (
-                            <button className="menu-item" onClick={() => { clearStatusRegionConfig(session.id); setStatusRegion(getStatusRegionConfig(session.id)); setStatusUsesGlobal(true); }}>
+                        {statusPresetSupported && !session.isGroup && !statusUsesGlobal && (
+                            <button className="menu-item" onClick={() => { clearStatusRegionConfig(session.id); setStatusRegion(getStatusRegionConfig(session.id, true)); setStatusUsesGlobal(true); }}>
                                 <ChatInfoIcon icon={Sparkles} color={BINDING_ACCENTS.preset} />
                                 <div className="menu-label-group"><span className="menu-label">状态栏恢复全局</span><span className="menu-desc">删除当前会话覆盖设置</span></div>
                                 <div className="menu-right"><ChevronRight size={16} /></div>
@@ -1305,8 +1305,8 @@ export function ChatSettingsPanel({
                             ))}
                             <label className="menu-item" style={{ paddingLeft: 72 }}>
                                 <div className="w-[24px] h-[24px] rounded-full overflow-hidden bg-[var(--c-input)] shrink-0 flex items-center justify-center">
-                                    {userIdentity?.avatarUrl ? (
-                                        <img src={userIdentity.avatarUrl} className="w-full h-full object-cover" alt="" />
+                                    {effectiveUserAvatar ? (
+                                        <img src={effectiveUserAvatar} className="w-full h-full object-cover" alt="" />
                                     ) : (
                                         <span className="ts-11">{(userIdentity?.name || "我")[0]}</span>
                                     )}

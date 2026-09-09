@@ -299,9 +299,8 @@ export function getMaxToolRounds(): number {
     return Math.max(1, Math.min(20, Math.round(raw)));
 }
 
-/** 私聊视觉上下文数量：单独会话 > 全局聊天信息 > 内置默认值。 */
+/** 视觉上下文数量：单独会话 > 全局聊天信息 > 内置默认值，私聊与群聊通用。 */
 export function resolveVisionImagePromptLimit(session: Pick<ChatSession, "visionImagePromptLimit" | "visionImagePromptLimitUsesGlobal" | "isGroup"> | null | undefined): number {
-    if (session?.isGroup) return normalizeVisionImagePromptLimit(session.visionImagePromptLimit);
     const globalValue = loadChatAppSettings().globalVisionImagePromptLimit;
     if (session?.visionImagePromptLimitUsesGlobal === false) {
         return normalizeVisionImagePromptLimit(session.visionImagePromptLimit);
@@ -309,19 +308,18 @@ export function resolveVisionImagePromptLimit(session: Pick<ChatSession, "vision
     return normalizeVisionImagePromptLimit(globalValue ?? session?.visionImagePromptLimit);
 }
 
-/** 私聊用户头像：单独会话 > 全局聊天信息 > 用户资料头像。 */
+/** 聊天内用户头像：单独会话 > 全局聊天信息 > 用户资料头像，私聊与群聊通用。 */
 export function resolveChatUserAvatar(
     session: Pick<ChatSession, "userAvatarOverride" | "isGroup"> | null | undefined,
     identityAvatar?: string | null,
 ): string {
-    if (session?.isGroup) return identityAvatar || "";
     return session?.userAvatarOverride || loadChatAppSettings().globalChatUserAvatar || identityAvatar || "";
 }
 
-/** 私聊背景：单独会话 > 全局聊天信息。群聊不继承私聊全局背景。 */
+/** 聊天背景：单独会话 > 全局聊天信息，私聊与群聊通用。 */
 export function resolveChatBackgroundImage(session: Pick<ChatSession, "backgroundImage" | "isGroup"> | null | undefined): string {
     if (session?.backgroundImage) return session.backgroundImage;
-    return session?.isGroup ? "" : (loadChatAppSettings().globalChatBackgroundImage || "");
+    return loadChatAppSettings().globalChatBackgroundImage || "";
 }
 
 /** 会话是否开启线上流式生成（默认关；按会话独立控制，单聊/群聊都生效） */

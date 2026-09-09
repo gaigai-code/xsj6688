@@ -21,29 +21,7 @@ import {
     type StatusRegionConfig,
 } from "@/lib/chat-status-region";
 import { CHAT_SESSION_CSS_EXAMPLE } from "@/lib/css-examples";
-
-function avatarFromFile(file: File, maxSize = 640, quality = 0.86): Promise<string> {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onerror = () => reject(new Error("无法读取图片"));
-        reader.onload = () => {
-            const image = new Image();
-            image.onerror = () => reject(new Error("无法处理图片"));
-            image.onload = () => {
-                const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
-                const canvas = document.createElement("canvas");
-                canvas.width = Math.max(1, Math.round(image.width * scale));
-                canvas.height = Math.max(1, Math.round(image.height * scale));
-                const context = canvas.getContext("2d");
-                if (!context) { reject(new Error("无法处理图片")); return; }
-                context.drawImage(image, 0, 0, canvas.width, canvas.height);
-                resolve(canvas.toDataURL("image/webp", quality));
-            };
-            image.src = String(reader.result || "");
-        };
-        reader.readAsDataURL(file);
-    });
-}
+import { fileToUserAvatarDataUrl } from "@/lib/user-avatar-image";
 
 function saveSettings(patch: Record<string, unknown>) {
     saveChatAppSettings({ ...loadChatAppSettings(), ...patch });
@@ -80,7 +58,7 @@ export function GlobalChatInfoSettings({ onBack }: { onBack: () => void }) {
     const changeAvatar = async (file?: File) => {
         if (!file) return;
         try {
-            const value = await avatarFromFile(file);
+            const value = await fileToUserAvatarDataUrl(file);
             setAvatar(value);
             saveSettings({ globalChatUserAvatar: value });
         } catch { alert("头像图片处理失败，请换一张图片重试"); }
@@ -126,7 +104,7 @@ export function GlobalChatInfoSettings({ onBack }: { onBack: () => void }) {
         return (
             <PageShell title="全局聊天室 CSS" onBack={() => setEditingCSS(false)} className="absolute inset-0 z-[110]">
                 <div className="theme-section-page">
-                    <p className="ts-13 text-[var(--c-text)] mb-3 leading-relaxed">作用于所有聊天室；单独私聊 CSS 会覆盖这里，主页“外观 CSS”优先级最低。</p>
+                    <p className="ts-13 text-[var(--c-text)] mb-3 leading-relaxed">作用于所有私聊和群聊；单独会话 CSS 会覆盖这里，主页“外观 CSS”优先级最低。</p>
                     <textarea className="ui-textarea font-mono ts-13 leading-relaxed flex-1" style={{ minHeight: 320, resize: "none" }} value={draftCSS} onChange={event => setDraftCSS(event.target.value)} spellCheck={false} placeholder={CHAT_SESSION_CSS_EXAMPLE} />
                     <div className="flex gap-2 mt-3 items-center">
                         <CSSSchemeBar target="chat_session" currentCSS={draftCSS} onLoad={setDraftCSS} />
@@ -168,11 +146,11 @@ export function GlobalChatInfoSettings({ onBack }: { onBack: () => void }) {
     return (
         <PageShell title="全局聊天信息" onBack={onBack} className="absolute inset-0 z-[100]">
             <div className="page-menu chat-info-menu">
-                <div className="px-4 pb-2 ts-12 text-[var(--c-text)] opacity-65">单独私聊设置优先于这里；这里只改变聊天室，不会修改主页用户资料。</div>
+                <div className="px-4 pb-2 ts-12 text-[var(--c-text)] opacity-65">单独会话设置优先于这里；这里只改变聊天室，不会修改主页用户资料。状态栏仍仅用于私聊。</div>
                 <div className="menu-group">
                     <div className="menu-item cursor-pointer" role="button" tabIndex={0} onClick={() => avatarInputRef.current?.click()} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") avatarInputRef.current?.click(); }}>
                         <User size={20} className="text-[var(--c-icon)]" />
-                        <div className="menu-label-group"><span className="menu-label">用户头像</span><span className="menu-desc">所有私聊默认使用</span></div>
+                        <div className="menu-label-group"><span className="menu-label">用户头像</span><span className="menu-desc">所有私聊和群聊默认使用</span></div>
                         <div className="menu-right gap-2">
                             {avatar ? <img src={avatar} className="h-9 w-9 rounded-full object-cover" alt="全局聊天头像" /> : <span className="menu-desc">跟随用户资料</span>}
                             {avatar && <button aria-label="清除全局聊天头像" onClick={event => { event.stopPropagation(); setAvatar(""); saveSettings({ globalChatUserAvatar: "" }); }}><X size={15} /></button>}
@@ -187,7 +165,7 @@ export function GlobalChatInfoSettings({ onBack }: { onBack: () => void }) {
                     </button>
                     <div className="menu-item cursor-pointer" role="button" tabIndex={0} onClick={() => backgroundInputRef.current?.click()} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") backgroundInputRef.current?.click(); }}>
                         <ImageIcon size={20} className="text-[var(--c-icon)]" />
-                        <div className="menu-label-group"><span className="menu-label">聊天背景</span><span className="menu-desc">所有私聊默认使用</span></div>
+                        <div className="menu-label-group"><span className="menu-label">聊天背景</span><span className="menu-desc">所有私聊和群聊默认使用</span></div>
                         <div className="menu-right gap-2">
                             {backgroundPreview ? <img src={backgroundPreview} className="h-9 w-9 rounded-lg object-cover" alt="全局聊天背景" /> : <span className="menu-desc">未设置</span>}
                             {background && <button aria-label="清除全局聊天背景" onClick={event => { event.stopPropagation(); setBackground(""); saveSettings({ globalChatBackgroundImage: "" }); }}><X size={15} /></button>}
@@ -202,7 +180,7 @@ export function GlobalChatInfoSettings({ onBack }: { onBack: () => void }) {
                     </button>
                     <div className="menu-item">
                         <ImageIcon size={20} className="text-[var(--c-icon)]" />
-                        <div className="menu-label-group"><span className="menu-label">传入最近图片</span><span className="menu-desc">所有私聊的默认视觉上下文数量</span></div>
+                        <div className="menu-label-group"><span className="menu-label">传入最近图片</span><span className="menu-desc">所有私聊和群聊的默认视觉上下文数量</span></div>
                         <div className="menu-right gap-2">
                             <button className="ui-btn ui-btn-ghost h-8 w-8 p-0" onClick={() => changeVisionLimit(visionLimit - 1)} disabled={visionLimit <= 0}>-</button>
                             <input type="number" min={0} max={MAX_VISION_IMAGE_PROMPT_LIMIT} value={visionLimit} onChange={event => changeVisionLimit(event.target.value)} className="ui-input h-8 w-14 text-center" />

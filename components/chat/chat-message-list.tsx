@@ -5,7 +5,7 @@ import { ChevronLeft } from "lucide-react";
 import { CHAT_MESSAGE_PUSHED_EVENT, loadChatSessions, loadChatContacts, ChatSession, createOrGetSession, createGroupSession, pushChatMessage, addChatContact, loadChatMessages, getLastVisibleSessionMessage, getChatMessagePreview } from "@/lib/chat-storage";
 import { loadCharacters } from "@/lib/character-storage";
 import { Character } from "@/lib/character-types";
-import { resolveUserIdentity } from "@/lib/settings-storage";
+import { resolveUserIdentity, USER_IDENTITIES_UPDATED_EVENT } from "@/lib/settings-storage";
 import type { UserIdentity } from "@/components/settings/user-identity";
 import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
 import { clearRequestsForCharacter, dispatchFriendRequestUpdated } from "@/lib/friend-request-storage";
@@ -123,6 +123,9 @@ export function ChatMessageList({ onCloseApp, activeSession, onSelectSession, on
 
     useEffect(() => {
         setIdentity(resolveUserIdentity());
+        const syncIdentity = () => setIdentity(resolveUserIdentity());
+        window.addEventListener(USER_IDENTITIES_UPDATED_EVENT, syncIdentity);
+        return () => window.removeEventListener(USER_IDENTITIES_UPDATED_EVENT, syncIdentity);
     }, []);
 
     useEffect(() => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ChatSession, ChatMessage, loadChatMessages, pushChatMessage, getLatestCharacterStateValues } from "@/lib/chat-storage";
+import { ChatSession, ChatMessage, loadChatMessages, pushChatMessage, getLatestCharacterStateValues, resolveChatUserAvatar } from "@/lib/chat-storage";
 import { getStatusRegionConfig, isCustomStatusRegionActive } from "@/lib/chat-status-region";
 import type { StateValue } from "@/lib/chat-storage";
 import { parseStateValues, mergeStateValues } from "@/lib/state-value-parser";
@@ -108,7 +108,7 @@ export function VideoCallScreen({ session, character, onEnd, onConnect, initiato
     const isSpeakerMutedRef = useRef<boolean>(false);
     const _initUi = resolveUserIdentity(session.contactId, "chat");
     const userNameRef = useRef<string>(_initUi?.name || "你");
-    const userAvatarRef = useRef<string | null>(_initUi?.avatarUrl || null);
+    const userAvatarRef = useRef<string | null>(resolveChatUserAvatar(session, _initUi?.avatarUrl) || null);
 
     useEffect(() => { stateRef.current = callState; }, [callState]);
     useEffect(() => { minimizedRef.current = minimized; }, [minimized]);
@@ -313,7 +313,7 @@ export function VideoCallScreen({ session, character, onEnd, onConnect, initiato
 
         const ui = resolveUserIdentity(session.contactId, "chat");
         userNameRef.current = ui?.name || "你";
-        userAvatarRef.current = ui?.avatarUrl || null;
+        userAvatarRef.current = resolveChatUserAvatar(session, ui?.avatarUrl) || null;
 
         messagesRef.current = loadChatMessages(session.id);
 
