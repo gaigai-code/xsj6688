@@ -64,12 +64,13 @@ function buildStorySettingsPrompt(settings: StoryCharacterSettings | undefined, 
       : "使用第二人称“你”称呼用户";
   const status = settings.statusSchemes?.find((item) => item.id === settings.activeStatusSchemeId);
   const theater = settings.theaterSchemes?.find((item) => item.id === settings.activeTheaterSchemeId);
+  const proseStyle = settings.proseStyleSchemes?.find((item) => item.id === settings.activeProseStyleSchemeId);
   return [
     "# 当前剧情 APP 专属生成设置",
     `正文长度以 ${minChars}—${maxChars} 字为目标；不得为了凑字数重复内容。`,
     perspective + "。",
-    settings.proseStyle ? `文风：${settings.proseStyle}。` : "",
-    settings.proseStylePrompt?.trim() || "",
+    proseStyle ? `文风方案【${proseStyle.name}】：${proseStyle.prompt.trim()}` : (settings.proseStyle ? `文风：${settings.proseStyle}。` : ""),
+    proseStyle ? "" : (settings.proseStylePrompt?.trim() || ""),
     settings.extraPrompt?.trim() || "",
     ...(settings.customPromptEntries || []).filter((item) => item.enabled && item.content.trim()).map((item) => `专属条目【${item.name || "未命名"}】：${item.content.trim()}`),
     status?.prompt?.trim() || "",

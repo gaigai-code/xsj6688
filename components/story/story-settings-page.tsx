@@ -39,6 +39,12 @@ const DEFAULT_THEATER: StoryTailScheme = {
   preview: "片尾彩蛋｜如果那一刻被拍成照片，大概会被珍藏很久。",
 };
 
+const DEFAULT_STYLES: StoryTailScheme[] = [
+  { id: "style-natural", name: "自然文风", prompt: "自然、连贯地推进场景，动作与对白比例均衡，不替用户决定心理和行动。", preview: "风从半开的窗缝里穿过，他停下手里的动作，安静地看向你。" },
+  { id: "style-delicate", name: "细腻慢热", prompt: "节奏舒缓，重视细小动作、感官变化和情绪递进，避免突然跳转关系。", preview: "杯沿还留着一点温度，指尖碰上去时，他的目光也跟着停了一瞬。" },
+  { id: "style-cinema", name: "电影感叙事", prompt: "使用清晰镜头感与场面调度推进剧情，语言克制，画面明确。", preview: "走廊尽头的灯逐盏亮起。镜头越过他的肩，落在你没有收回的手上。" },
+];
+
 function normalizeSettings(value: StoryCharacterSettings): StoryCharacterSettings {
   return {
     ...value,
@@ -48,6 +54,8 @@ function normalizeSettings(value: StoryCharacterSettings): StoryCharacterSetting
     userPerspective: value.userPerspective || "second",
     proseStyle: value.proseStyle || "自然文风",
     proseStylePrompt: value.proseStylePrompt || "自然、连贯地推进场景，动作与对白比例均衡，不替用户决定心理和行动。",
+    proseStyleSchemes: value.proseStyleSchemes?.length ? value.proseStyleSchemes : DEFAULT_STYLES,
+    activeProseStyleSchemeId: value.activeProseStyleSchemeId || DEFAULT_STYLES.find((item) => item.name === value.proseStyle)?.id || DEFAULT_STYLES[0].id,
     statusSchemes: value.statusSchemes?.length ? value.statusSchemes : [DEFAULT_STATUS],
     activeStatusSchemeId: value.activeStatusSchemeId || DEFAULT_STATUS.id,
     theaterSchemes: value.theaterSchemes?.length ? value.theaterSchemes : [DEFAULT_THEATER],
@@ -100,7 +108,7 @@ function SchemeEditor({
   return (
     <div className="story-scheme-editor">
       <div className="story-settings-label-row"><label>{label}</label><span>{contextNote}</span></div>
-      <div className="story-settings-inline">
+      <div className="story-settings-inline story-settings-inline-with-save">
         <select value={active.id} onChange={(event) => onChange(schemes, event.target.value)}>
           {schemes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select>
@@ -114,6 +122,7 @@ function SchemeEditor({
           const next = schemes.filter((item) => item.id !== active.id);
           onChange(next, next[0].id);
         }}><TrashIcon width={14} /></button>
+        <button type="button" className="story-scheme-save" onClick={() => onChange(schemes, active.id)}>保存</button>
       </div>
       <input value={active.name} onChange={(event) => updateActive({ name: event.target.value })} placeholder="方案名称" />
       <textarea value={active.prompt} onChange={(event) => updateActive({ prompt: event.target.value })} placeholder="写给 AI 的方案要求，支持 HTML 格式说明" />
@@ -220,8 +229,7 @@ export function StorySettingsPage(props: StorySettingsPageProps) {
             <label><span>最多字数</span><input type="number" min={50} max={4000} value={normalized.maxChars} onChange={(event) => patchSettings({ maxChars: Math.max(50, Math.min(4000, Number(event.target.value) || 50)) })} /></label>
           </div>
           <label className="story-settings-field"><span>用户人称</span><select value={normalized.userPerspective} onChange={(event) => patchSettings({ userPerspective: event.target.value as StoryCharacterSettings["userPerspective"] })}><option value="second">第二人称“你”</option><option value="third">第三人称“TA”</option><option value="username">使用用户名“{props.userName}”</option></select></label>
-          <label className="story-settings-field"><span>文风</span><select value={normalized.proseStyle} onChange={(event) => patchSettings({ proseStyle: event.target.value })}><option>自然文风</option><option>细腻慢热</option><option>电影感叙事</option><option>自定义文风</option></select></label>
-          <label className="story-settings-field"><span>文风内容</span><textarea value={normalized.proseStylePrompt} onChange={(event) => patchSettings({ proseStylePrompt: event.target.value })} /></label>
+          <SchemeEditor label="文风方案" schemes={normalized.proseStyleSchemes!} activeId={normalized.activeProseStyleSchemeId!} tag="story_style" contextNote="当前角色专属" onChange={(schemes, activeProseStyleSchemeId) => patchSettings({ proseStyleSchemes: schemes, activeProseStyleSchemeId })} />
         </SettingCard>
 
         <SettingCard title="语音与播放">
