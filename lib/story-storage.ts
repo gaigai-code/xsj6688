@@ -20,6 +20,13 @@ export type StoryTailScheme = {
   preview: string;
 };
 
+/** 剧情正文文风方案：只约束 AI 的写作方式，不定义任何尾部输出结构。 */
+export type StoryProseStyleScheme = {
+  id: string;
+  name: string;
+  prompt: string;
+};
+
 export type StoryPromptEntry = {
   id: string;
   name: string;
@@ -37,7 +44,7 @@ export type StoryCharacterSettings = {
   userPerspective?: "second" | "third" | "username";
   proseStyle?: string;
   proseStylePrompt?: string;
-  proseStyleSchemes?: StoryTailScheme[];
+  proseStyleSchemes?: StoryProseStyleScheme[];
   activeProseStyleSchemeId?: string;
   statusSchemes?: StoryTailScheme[];
   activeStatusSchemeId?: string;

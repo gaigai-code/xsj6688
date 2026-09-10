@@ -864,6 +864,9 @@
         .story-settings-inline button:disabled { opacity: .32; }
         .story-settings-inline .story-scheme-save { width: auto; font: 600 calc(9px*var(--app-text-scale,1))/1 var(--story-font); color: var(--c-story-heading,#1e293b); }
         .story-scheme-editor > input, .story-scheme-editor > textarea { margin-top: 8px; }
+        .story-prompt-textarea-wrap { position: relative; margin-top: 8px; }
+        .story-prompt-textarea-wrap textarea { width: 100%; min-height: 92px; padding-right: 36px; box-sizing: border-box; }
+        .story-prompt-expand { position: absolute; top: 8px; right: 8px; width: 25px; height: 25px; padding: 0; border: 0; border-radius: 8px; background: color-mix(in srgb,var(--c-story-card,#fff) 82%,transparent); color: var(--c-story-sub,#64748b); display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 9px rgba(15,23,42,.08); }
         .story-settings-preview { margin-top: 9px; padding: 11px; border-radius: 14px; background: rgba(148,163,184,.07); }
         .story-settings-preview small { color: var(--c-story-sub, #94a3b8); font-size: calc(9.5px*var(--app-text-scale,1)); }
         .story-settings-preview textarea { margin-top: 7px; min-height: 62px; background: transparent; }
