@@ -247,7 +247,46 @@ function MarkdownSegment({
             });
             return token;
         });
-        const semanticPrepared = scenePrepared.replace(/(^|[^~])~([^~\n<>{};]{1,60})~(?!~)/g, (_whole, prefix: string, emphasized: string) => {
+
+        // 提取 <story_status> 渲染为状态栏
+        const statusPrepared = scenePrepared.replace(/<story_status>([\s\S]*?)<\/story_status>/g, (_whole, innerText: string) => {
+            const token = `STORYSTATUSPLACEHOLDER${semanticPlaceholders.length}END`;
+            const lines = innerText.trim().split("\n").map(l => l.trim()).filter(Boolean);
+            
+            let itemsHtml = "";
+            for (const line of lines) {
+                // 支持 "属性｜值" 或 "属性: 值" 格式分解
+                const parts = line.split(/｜|\||：|:\s/);
+                if (parts.length >= 2) {
+                    const label = parts.shift()?.trim() || "";
+                    const value = parts.join("｜").trim();
+                    itemsHtml += `<div class="story-status-item"><span class="story-status-label">${escapeHtmlAttribute(label)}</span><span class="story-status-value">${escapeHtmlAttribute(value)}</span></div>`;
+                } else {
+                    itemsHtml += `<div class="story-status-item"><span class="story-status-value">${escapeHtmlAttribute(line)}</span></div>`;
+                }
+            }
+
+            semanticPlaceholders.push({
+                token,
+                html: `<div class="story-status-bar">${itemsHtml}</div>`,
+            });
+            return token;
+        });
+
+        // 提取 <story_theater> 渲染为片尾彩蛋卡片
+        const theaterPrepared = statusPrepared.replace(/<story_theater>([\s\S]*?)<\/story_theater>/g, (_whole, innerText: string) => {
+            const token = `STORYTHEATERPLACEHOLDER${semanticPlaceholders.length}END`;
+            let content = innerText.trim();
+            // 移除可能带的 "片尾彩蛋｜" 等前缀
+            content = content.replace(/^(?:片尾彩蛋|彩蛋)[｜|\|：:]\s*/i, "");
+            
+            semanticPlaceholders.push({
+                token,
+                html: `<div class="story-theater-card"><div class="story-theater-title">✨ 片尾彩蛋</div><div class="story-theater-content">${escapeHtmlAttribute(content)}</div></div>`,
+            });
+            return token;
+        });
+        const semanticPrepared = theaterPrepared.replace(/(^|[^~])~([^~\n<>{};]{1,60})~(?!~)/g, (_whole, prefix: string, emphasized: string) => {
             const token = `STORYACCENTPLACEHOLDER${semanticPlaceholders.length}END`;
             semanticPlaceholders.push({
                 token,
