@@ -71,13 +71,14 @@ import {
   updateStorySession,
   type StoryCharacterSettings,
 } from "@/lib/story-storage";
-import { createOrGetSession, hydrateChatStorage, loadChatMessages, loadChatSessions, pushChatMessage } from "@/lib/chat-storage";
+import { createOrGetSession, hydrateChatStorage, loadChatMessages, loadChatSessions, markChatSessionRead, pushChatMessage } from "@/lib/chat-storage";
 import { flattenCompletionResult, generateChatCompletion } from "@/lib/chat-engine";
 import { parseAIResponse } from "@/lib/rich-message-parser";
 import { SessionCustomCSS } from "@/components/ui/session-custom-css";
 import { STORY_CSS_EXAMPLE } from "@/lib/css-examples";
 import { applyEditOutputRegex } from "@/lib/llm-prompt-assembler";
 import { MacroEngine } from "@/lib/macro-engine";
+import { kvGet, kvSet, registerKvMigration } from "@/lib/kv-db";
 import {
   playAudioBlobViaMediaElement,
   resolveVoiceConfig,
@@ -97,6 +98,10 @@ type StoryGenerationRun = {
 const activeStoryGenerationRuns = new Map<string, StoryGenerationRun>();
 const storyVoiceCache = new Map<string, Blob>();
 const STORY_VOICE_CACHE_LIMIT = 24;
+const STORY_ACTIVE_CHARACTER_KEY = "story-last-active-character-id";
+const DEFAULT_AUTO_READING_SPEED = 36;
+
+registerKvMigration(STORY_ACTIVE_CHARACTER_KEY);
 
 function cacheStoryVoice(key: string, blob: Blob) {
   if (storyVoiceCache.has(key)) storyVoiceCache.delete(key);
@@ -234,6 +239,12 @@ const StoryComposer = memo(function StoryComposer({
   voiceProgress,
   onSend,
   onContinue,
+  autoReadingEnabled,
+  autoReading,
+  currentReadExpanded,
+  canAutoRead,
+  onToggleAutoReading,
+  onCurrentReadControl,
   onStop,
   onPlayNext,
 }: {
@@ -244,6 +255,12 @@ const StoryComposer = memo(function StoryComposer({
   voiceProgress: { current: number; total: number };
   onSend: (text: string) => void;
   onContinue: () => void;
+  autoReadingEnabled: boolean;
+  autoReading: boolean;
+  currentReadExpanded: boolean;
+  canAutoRead: boolean;
+  onToggleAutoReading: () => void;
+  onCurrentReadControl: () => void;
   onStop: () => void;
   onPlayNext: () => void;
 }) {
@@ -303,6 +320,32 @@ const StoryComposer = memo(function StoryComposer({
       >
         续写
       </button>
+      {autoReadingEnabled ? (
+        <>
+          <button
+            type="button"
+            className="story-auto-read-btn"
+            data-reading={autoReading ? "true" : undefined}
+            onClick={onToggleAutoReading}
+            disabled={!autoReading && !canAutoRead}
+            aria-label={autoReading ? "停止自动阅读" : "从最新角色消息开始自动阅读"}
+          >
+            {autoReading ? "停止" : "自动"}
+          </button>
+          <button
+            type="button"
+            className="story-current-read-btn"
+            data-expanded={currentReadExpanded ? "true" : undefined}
+            onClick={onCurrentReadControl}
+            disabled={!canAutoRead}
+            aria-label={currentReadExpanded ? "从当前位置开始自动阅读" : "展开当前位置阅读按钮"}
+            title="从当前位置开始阅读"
+          >
+            <BookOpenIcon width={14} height={14} aria-hidden="true" />
+            {currentReadExpanded ? <span>从当前位置开始阅读</span> : null}
+          </button>
+        </>
+      ) : null}
       <textarea
         ref={textareaRef}
         rows={1}
@@ -364,6 +407,8 @@ export function StoryApp({ onClose }: StoryAppProps) {
   const [playingVoiceSegmentId, setPlayingVoiceSegmentId] = useState<string | null>(null);
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
   const [voiceSequenceProgress, setVoiceSequenceProgress] = useState({ current: 0, total: 0 });
+  const [autoReading, setAutoReading] = useState(false);
+  const [currentReadExpanded, setCurrentReadExpanded] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const shellInnerRef = useRef<HTMLDivElement | null>(null);
   const mountedRef = useRef(true);
@@ -461,7 +506,14 @@ export function StoryApp({ onClose }: StoryAppProps) {
 
   useEffect(() => {
     hydrateStoryStorage().then(() => {
-      const initialChar = loadCharacters()[0]?.id || "";
+      const availableCharacters = loadCharacters();
+      const rememberedCharacterId = kvGet(STORY_ACTIVE_CHARACTER_KEY) || "";
+      const recentCharacterId = loadStorySessions()[0]?.characterId || "";
+      const initialChar = availableCharacters.some((item) => item.id === rememberedCharacterId)
+        ? rememberedCharacterId
+        : availableCharacters.some((item) => item.id === recentCharacterId)
+          ? recentCharacterId
+          : availableCharacters[0]?.id || "";
       if (initialChar) {
         const session = createOrGetStorySession(initialChar);
         setActiveCharacterId(initialChar);
@@ -480,6 +532,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
 
   useEffect(() => {
     if (!activeCharacterId) return;
+    kvSet(STORY_ACTIVE_CHARACTER_KEY, activeCharacterId);
     const session = createOrGetStorySession(activeCharacterId);
     setActiveSessionId(session.id);
     activeSessionIdRef.current = session.id; // 同步更新，堵住生成完成回调的守卫空窗
@@ -490,6 +543,11 @@ export function StoryApp({ onClose }: StoryAppProps) {
     setContextExcludedTagsDraft(session.contextExcludedTags ?? "think,thinking,story_theater");
     setStorageVersion((value) => value + 1);
   }, [activeCharacterId]);
+
+  useEffect(() => {
+    setAutoReading(false);
+    setCurrentReadExpanded(false);
+  }, [activeSessionId]);
 
   // Listen for live CSS updates from 小卷
   useEffect(() => {
@@ -596,6 +654,54 @@ export function StoryApp({ onClose }: StoryAppProps) {
     return messages.slice(-visibleMessageCount);
   }, [messages, visibleMessageCount]);
   const hasMoreMessages = visibleMessages.length < messages.length;
+
+  const startAutoReading = useCallback((from: "latest" | "current") => {
+    const node = scrollRef.current;
+    if (!node || messages.length === 0) return;
+    autoBottomLockRef.current = false;
+
+    if (from === "latest" && latestAssistantMessageId) {
+      const escapedId = typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape(latestAssistantMessageId)
+        : latestAssistantMessageId.replace(/["\\]/g, "\\$&");
+      const latest = node.querySelector<HTMLElement>(`[data-story-message-id="${escapedId}"]`);
+      latest?.scrollIntoView({ block: "center", behavior: "auto" });
+    }
+
+    setCurrentReadExpanded(false);
+    requestAnimationFrame(() => setAutoReading(true));
+  }, [latestAssistantMessageId, messages.length]);
+
+  useEffect(() => {
+    if (!autoReading) return;
+    const node = scrollRef.current;
+    if (!node) {
+      setAutoReading(false);
+      return;
+    }
+
+    const speed = Math.max(12, Math.min(120, uiPrefs.autoReadingSpeed ?? DEFAULT_AUTO_READING_SPEED));
+    let frame = 0;
+    let previousTime = performance.now();
+    const tick = (time: number) => {
+      const maxScrollTop = Math.max(0, node.scrollHeight - node.clientHeight);
+      if (node.scrollTop >= maxScrollTop - 1) {
+        node.scrollTop = maxScrollTop;
+        setAutoReading(false);
+        return;
+      }
+      const elapsed = Math.min(64, time - previousTime);
+      previousTime = time;
+      node.scrollTop = Math.min(maxScrollTop, node.scrollTop + (speed * elapsed) / 1000);
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [autoReading, uiPrefs.autoReadingSpeed]);
+
+  useEffect(() => {
+    if (!uiPrefs.autoReadingEnabled && autoReading) setAutoReading(false);
+  }, [autoReading, uiPrefs.autoReadingEnabled]);
 
   const loadMoreMessages = useCallback(() => {
     if (!hasMoreMessages) return;
@@ -931,7 +1037,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
     try {
       await hydrateChatStorage();
       const chatSession = createOrGetSession(characterId);
-      pushChatMessage({ sessionId: chatSession.id, role: "user", content: text });
+      pushChatMessage({ sessionId: chatSession.id, role: "user", content: text, origin: "story_floating_phone" });
       setFloatingChatVersion((value) => value + 1);
 
       const history = loadChatMessages(chatSession.id);
@@ -951,6 +1057,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
           mediaData: part.mediaData,
           senderCharacterId: characterId,
           senderName: characterName,
+          origin: "story_floating_phone",
           statusPanel: index === 0 ? (parsed.statusPanel || undefined) : undefined,
           innerMonologue: index === 0 ? (parsed.innerMonologue || undefined) : undefined,
           stateValues: index === 0 && parsed.stateValues.length ? parsed.stateValues : undefined,
@@ -971,6 +1078,8 @@ export function StoryApp({ onClose }: StoryAppProps) {
         pushStoryMessage({ sessionId: storySessionId, role: "system", rawContent: transcript, renderedContent: transcript });
         if (activeSessionIdRef.current === storySessionId) setMessages(loadStoryMessages(storySessionId));
       }
+      // 这轮聊天就在悬浮小手机里完成，用户已经看过，不在剧情 APP 外保留未读红点。
+      markChatSessionRead(chatSession.id);
       setFloatingChatVersion((value) => value + 1);
     } catch (error) {
       const message = error instanceof Error ? error.message : "悬浮聊天发送失败";
@@ -1477,6 +1586,18 @@ export function StoryApp({ onClose }: StoryAppProps) {
         voiceProgress={voiceSequenceProgress}
         onSend={(text) => { void handleSend(text); }}
         onContinue={() => { void handleSend("继续"); }}
+        autoReadingEnabled={Boolean(uiPrefs.autoReadingEnabled)}
+        autoReading={autoReading}
+        currentReadExpanded={currentReadExpanded}
+        canAutoRead={messages.length > 0}
+        onToggleAutoReading={() => {
+          if (autoReading) setAutoReading(false);
+          else startAutoReading("latest");
+        }}
+        onCurrentReadControl={() => {
+          if (!currentReadExpanded) setCurrentReadExpanded(true);
+          else startAutoReading("current");
+        }}
         onStop={handleStopGeneration}
         onPlayNext={() => { void handlePlayNextStoryVoice(); }}
       />

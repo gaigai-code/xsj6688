@@ -316,6 +316,24 @@ export function StorySettingsPage(props: StorySettingsPageProps) {
           <p className="story-settings-note">总播放键按次播放下一句；每句对白末尾的小按钮仍可单独播放。</p>
         </SettingCard>
 
+        <SettingCard title="自动阅读" hint="开启后可在“续写”旁启动自动滚动，解放双手阅读">
+          <ToggleRow title="开启自动阅读" detail="可从最新角色消息或当前页面位置开始" checked={Boolean(props.uiPrefs.autoReadingEnabled)} onChange={(value) => props.onUiPrefsChange({ ...props.uiPrefs, autoReadingEnabled: value })} />
+          {props.uiPrefs.autoReadingEnabled ? (
+            <label className="story-auto-reading-speed">
+              <span><strong>阅读速度</strong><small>{props.uiPrefs.autoReadingSpeed ?? 36} 像素/秒</small></span>
+              <input
+                type="range"
+                min={12}
+                max={120}
+                step={4}
+                value={props.uiPrefs.autoReadingSpeed ?? 36}
+                onChange={(event) => props.onUiPrefsChange({ ...props.uiPrefs, autoReadingSpeed: Number(event.target.value) })}
+              />
+              <div><small>慢</small><small>快</small></div>
+            </label>
+          ) : null}
+        </SettingCard>
+
         <SettingCard title="剧情尾部" hint="状态栏与小剧场分别保存多个方案，并可随时切换">
           <SchemeEditor label="状态栏方案" schemes={normalized.statusSchemes!} activeId={normalized.activeStatusSchemeId!} tag="story_status" contextNote="进入上下文" onChange={(schemes, activeStatusSchemeId) => patchSettings({ statusSchemes: schemes, activeStatusSchemeId })} />
           <SchemeEditor label="小剧场方案" schemes={normalized.theaterSchemes!} activeId={normalized.activeTheaterSchemeId!} tag="story_theater" contextNote="默认不进上下文" onChange={(schemes, activeTheaterSchemeId) => patchSettings({ theaterSchemes: schemes, activeTheaterSchemeId })} />

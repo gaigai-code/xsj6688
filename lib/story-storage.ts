@@ -11,6 +11,10 @@ export type StoryUiPrefs = {
   voiceEnabled?: boolean;
   /** 当前角色剧情页独立壁纸（data URL 或可访问 URL）。 */
   wallpaper?: string;
+  /** 是否在剧情输入栏显示自动阅读控制。 */
+  autoReadingEnabled?: boolean;
+  /** 自动阅读滚动速度，单位为像素/秒。 */
+  autoReadingSpeed?: number;
 };
 
 export type StoryTailScheme = {
