@@ -94,20 +94,6 @@ function cacheStoryVoice(key: string, blob: Blob) {
   }
 }
 
-function clampStoryVoiceSpeed(value: number | undefined): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) return 1;
-  return Math.min(2, Math.max(0.5, value));
-}
-
-function textForFullStoryReading(element: HTMLElement): string {
-  const clone = element.cloneNode(true) as HTMLElement;
-  clone.querySelectorAll(".story-voice-play").forEach((button) => button.remove());
-  return (clone.textContent || "")
-    .replace(/[⌈⌋“”‘’《》〈〉【】（）()，。！？；：、…—,.!?;:'\"\[\]{}]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function createStoryGenerationRun(sessionId: string): StoryGenerationRun {
   activeStoryGenerationRuns.get(sessionId)?.controller.abort();
   const run = {
@@ -227,17 +213,23 @@ function StoryGeneratingIndicator({
 }
 
 const StoryComposer = memo(function StoryComposer({
-  characterName,
   isGenerating,
   appendRequest,
+  voiceEnabled,
+  voicePlaying,
+  voiceProgress,
   onSend,
   onStop,
+  onPlayNext,
 }: {
-  characterName: string;
   isGenerating: boolean;
   appendRequest: StoryComposerAppendRequest | null;
+  voiceEnabled: boolean;
+  voicePlaying: boolean;
+  voiceProgress: { current: number; total: number };
   onSend: (text: string) => void;
   onStop: () => void;
+  onPlayNext: () => void;
 }) {
   const [draft, setDraft] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -272,6 +264,21 @@ const StoryComposer = memo(function StoryComposer({
 
   return (
     <div className="story-composer">
+      <button
+        type="button"
+        className="story-sequence-play"
+        data-enabled={voiceEnabled ? "true" : undefined}
+        data-playing={voicePlaying ? "true" : undefined}
+        onClick={onPlayNext}
+        disabled={voicePlaying}
+        aria-label="播放下一句角色对白"
+        title="播放下一句"
+      >
+        <span aria-hidden="true">{voicePlaying ? "…" : "▶"}</span>
+        {voiceProgress.total > 0 ? (
+          <small>{voiceProgress.current}/{voiceProgress.total}</small>
+        ) : null}
+      </button>
       <textarea
         ref={textareaRef}
         rows={1}
@@ -287,7 +294,7 @@ const StoryComposer = memo(function StoryComposer({
             submit();
           }
         }}
-        placeholder={`以你和“${characterName}”为主角继续这一段剧情……`}
+        placeholder="你该怎么回应"
       />
       <button
         className={`story-send-btn${isGenerating ? " is-generating" : ""}`}
@@ -328,6 +335,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
   const [cssModalOpen, setCssModalOpen] = useState(false);
   const [playingVoiceSegmentId, setPlayingVoiceSegmentId] = useState<string | null>(null);
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
+  const [voiceSequenceProgress, setVoiceSequenceProgress] = useState({ current: 0, total: 0 });
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const shellInnerRef = useRef<HTMLDivElement | null>(null);
   const mountedRef = useRef(true);
@@ -341,8 +349,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
   const voicePlaybackRef = useRef<{ abort: () => void } | null>(null);
   const voiceRequestIdRef = useRef(0);
   const voiceNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const voiceReadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const autoReadSegmentIdsRef = useRef(new Set<string>());
+  const voiceSequenceIndexRef = useRef(0);
 
   const characters = useMemo(() => loadCharacters(), []);
   const userIdentity = useMemo(
@@ -360,6 +367,10 @@ export function StoryApp({ onClose }: StoryAppProps) {
   );
   const uiPrefs = currentSession?.uiPrefs || {};
   const isGenerating = Boolean(activeSessionId) && generatingSessionIds.has(activeSessionId);
+  const latestAssistantMessageId = useMemo(
+    () => [...messages].reverse().find((message) => message.role === "assistant")?.id || "",
+    [messages],
+  );
 
   const markGenerating = useCallback((sessionId: string, on: boolean) => {
     setGeneratingSessionIds((prev) => {
@@ -377,7 +388,6 @@ export function StoryApp({ onClose }: StoryAppProps) {
       voiceRequestIdRef.current += 1;
       voicePlaybackRef.current?.abort();
       if (voiceNoticeTimerRef.current) clearTimeout(voiceNoticeTimerRef.current);
-      if (voiceReadingTimerRef.current) clearTimeout(voiceReadingTimerRef.current);
       if (activeSessionIdRef.current) {
         cancelStoryGenerationRun(activeSessionIdRef.current);
       }
@@ -385,12 +395,13 @@ export function StoryApp({ onClose }: StoryAppProps) {
   }, []);
 
   useEffect(() => {
-    autoReadSegmentIdsRef.current.clear();
+    voiceSequenceIndexRef.current = 0;
+    setVoiceSequenceProgress({ current: 0, total: 0 });
     voiceRequestIdRef.current += 1;
     voicePlaybackRef.current?.abort();
     voicePlaybackRef.current = null;
     setPlayingVoiceSegmentId(null);
-  }, [activeSessionId]);
+  }, [activeSessionId, latestAssistantMessageId]);
 
   useEffect(() => {
     hydrateStoryStorage().then(() => {
@@ -665,21 +676,26 @@ export function StoryApp({ onClose }: StoryAppProps) {
     voiceNoticeTimerRef.current = setTimeout(() => setVoiceNotice(null), 2600);
   }, []);
 
-  const playStoryVoice = useCallback(async (segment: StoryVoiceSegment) => {
-    if (!activeCharacterId || !segment.text.trim()) return;
+  const playStoryVoice = useCallback(async (segment: StoryVoiceSegment): Promise<boolean> => {
+    if (!activeCharacterId || !segment.text.trim()) return false;
+
+    if (!uiPrefs.voiceEnabled) {
+      showVoiceNotice("请先在剧情语音中开启语音");
+      return false;
+    }
 
     if (playingVoiceSegmentId === segment.id) {
       voiceRequestIdRef.current += 1;
       voicePlaybackRef.current?.abort();
       voicePlaybackRef.current = null;
       setPlayingVoiceSegmentId(null);
-      return;
+      return false;
     }
 
     const voiceConfig = resolveVoiceConfig(activeCharacterId, "story");
     if (!voiceConfig || !voiceConfig.enableTTS) {
       showVoiceNotice("请先在配置绑定中为剧情绑定可用的语音方案");
-      return;
+      return false;
     }
 
     unlockAudioPlayback();
@@ -690,91 +706,96 @@ export function StoryApp({ onClose }: StoryAppProps) {
     setPlayingVoiceSegmentId(segment.id);
 
     try {
-      const speed = clampStoryVoiceSpeed(uiPrefs.voiceSpeed ?? voiceConfig.speechSpeed);
-      const effectiveConfig = { ...voiceConfig, speechSpeed: speed };
-      const cacheKey = `${voiceConfig.id}:${speed.toFixed(2)}:${segment.text}`;
+      const cacheKey = `${voiceConfig.id}:${voiceConfig.speechSpeed ?? 1}:${segment.text}`;
       let blob = storyVoiceCache.get(cacheKey) || null;
       if (!blob) {
-        blob = await synthesizeSpeech(segment.text, effectiveConfig);
+        blob = await synthesizeSpeech(segment.text, voiceConfig);
         if (blob) cacheStoryVoice(cacheKey, blob);
       }
-      if (requestId !== voiceRequestIdRef.current) return;
+      if (requestId !== voiceRequestIdRef.current) return false;
       if (!blob) throw new Error("语音服务没有返回音频");
 
       const playback = playAudioBlobViaMediaElement(blob);
       voicePlaybackRef.current = playback;
       await playback.promise;
+      return requestId === voiceRequestIdRef.current;
     } catch (error) {
       if (requestId === voiceRequestIdRef.current) {
         showVoiceNotice(error instanceof Error ? error.message : "语音播放失败，请检查语音配置");
       }
+      return false;
     } finally {
       if (requestId === voiceRequestIdRef.current) {
         voicePlaybackRef.current = null;
         setPlayingVoiceSegmentId(null);
       }
     }
-  }, [activeCharacterId, playingVoiceSegmentId, showVoiceNotice, uiPrefs.voiceSpeed]);
+  }, [activeCharacterId, playingVoiceSegmentId, showVoiceNotice, uiPrefs.voiceEnabled]);
 
   const handleStoryVoicePlay = useCallback((segment: StoryVoiceSegment) => {
-    autoReadSegmentIdsRef.current.add(segment.id);
     void playStoryVoice(segment);
   }, [playStoryVoice]);
 
-  const runStoryReadingLineCheck = useCallback(() => {
+  const collectStoryVoiceSegments = useCallback((): StoryVoiceSegment[] => {
     const stage = scrollRef.current;
-    if (!stage || !uiPrefs.voiceAutoPlay || playingVoiceSegmentId) return;
-    const stageRect = stage.getBoundingClientRect();
-    const readingLine = stageRect.top + stageRect.height * 0.43;
-    const readMode = uiPrefs.voiceReadMode || "dialogue";
-    let segment: StoryVoiceSegment | null = null;
+    if (!stage) return [];
+    const assistantRows = Array.from(stage.querySelectorAll<HTMLElement>('.story-row[data-role="assistant"]'));
+    const latestRowWithDialogue = assistantRows.reverse().find((row) => row.querySelector("[data-story-voice-segment]"));
+    if (!latestRowWithDialogue) return [];
+    return Array.from(latestRowWithDialogue.querySelectorAll<HTMLElement>("[data-story-voice-segment]")).flatMap((element) => {
+      const id = element.dataset.storyVoiceSegment;
+      const encodedText = element.dataset.storyVoiceText;
+      if (!id || !encodedText) return [];
+      return [{
+        id,
+        text: decodeURIComponent(encodedText),
+        speaker: element.dataset.storyVoiceSpeaker
+          ? decodeURIComponent(element.dataset.storyVoiceSpeaker)
+          : undefined,
+      }];
+    });
+  }, []);
 
-    if (readMode === "dialogue") {
-      const elements = Array.from(stage.querySelectorAll<HTMLElement>(
-        '.story-row[data-role="assistant"] [data-story-voice-segment]',
-      ));
-      const target = elements.find((element) => {
-        const rect = element.getBoundingClientRect();
-        return rect.top <= readingLine && rect.bottom >= readingLine;
-      });
-      if (target?.dataset.storyVoiceSegment && target.dataset.storyVoiceText) {
-        segment = {
-          id: target.dataset.storyVoiceSegment,
-          text: decodeURIComponent(target.dataset.storyVoiceText),
-          speaker: target.dataset.storyVoiceSpeaker
-            ? decodeURIComponent(target.dataset.storyVoiceSpeaker)
-            : undefined,
-        };
-      }
-    } else {
-      const paragraphs = Array.from(stage.querySelectorAll<HTMLElement>(
-        '.story-row[data-role="assistant"] .story-richtext p',
-      ));
-      const targetIndex = paragraphs.findIndex((element) => {
-        const rect = element.getBoundingClientRect();
-        return rect.top <= readingLine && rect.bottom >= readingLine;
-      });
-      const target = targetIndex >= 0 ? paragraphs[targetIndex] : null;
-      const article = target?.closest<HTMLElement>("[data-story-message-id]");
-      const messageId = article?.dataset.storyMessageId;
-      const text = target ? textForFullStoryReading(target) : "";
-      if (target && messageId && text) {
-        const sameMessageParagraphs = Array.from(article.querySelectorAll<HTMLElement>(".story-richtext p"));
-        const paragraphIndex = sameMessageParagraphs.indexOf(target);
-        segment = { id: `${messageId}:full:${paragraphIndex}`, text };
-      }
+  const handlePlayNextStoryVoice = useCallback(async () => {
+    if (!uiPrefs.voiceEnabled) {
+      showVoiceNotice("请先在剧情语音中开启语音");
+      return;
+    }
+    if (playingVoiceSegmentId) return;
+    const segments = collectStoryVoiceSegments();
+    if (segments.length === 0) {
+      showVoiceNotice("当前页面还没有可播放的角色对白");
+      return;
     }
 
-    if (!segment || autoReadSegmentIdsRef.current.has(segment.id)) return;
-    autoReadSegmentIdsRef.current.add(segment.id);
-    void playStoryVoice(segment);
-  }, [playingVoiceSegmentId, playStoryVoice, uiPrefs.voiceAutoPlay, uiPrefs.voiceReadMode]);
+    let index = voiceSequenceIndexRef.current;
+    if (index >= segments.length) {
+      const restart = window.confirm("已经播放完，是否从头开始？");
+      if (!restart) return;
+      index = 0;
+      voiceSequenceIndexRef.current = 0;
+    }
+    setVoiceSequenceProgress({ current: index + 1, total: segments.length });
+    const completed = await playStoryVoice(segments[index]);
+    if (!completed) return;
 
-  const scheduleStoryReadingLineCheck = useCallback(() => {
-    if (!uiPrefs.voiceAutoPlay) return;
-    if (voiceReadingTimerRef.current) clearTimeout(voiceReadingTimerRef.current);
-    voiceReadingTimerRef.current = setTimeout(runStoryReadingLineCheck, 300);
-  }, [runStoryReadingLineCheck, uiPrefs.voiceAutoPlay]);
+    const nextIndex = index + 1;
+    if (nextIndex < segments.length) {
+      voiceSequenceIndexRef.current = nextIndex;
+      return;
+    }
+
+    voiceSequenceIndexRef.current = segments.length;
+    const restart = window.confirm("已经播放完，是否从头开始？");
+    if (!restart) return;
+    voiceSequenceIndexRef.current = 0;
+    setVoiceSequenceProgress({ current: 0, total: segments.length });
+    const restarted = await playStoryVoice(segments[0]);
+    if (restarted) {
+      voiceSequenceIndexRef.current = 1;
+      setVoiceSequenceProgress({ current: 1, total: segments.length });
+    }
+  }, [collectStoryVoiceSegments, playStoryVoice, playingVoiceSegmentId, showVoiceNotice, uiPrefs.voiceEnabled]);
 
   async function handleSend(userTextInput: string) {
     const userText = userTextInput.trim();
@@ -1118,54 +1139,19 @@ export function StoryApp({ onClose }: StoryAppProps) {
           <div className="story-voice-settings">
             <label className="story-pref-row">
               <span>
-                <strong>跟随阅读自动朗读</strong>
-                <small>内容经过屏幕阅读线并停留片刻后播放</small>
+                <strong>开启语音</strong>
+                <small>启用当前角色在“剧情”中绑定的语音方案</small>
               </span>
               <input
                 type="checkbox"
-                checked={Boolean(uiPrefs.voiceAutoPlay)}
+                checked={Boolean(uiPrefs.voiceEnabled)}
                 onChange={(event) => {
                   if (event.target.checked) unlockAudioPlayback();
-                  applySessionUpdates({ uiPrefs: { ...uiPrefs, voiceAutoPlay: event.target.checked } });
+                  applySessionUpdates({ uiPrefs: { ...uiPrefs, voiceEnabled: event.target.checked } });
                 }}
               />
             </label>
-            <div className="story-voice-setting-block">
-              <span className="story-voice-setting-label">朗读内容</span>
-              <div className="story-voice-mode-switch" role="group" aria-label="朗读内容">
-                {([[
-                  "dialogue",
-                  "仅角色对话",
-                ], ["full", "全文"]] as const).map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    data-active={(uiPrefs.voiceReadMode || "dialogue") === value ? "true" : undefined}
-                    onClick={() => applySessionUpdates({ uiPrefs: { ...uiPrefs, voiceReadMode: value } })}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <label className="story-voice-setting-block">
-              <span className="story-voice-setting-label">
-                <span>语音速度</span>
-                <strong>{clampStoryVoiceSpeed(uiPrefs.voiceSpeed).toFixed(1)}×</strong>
-              </span>
-              <input
-                className="story-voice-speed"
-                type="range"
-                min="0.5"
-                max="2"
-                step="0.1"
-                value={clampStoryVoiceSpeed(uiPrefs.voiceSpeed)}
-                onChange={(event) => applySessionUpdates({
-                  uiPrefs: { ...uiPrefs, voiceSpeed: Number(event.target.value) },
-                })}
-              />
-            </label>
-            <p className="story-voice-help">手动播放不受自动朗读开关影响；每句对白末尾都有独立播放键。</p>
+            <p className="story-voice-help">开启后可逐句播放；每句对白末尾的小播放键仍可单独使用。</p>
           </div>
         </div>
 
@@ -1270,7 +1256,6 @@ export function StoryApp({ onClose }: StoryAppProps) {
             if (performance.now() < foldToggleSuppressUntilRef.current) return;
             const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
             autoBottomLockRef.current = distanceFromBottom <= 12;
-            if (event.nativeEvent.isTrusted) scheduleStoryReadingLineCheck();
           }}
         >
           <div className="story-stage-inner">
@@ -1442,11 +1427,14 @@ export function StoryApp({ onClose }: StoryAppProps) {
       ) : null}
 
       <StoryComposer
-        characterName={currentCharacter.name}
         isGenerating={isGenerating}
         appendRequest={composerAppendRequest}
+        voiceEnabled={Boolean(uiPrefs.voiceEnabled)}
+        voicePlaying={Boolean(playingVoiceSegmentId)}
+        voiceProgress={voiceSequenceProgress}
         onSend={(text) => { void handleSend(text); }}
         onStop={handleStopGeneration}
+        onPlayNext={() => { void handlePlayNextStoryVoice(); }}
       />
 
       {/* CSS Style Modal */}

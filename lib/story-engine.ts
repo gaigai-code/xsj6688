@@ -26,12 +26,14 @@ import { MacroEngine } from "./macro-engine";
 
 const DEFAULT_STORY_FOLD_TAGS = "think,thinking,summary";
 const DEFAULT_STORY_CONTEXT_EXCLUDED_TAGS = "think,thinking";
-const STORY_VOICE_FORMAT_PROMPT = `# 剧情语音标记
-为了让剧情页正确识别角色语音，请遵守以下输出格式：
-- 角色真正说出口的人声必须写成：⌈角色名：对白内容⌋。
-- 每次说话分别包裹；旁白、动作、心理和用户的话不得放进该标记。
-- “……”只用于物品、动作、环境等非人声发出的声音。
-- 不要解释这些标记，也不要输出额外的语音清单。`;
+const STORY_VOICE_FORMAT_PROMPT = `# 剧情正文格式
+请使用与“独家特调”一致的正文语义格式：
+- 「对白」：仅包裹角色真正说出口的人声；每次说话分别包裹，不要在括号内重复角色名。
+- *心声*：包裹角色没有说出口的内心想法。
+- 【场景】：单独一行，用于地点、时间或场景过场。
+- ~强调~：只强调需要突出的短语。
+- “……”：只用于物品、动作、环境等非人声发出的声音，不作为角色对白。
+旁白、动作以及用户的话不得写进「」；不要解释这些格式，也不要输出额外的语音清单。`;
 
 export type StoryGenerationResult = {
   rawText: string;

@@ -7,12 +7,8 @@ export type StoryUiPrefs = {
   hideAvatar?: boolean;
   hideTimestamp?: boolean;
   theme?: string;
-  /** 用户滚动阅读时，经过阅读线的内容自动朗读。 */
-  voiceAutoPlay?: boolean;
-  /** 仅朗读 ⌈角色：对白⌋，或朗读整段正文。 */
-  voiceReadMode?: "dialogue" | "full";
-  /** 剧情专属语速，不修改全局语音方案。 */
-  voiceSpeed?: number;
+  /** 是否启用剧情页的角色绑定语音。 */
+  voiceEnabled?: boolean;
 };
 
 export type StorySession = {
