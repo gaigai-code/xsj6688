@@ -41,6 +41,20 @@ const DEFAULT_THEATER: StoryTailScheme = {
   preview: "片尾彩蛋｜如果那一刻被拍成照片，大概会被珍藏很久。",
 };
 
+const DEFAULT_STATUS_HTML: StoryTailScheme = {
+  id: "status-html",
+  name: "自定义 HTML 状态栏",
+  prompt: `在正文末尾输出 <story_status_html> 标签，内部使用 HTML 排版，例如：<div style="background: rgba(255,255,255,0.8); padding: 10px; border-radius: 8px;">时间：夜晚</div>；内容会进入下一轮上下文。`,
+  preview: "<div style='color:blue'>自定义排版</div>",
+};
+
+const DEFAULT_FURRY_THEATER: StoryTailScheme = {
+  id: "theater-furry",
+  name: "毛茸茸派对小剧场",
+  prompt: "在正文末尾输出 <story_theater>，写一段“毛茸茸派对”小剧场：假设角色和用户都是某一种毛茸茸的动物，基于刚刚发生的剧情，描写一段他们以动物形态互动的小故事；默认仅展示，不进入下一轮上下文。",
+  preview: "毛茸茸派对｜大尾巴扫了扫你的鼻尖，你们依偎在阳光下打着呼噜。",
+};
+
 const DEFAULT_STYLES: StoryProseStyleScheme[] = [
   { id: "style-natural", name: "自然文风", prompt: "自然、连贯地推进场景，动作与对白比例均衡，不替用户决定心理和行动。" },
   { id: "style-delicate", name: "细腻慢热", prompt: "节奏舒缓，重视细小动作、感官变化和情绪递进，避免突然跳转关系。" },
@@ -63,9 +77,9 @@ function normalizeSettings(value: StoryCharacterSettings): StoryCharacterSetting
     activeProseStyleSchemeId: proseStyleSchemes.some((item) => item.id === value.activeProseStyleSchemeId)
       ? value.activeProseStyleSchemeId
       : proseStyleSchemes.find((item) => item.name === value.proseStyle)?.id || proseStyleSchemes[0].id,
-    statusSchemes: value.statusSchemes?.length ? value.statusSchemes : [DEFAULT_STATUS],
+    statusSchemes: value.statusSchemes?.length ? value.statusSchemes : [DEFAULT_STATUS, DEFAULT_STATUS_HTML],
     activeStatusSchemeId: value.activeStatusSchemeId || DEFAULT_STATUS.id,
-    theaterSchemes: value.theaterSchemes?.length ? value.theaterSchemes : [DEFAULT_THEATER],
+    theaterSchemes: value.theaterSchemes?.length ? value.theaterSchemes : [DEFAULT_THEATER, DEFAULT_FURRY_THEATER],
     activeTheaterSchemeId: value.activeTheaterSchemeId || DEFAULT_THEATER.id,
   };
 }
