@@ -38,10 +38,11 @@ function SolidBackIcon({ size = 17 }: { size?: number }) {
 import CSSSchemeBar from "@/components/ui/css-scheme-picker";
 import { Avatar } from "@/components/ui/primitives";
 import { StoryHtmlRenderer, type StoryVoiceSegment } from "@/components/ui/story-html-renderer";
+import { StorySettingsPage } from "@/components/story/story-settings-page";
 import { loadCharacters } from "@/lib/character-storage";
 import { maybeRunSummarization } from "@/lib/memory-summarizer";
 import { incrementEventCounter } from "@/lib/memory-storage";
-import { resolveUserIdentity } from "@/lib/settings-storage";
+import { loadBindingConfig, loadPresets, resolveBinding, resolveUserIdentity } from "@/lib/settings-storage";
 import {
   generateStoryCompletion,
   getStoryRenderSignature,
@@ -59,7 +60,9 @@ import {
   type StoryMessage,
   type StorySession,
   updateStorySession,
+  type StoryCharacterSettings,
 } from "@/lib/story-storage";
+import { loadChatContacts, loadChatMessages, loadChatSessions } from "@/lib/chat-storage";
 import { SessionCustomCSS } from "@/components/ui/session-custom-css";
 import { STORY_CSS_EXAMPLE } from "@/lib/css-examples";
 import { applyEditOutputRegex } from "@/lib/llm-prompt-assembler";
@@ -219,6 +222,7 @@ const StoryComposer = memo(function StoryComposer({
   voicePlaying,
   voiceProgress,
   onSend,
+  onContinue,
   onStop,
   onPlayNext,
 }: {
@@ -228,6 +232,7 @@ const StoryComposer = memo(function StoryComposer({
   voicePlaying: boolean;
   voiceProgress: { current: number; total: number };
   onSend: (text: string) => void;
+  onContinue: () => void;
   onStop: () => void;
   onPlayNext: () => void;
 }) {
@@ -279,6 +284,14 @@ const StoryComposer = memo(function StoryComposer({
           <small>{voiceProgress.current}/{voiceProgress.total}</small>
         ) : null}
       </button>
+      <button
+        type="button"
+        className="story-continue-btn"
+        onClick={onContinue}
+        disabled={isGenerating}
+      >
+        续写
+      </button>
       <textarea
         ref={textareaRef}
         rows={1}
@@ -312,7 +325,8 @@ const StoryComposer = memo(function StoryComposer({
 export function StoryApp({ onClose }: StoryAppProps) {
   const [ready, setReady] = useState(false);
   const [, setStorageVersion] = useState(0);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [floatingPhoneOpen, setFloatingPhoneOpen] = useState(false);
   const [activeCharacterId, setActiveCharacterId] = useState<string>("");
   const [activeSessionId, setActiveSessionId] = useState<string>("");
   const [messages, setMessages] = useState<StoryMessage[]>([]);
@@ -366,6 +380,25 @@ export function StoryApp({ onClose }: StoryAppProps) {
     [sessions, activeSessionId]
   );
   const uiPrefs = currentSession?.uiPrefs || {};
+  const storySettings: StoryCharacterSettings = currentSession?.settings || {};
+  const boundPreset = useMemo(() => {
+    if (!activeCharacterId) return null;
+    const slot = resolveBinding(loadBindingConfig(), activeCharacterId, "story");
+    return (slot.presetId ? loadPresets().find((item) => item.id === slot.presetId) : null)
+      || loadPresets().find((item) => item.builtIn)
+      || null;
+  }, [activeCharacterId]);
+  const floatingChatMessages = useMemo(() => {
+    if (!activeCharacterId) return [];
+    const contact = loadChatContacts().find((item) => item.characterId === activeCharacterId);
+    const session = contact ? loadChatSessions().find((item) => item.contactId === contact.id && !item.isGroup) : null;
+    return session ? loadChatMessages(session.id).filter((item) => item.role === "user" || item.role === "assistant").slice(-30) : [];
+  }, [activeCharacterId, messages.length]);
+  const floatingChatContext = useMemo(() => floatingChatMessages.map((message) => {
+    const name = message.role === "user" ? (userIdentity?.name || "用户") : (currentCharacter?.name || "角色");
+    const text = message.content.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    return `${new Date(message.createdAt).toLocaleString()} ${name}：${text}`;
+  }).join("\n"), [currentCharacter?.name, floatingChatMessages, userIdentity?.name]);
   const isGenerating = Boolean(activeSessionId) && generatingSessionIds.has(activeSessionId);
   const latestAssistantMessageId = useMemo(
     () => [...messages].reverse().find((message) => message.role === "assistant")?.id || "",
@@ -414,8 +447,8 @@ export function StoryApp({ onClose }: StoryAppProps) {
         setVisibleMessageCount(STORY_INITIAL_LOAD);
         setMessages(loadStoryMessages(session.id));
         setCustomCssDraft(session.customCSS || "");
-        setFoldTagsDraft(session.foldTags ?? "think,thinking");
-        setContextExcludedTagsDraft(session.contextExcludedTags ?? "think,thinking");
+        setFoldTagsDraft(session.foldTags ?? "think,thinking,story_status,story_theater");
+        setContextExcludedTagsDraft(session.contextExcludedTags ?? "think,thinking,story_theater");
         setStorageVersion((value) => value + 1);
       }
       setReady(true);
@@ -430,8 +463,8 @@ export function StoryApp({ onClose }: StoryAppProps) {
     setVisibleMessageCount(STORY_INITIAL_LOAD);
     setMessages(loadStoryMessages(session.id));
     setCustomCssDraft(session.customCSS || "");
-    setFoldTagsDraft(session.foldTags ?? "think,thinking");
-    setContextExcludedTagsDraft(session.contextExcludedTags ?? "think,thinking");
+    setFoldTagsDraft(session.foldTags ?? "think,thinking,story_status,story_theater");
+    setContextExcludedTagsDraft(session.contextExcludedTags ?? "think,thinking,story_theater");
     setStorageVersion((value) => value + 1);
   }, [activeCharacterId]);
 
@@ -665,8 +698,8 @@ export function StoryApp({ onClose }: StoryAppProps) {
     const next = updateStorySession(currentSession.id, updates);
     if (!next) return;
     setCustomCssDraft(next.customCSS || "");
-    setFoldTagsDraft(next.foldTags ?? "think,thinking");
-    setContextExcludedTagsDraft(next.contextExcludedTags ?? "think,thinking");
+    setFoldTagsDraft(next.foldTags ?? "think,thinking,story_status,story_theater");
+    setContextExcludedTagsDraft(next.contextExcludedTags ?? "think,thinking,story_theater");
     setStorageVersion((value) => value + 1);
   }
 
@@ -786,15 +819,6 @@ export function StoryApp({ onClose }: StoryAppProps) {
     }
 
     voiceSequenceIndexRef.current = segments.length;
-    const restart = window.confirm("已经播放完，是否从头开始？");
-    if (!restart) return;
-    voiceSequenceIndexRef.current = 0;
-    setVoiceSequenceProgress({ current: 0, total: segments.length });
-    const restarted = await playStoryVoice(segments[0]);
-    if (restarted) {
-      voiceSequenceIndexRef.current = 1;
-      setVoiceSequenceProgress({ current: 1, total: segments.length });
-    }
   }, [collectStoryVoiceSegments, playStoryVoice, playingVoiceSegmentId, showVoiceNotice, uiPrefs.voiceEnabled]);
 
   async function handleSend(userTextInput: string) {
@@ -821,6 +845,8 @@ export function StoryApp({ onClose }: StoryAppProps) {
       const result = await generateStoryCompletion(characterId, historyForGeneration, {
         sessionFoldTags: currentSession?.foldTags,
         sessionContextExcludedTags: currentSession?.contextExcludedTags,
+        settings: currentSession?.settings,
+        floatingChatContext,
         signal: generationRun.controller.signal,
       });
       if (!isCurrentGeneration()) return;
@@ -891,14 +917,10 @@ export function StoryApp({ onClose }: StoryAppProps) {
     const dragStartX = dragStartXRef.current;
     const dragDeltaX = dragDeltaXRef.current;
     if (dragStartX == null) return;
-    // 从右边缘向左滑打开
+    // 从右边缘向左滑进入完整剧情设置页
     const screenW = typeof window !== "undefined" ? window.innerWidth : 400;
-    if (!drawerOpen && dragStartX > screenW - 32 && dragDeltaX < -54) {
-      setDrawerOpen(true);
-    }
-    // 向右滑关闭
-    if (drawerOpen && dragDeltaX > 54) {
-      setDrawerOpen(false);
+    if (dragStartX > screenW - 32 && dragDeltaX < -54) {
+      setSettingsOpen(true);
     }
     dragStartXRef.current = null;
     dragDeltaXRef.current = 0;
@@ -1028,6 +1050,8 @@ export function StoryApp({ onClose }: StoryAppProps) {
       const result = await generateStoryCompletion(characterId, contextMessages, {
         sessionFoldTags: currentSession?.foldTags,
         sessionContextExcludedTags: currentSession?.contextExcludedTags,
+        settings: currentSession?.settings,
+        floatingChatContext,
         signal: generationRun.controller.signal,
       });
       if (!isCurrentGeneration()) return;
@@ -1065,7 +1089,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
                   <SolidBackIcon size={16} />
                 </button>
               </div>
-              <div className="story-header-center">Story</div>
+              <div className="story-header-center" />
               <div className="story-header-right" />
             </div>
           </div>
@@ -1093,6 +1117,46 @@ export function StoryApp({ onClose }: StoryAppProps) {
 
   const sessionScope = `.story-session-${currentSession.id}`;
 
+  if (settingsOpen) {
+    return (
+      <div className={`story-app-shell story-session-${currentSession.id}`} data-story-theme={uiPrefs.theme || "paper"}>
+        <StorySettingsPage
+          characters={characters}
+          activeCharacterId={activeCharacterId}
+          userName={userIdentity?.name || "用户"}
+          uiPrefs={uiPrefs}
+          settings={storySettings}
+          boundPreset={boundPreset}
+          foldTags={foldTagsDraft}
+          contextExcludedTags={contextExcludedTagsDraft}
+          onClose={() => setSettingsOpen(false)}
+          onCharacterChange={setActiveCharacterId}
+          onUiPrefsChange={(next) => applySessionUpdates({ uiPrefs: next })}
+          onSettingsChange={(next) => applySessionUpdates({ settings: next })}
+          onTagsChange={(foldTags, contextExcludedTags) => {
+            setFoldTagsDraft(foldTags);
+            setContextExcludedTagsDraft(contextExcludedTags);
+            applySessionUpdates({ foldTags: foldTags.trim() || undefined, contextExcludedTags: contextExcludedTags.trim() || undefined });
+          }}
+          onOpenCss={() => {
+            setSettingsOpen(false);
+            setCssModalOpen(true);
+          }}
+          onRebuildCache={() => {
+            try {
+              const rebuilt = rebuildStorySessionRenderCache(activeCharacterId, currentSession.id, { sessionFoldTags: currentSession.foldTags });
+              setMessages(rebuilt);
+              setStorageVersion((value) => value + 1);
+              alert(`缓存重建完成，${rebuilt.length} 条消息已更新`);
+            } catch (error) {
+              alert(error instanceof Error ? error.message : "缓存重建失败，请检查 API 绑定配置");
+            }
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       className={`story-app-shell story-session-${currentSession.id}`}
@@ -1108,122 +1172,10 @@ export function StoryApp({ onClose }: StoryAppProps) {
       onMouseLeave={handleTouchEnd}
     >
       {/* Styles moved to styles/story.css */}
+      {uiPrefs.wallpaper ? <div className="story-wallpaper-layer" style={{ backgroundImage: `url(${uiPrefs.wallpaper})` }} /> : null}
       {currentSession.customCSS ? (
         <SessionCustomCSS css={currentSession.customCSS} scope={sessionScope} />
       ) : null}
-
-      {drawerOpen ? <div className="story-drawer-overlay" onClick={() => setDrawerOpen(false)} /> : null}
-      <aside className="story-drawer" style={{ transform: drawerOpen ? "translateX(0)" : "translateX(106%)", transition: "transform 220ms ease" }}>
-        <div className="story-drawer-section">
-          <div className="story-drawer-eyebrow">剧情角色</div>
-          <div className="story-character-list">
-            {characters.map((character) => (
-              <button
-                key={character.id}
-                className="story-character-chip"
-                data-active={character.id === activeCharacterId ? "true" : undefined}
-                onClick={() => {
-                  setActiveCharacterId(character.id);
-                  setDrawerOpen(false);
-                }}
-              >
-                <Avatar src={character.avatar || undefined} name={character.name} size="lg" />
-                <span className="story-character-name">{character.name}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="story-drawer-section">
-          <div className="story-drawer-eyebrow">剧情语音</div>
-          <div className="story-voice-settings">
-            <label className="story-pref-row">
-              <span>
-                <strong>开启语音</strong>
-                <small>启用当前角色在“剧情”中绑定的语音方案</small>
-              </span>
-              <input
-                type="checkbox"
-                checked={Boolean(uiPrefs.voiceEnabled)}
-                onChange={(event) => {
-                  if (event.target.checked) unlockAudioPlayback();
-                  applySessionUpdates({ uiPrefs: { ...uiPrefs, voiceEnabled: event.target.checked } });
-                }}
-              />
-            </label>
-            <p className="story-voice-help">开启后可逐句播放；每句对白末尾的小播放键仍可单独使用。</p>
-          </div>
-        </div>
-
-        <div className="story-drawer-section">
-          <div className="story-drawer-eyebrow">显示选项</div>
-          <div style={{ padding: "10px 0", borderBottom: "1px solid var(--c-story-drawer-border, rgba(124, 104, 68, 0.08))" }}>
-            <label style={{ fontSize: "calc(13px*var(--app-text-scale,1))", color: "var(--c-story-sub, rgba(95, 82, 61, 0.72))", display: "block", marginBottom: 6 }}>
-              折叠标签
-            </label>
-            <input
-              type="text"
-              value={foldTagsDraft}
-              onChange={(e) => setFoldTagsDraft(e.target.value)}
-              onBlur={() => applySessionUpdates({ foldTags: foldTagsDraft.trim() || undefined })}
-              placeholder="think,thinking"
-              style={{
-                width: "100%", boxSizing: "border-box",
-                padding: "8px 12px", borderRadius: 0,
-                border: "none", boxShadow: "inset 0 1px 3px rgba(0,0,0,0.06)",
-                background: "var(--c-story-css-box-bg, rgba(255, 251, 246, 0.88))",
-                color: "var(--c-story-text, #4b4335)",
-                fontSize: "calc(13px*var(--app-text-scale,1))", lineHeight: 1.6, fontFamily: "inherit",
-              }}
-            />
-            <div style={{ fontSize: "calc(11px*var(--app-text-scale,1))", marginTop: 4, color: "var(--c-story-sub, rgba(95, 82, 61, 0.72))" }}>
-              逗号分隔标签名，如 think,thinking,reasoning
-            </div>
-          </div>
-          <div style={{ padding: "10px 0", borderBottom: "1px solid var(--c-story-drawer-border, rgba(124, 104, 68, 0.08))" }}>
-            <label style={{ fontSize: "calc(13px*var(--app-text-scale,1))", color: "var(--c-story-sub, rgba(95, 82, 61, 0.72))", display: "block", marginBottom: 6 }}>
-              不进上下文标签
-            </label>
-            <input
-              type="text"
-              value={contextExcludedTagsDraft}
-              onChange={(e) => setContextExcludedTagsDraft(e.target.value)}
-              onBlur={() => applySessionUpdates({ contextExcludedTags: contextExcludedTagsDraft.trim() || undefined })}
-              placeholder="think,thinking"
-              style={{
-                width: "100%", boxSizing: "border-box",
-                padding: "8px 12px", borderRadius: 0,
-                border: "none", boxShadow: "inset 0 1px 3px rgba(0,0,0,0.06)",
-                background: "var(--c-story-css-box-bg, rgba(255, 251, 246, 0.88))",
-                color: "var(--c-story-text, #4b4335)",
-                fontSize: "calc(13px*var(--app-text-scale,1))", lineHeight: 1.6, fontFamily: "inherit",
-              }}
-            />
-            <div style={{ fontSize: "calc(11px*var(--app-text-scale,1))", marginTop: 4, color: "var(--c-story-sub, rgba(95, 82, 61, 0.72))" }}>
-              默认 think,thinking；影响后续生成上下文，不影响显示与保存
-            </div>
-          </div>
-        </div>
-
-        <div className="story-drawer-section">
-          <div className="story-drawer-eyebrow">工具</div>
-          <button
-            className="story-tool-btn"
-            onClick={() => {
-              try {
-                const rebuilt = rebuildStorySessionRenderCache(activeCharacterId, currentSession.id, { sessionFoldTags: currentSession.foldTags });
-                setMessages(rebuilt);
-                setStorageVersion((value) => value + 1);
-                alert(`缓存重建完成，${rebuilt.length} 条消息已更新`);
-              } catch (error) {
-                alert(error instanceof Error ? error.message : "缓存重建失败，请检查 API 绑定配置");
-              }
-            }}
-          >
-            重建渲染缓存
-          </button>
-        </div>
-      </aside>
 
       <div className="story-shell-inner" ref={shellInnerRef}>
 
@@ -1235,13 +1187,17 @@ export function StoryApp({ onClose }: StoryAppProps) {
               <button className="story-top-btn" onClick={onClose} aria-label="关闭剧情模式">
                 <SolidBackIcon size={16} />
               </button>
+              <div className="story-header-person">
+                <Avatar src={currentCharacter.avatar || undefined} name={currentCharacter.name} size="sm" />
+                <span>{currentCharacter.name}</span>
+              </div>
             </div>
-            <div className="story-header-center">Story</div>
+            <div className="story-header-center" />
             <div className="story-header-right" style={{ gap: 8 }}>
               <button className="story-top-btn" onClick={() => setCssModalOpen(true)} aria-label="页面样式">
                 <PaintBrushIcon width={16} height={16} />
               </button>
-              <button className="story-top-btn" onClick={() => setDrawerOpen(true)} aria-label="打开剧情侧栏">
+              <button className="story-top-btn" onClick={() => setSettingsOpen(true)} aria-label="打开剧情设置">
                 <SolidMenuIcon size={16} />
               </button>
             </div>
@@ -1433,9 +1389,29 @@ export function StoryApp({ onClose }: StoryAppProps) {
         voicePlaying={Boolean(playingVoiceSegmentId)}
         voiceProgress={voiceSequenceProgress}
         onSend={(text) => { void handleSend(text); }}
+        onContinue={() => { void handleSend("继续"); }}
         onStop={handleStopGeneration}
         onPlayNext={() => { void handlePlayNextStoryVoice(); }}
       />
+
+      {storySettings.floatingPhoneEnabled ? (
+        <button className="story-floating-phone-ball" type="button" onClick={() => setFloatingPhoneOpen(true)} aria-label="打开悬浮小手机">⌁</button>
+      ) : null}
+      {floatingPhoneOpen ? (
+        <div className="story-mini-phone-overlay" onClick={() => setFloatingPhoneOpen(false)}>
+          <section className="story-mini-phone" onClick={(event) => event.stopPropagation()}>
+            <header><button type="button" onClick={() => setFloatingPhoneOpen(false)}><XMarkIcon width={15} /></button><div><Avatar src={currentCharacter.avatar || undefined} name={currentCharacter.name} size="sm" /><strong>{currentCharacter.name}</strong></div><span /></header>
+            <div className="story-mini-phone-messages">
+              {floatingChatMessages.length ? floatingChatMessages.map((message) => (
+                <div key={message.id} data-role={message.role}>
+                  <small>{message.role === "user" ? (userIdentity?.name || "我") : currentCharacter.name} · {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small>
+                  <p>{message.content}</p>
+                </div>
+              )) : <p className="story-mini-phone-empty">还没有与该角色的线上聊天记录</p>}
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {/* CSS Style Modal */}
       {cssModalOpen && (

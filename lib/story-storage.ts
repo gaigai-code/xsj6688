@@ -9,6 +9,40 @@ export type StoryUiPrefs = {
   theme?: string;
   /** 是否启用剧情页的角色绑定语音。 */
   voiceEnabled?: boolean;
+  /** 当前角色剧情页独立壁纸（data URL 或可访问 URL）。 */
+  wallpaper?: string;
+};
+
+export type StoryTailScheme = {
+  id: string;
+  name: string;
+  prompt: string;
+  preview: string;
+};
+
+export type StoryPromptEntry = {
+  id: string;
+  name: string;
+  content: string;
+  enabled: boolean;
+};
+
+export type StoryCharacterSettings = {
+  presetName?: string;
+  extraPrompt?: string;
+  customPromptEntries?: StoryPromptEntry[];
+  enabledPresetPromptIds?: string[];
+  minChars?: number;
+  maxChars?: number;
+  userPerspective?: "second" | "third" | "username";
+  proseStyle?: string;
+  proseStylePrompt?: string;
+  statusSchemes?: StoryTailScheme[];
+  activeStatusSchemeId?: string;
+  theaterSchemes?: StoryTailScheme[];
+  activeTheaterSchemeId?: string;
+  floatingPhoneEnabled?: boolean;
+  floatingPhoneInContext?: boolean;
 };
 
 export type StorySession = {
@@ -20,6 +54,8 @@ export type StorySession = {
   foldTags?: string;            // Comma-separated tag names to fold for this session.
   contextExcludedTags?: string; // Comma-separated tag names stripped before sending story history to the LLM.
   uiPrefs?: StoryUiPrefs;
+  /** 剧情 APP 专属设置；每个角色的唯一会话各自独立保存。 */
+  settings?: StoryCharacterSettings;
   lastMessageId?: string;
   lastMessagePreview?: string;
 };
@@ -168,6 +204,8 @@ export function createOrGetStorySession(characterId: string): StorySession {
     id: generateId("story_sess"),
     characterId,
     updatedAt: getNow().toISOString(),
+    foldTags: "think,thinking,story_status,story_theater",
+    contextExcludedTags: "think,thinking,story_theater",
     uiPrefs: {},
   };
   _sessionsCache.unshift(session);
