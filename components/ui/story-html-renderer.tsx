@@ -30,6 +30,12 @@ const STANDARD_TAGS = new Set([
     "center","font","marquee","strike","tt","big",
 ]);
 
+// 允许以 story_ 开头的自定义标签
+function isSafeTag(tag: string) {
+    const lower = tag.toLowerCase();
+    return STANDARD_TAGS.has(lower) || lower.startsWith("story_");
+}
+
 // ── Content splitting: separate ```html blocks from regular content ──
 
 type Segment =
@@ -248,45 +254,24 @@ function MarkdownSegment({
             return token;
         });
 
-        // 提取 <story_status> 渲染为状态栏
-        const statusPrepared = scenePrepared.replace(/<story_status>([\s\S]*?)<\/story_status>/g, (_whole, innerText: string) => {
-            const token = `STORYSTATUSPLACEHOLDER${semanticPlaceholders.length}END`;
-            const lines = innerText.trim().split("\n").map(l => l.trim()).filter(Boolean);
-            
-            let itemsHtml = "";
-            for (const line of lines) {
-                // 支持 "属性｜值" 或 "属性: 值" 格式分解
-                const parts = line.split(/｜|\||：|:\s/);
-                if (parts.length >= 2) {
-                    const label = parts.shift()?.trim() || "";
-                    const value = parts.join("｜").trim();
-                    itemsHtml += `<div class="story-status-item"><span class="story-status-label">${escapeHtmlAttribute(label)}</span><span class="story-status-value">${escapeHtmlAttribute(value)}</span></div>`;
-                } else {
-                    itemsHtml += `<div class="story-status-item"><span class="story-status-value">${escapeHtmlAttribute(line)}</span></div>`;
-                }
-            }
-
-            semanticPlaceholders.push({
+        // 允许直接渲染用户定义的任意 <story_xxxx> 标签并支持其内部的 HTML
+        // 此处不再强制转义替换，而是让它们作为合法的 HTML 标签保留下来。
+        // 为了防止它们在后续被 sanitize 掉，我们需要把它们暂时替换为特殊占位符，
+        // 等 sanitize 完毕后再还原。
+        let customTagsPrepared = scenePrepared;
+        const customTagPlaceholders: Array<{ token: string; html: string }> = [];
+        
+        customTagsPrepared = customTagsPrepared.replace(/<(story_[a-zA-Z0-9_-]+)([^>]*)>([\s\S]*?)<\/\1>/g, (wholeMatch, tagName, attrs, innerHTML) => {
+            const token = `STORYCUSTOMTAGPLACEHOLDER${customTagPlaceholders.length}END`;
+            // 不转义 innerHTML，允许用户在方案里直接写 <div class="..."> 等 HTML
+            customTagPlaceholders.push({
                 token,
-                html: `<div class="story-status-bar">${itemsHtml}</div>`,
+                html: `<${tagName}${attrs}>${innerHTML}</${tagName}>`,
             });
             return token;
         });
 
-        // 提取 <story_theater> 渲染为片尾彩蛋卡片
-        const theaterPrepared = statusPrepared.replace(/<story_theater>([\s\S]*?)<\/story_theater>/g, (_whole, innerText: string) => {
-            const token = `STORYTHEATERPLACEHOLDER${semanticPlaceholders.length}END`;
-            let content = innerText.trim();
-            // 移除可能带的 "片尾彩蛋｜" 等前缀
-            content = content.replace(/^(?:片尾彩蛋|彩蛋)[｜|\|：:]\s*/i, "");
-            
-            semanticPlaceholders.push({
-                token,
-                html: `<div class="story-theater-card"><div class="story-theater-title">✨ 片尾彩蛋</div><div class="story-theater-content">${escapeHtmlAttribute(content)}</div></div>`,
-            });
-            return token;
-        });
-        const semanticPrepared = theaterPrepared.replace(/(^|[^~])~([^~\n<>{};]{1,60})~(?!~)/g, (_whole, prefix: string, emphasized: string) => {
+        const semanticPrepared = customTagsPrepared.replace(/(^|[^~])~([^~\n<>{};]{1,60})~(?!~)/g, (_whole, prefix: string, emphasized: string) => {
             const token = `STORYACCENTPLACEHOLDER${semanticPlaceholders.length}END`;
             semanticPlaceholders.push({
                 token,
@@ -298,7 +283,7 @@ function MarkdownSegment({
         // 0. Pre-process:
         const preprocessed = semanticPrepared
             .replace(/<\/?([a-zA-Z][a-zA-Z0-9_-]*)[^>]*>/g, (match, tag) =>  // strip all non-standard HTML tags (keep content)
-                STANDARD_TAGS.has(tag.toLowerCase()) ? match : "")
+                isSafeTag(tag) ? match : "")
             .replace(/^[ \t]+/gm, "")                     // strip leading whitespace (prevents marked treating indented HTML as code blocks)
             .replace(/\n{3,}/g, "\n\n")                    // max 2 consecutive newlines
             .replace(/(>)\s*\n\n\s*(<)/g, "$1\n$2");       // remove blank lines between HTML tags
@@ -329,6 +314,9 @@ function MarkdownSegment({
             trimmed = trimmed.replace(placeholder.token, placeholder.html);
         }
         for (const placeholder of semanticPlaceholders) {
+            trimmed = trimmed.replace(placeholder.token, placeholder.html);
+        }
+        for (const placeholder of customTagPlaceholders) {
             trimmed = trimmed.replace(placeholder.token, placeholder.html);
         }
         trimmed = trimmed.replace(/<em>/g, '<em class="story-thought">');
