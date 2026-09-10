@@ -6,6 +6,12 @@ import { LanguageIcon } from "@heroicons/react/24/solid";
 import { marked } from "marked";
 import { translateReasoningText } from "@/lib/reasoning-translate";
 
+export type StoryVoiceSegment = {
+    id: string;
+    text: string;
+    speaker?: string;
+};
+
 /** Standard HTML tags — anything not in this set gets stripped (content kept) */
 const STANDARD_TAGS = new Set([
     "a","abbr","address","area","article","aside","audio","b","base","bdi","bdo",
@@ -183,10 +189,55 @@ marked.setOptions({
     gfm: true,         // GitHub Flavored Markdown (tables, strikethrough)
 });
 
-function MarkdownSegment({ content, scopeClass }: { content: string; scopeClass: string }) {
+function escapeHtmlAttribute(value: string): string {
+    return value
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+}
+
+function parseStoryVoiceMarker(inner: string): { text: string; speaker?: string } {
+    const normalized = inner.trim();
+    const separator = normalized.match(/^([^：:\n]{1,32})[：:]\s*([\s\S]+)$/);
+    if (!separator) return { text: normalized };
+    return { speaker: separator[1].trim(), text: separator[2].trim() };
+}
+
+function MarkdownSegment({
+    content,
+    scopeClass,
+    voiceIdPrefix,
+    playingVoiceSegmentId,
+}: {
+    content: string;
+    scopeClass: string;
+    voiceIdPrefix?: string;
+    playingVoiceSegmentId?: string | null;
+}) {
     const html = useMemo(() => {
+        const voicePlaceholders: Array<{ token: string; html: string }> = [];
+        let voiceIndex = 0;
+        const voicePrepared = voiceIdPrefix
+            ? content.replace(/⌈([^⌈⌋]+)⌋/g, (_whole, inner: string) => {
+                const parsed = parseStoryVoiceMarker(inner);
+                if (!parsed.text) return `⌈${inner}⌋`;
+                const id = `${voiceIdPrefix}:${voiceIndex++}`;
+                const token = `STORYVOICEPLACEHOLDER${voicePlaceholders.length}END`;
+                const playing = id === playingVoiceSegmentId;
+                const speakerAttr = parsed.speaker
+                    ? ` data-story-voice-speaker="${escapeHtmlAttribute(encodeURIComponent(parsed.speaker))}"`
+                    : "";
+                voicePlaceholders.push({
+                    token,
+                    html: `<span class="story-voice-segment${playing ? " is-playing" : ""}" data-story-voice-segment="${escapeHtmlAttribute(id)}" data-story-voice-text="${escapeHtmlAttribute(encodeURIComponent(parsed.text))}"${speakerAttr}>⌈${escapeHtmlAttribute(inner)}⌋<button type="button" class="story-voice-play" data-story-voice-play="${escapeHtmlAttribute(id)}" aria-label="${playing ? "停止朗读" : "朗读这句对白"}" title="${playing ? "停止" : "播放"}"><span aria-hidden="true">${playing ? "■" : "▶"}</span></button></span>`,
+                });
+                return token;
+            })
+            : content;
+
         // 0. Pre-process:
-        const preprocessed = content
+        const preprocessed = voicePrepared
             .replace(/<\/?([a-zA-Z][a-zA-Z0-9_-]*)[^>]*>/g, (match, tag) =>  // strip all non-standard HTML tags (keep content)
                 STANDARD_TAGS.has(tag.toLowerCase()) ? match : "")
             .replace(/^[ \t]+/gm, "")                     // strip leading whitespace (prevents marked treating indented HTML as code blocks)
@@ -209,14 +260,18 @@ function MarkdownSegment({ content, scopeClass }: { content: string; scopeClass:
         const scoped = scopeStyles(clean, scopeClass);
 
         // 4. Clean up whitespace artifacts
-        const trimmed = scoped
+        let trimmed = scoped
             .replace(/(<\/div>|<\/details>|<\/table>|<\/p>)\s*(<br\s*\/?>)\s*/gi, "$1")
             .replace(/(<br\s*\/?>){3,}/gi, "<br>")
             .replace(/<p>\s*<\/p>/gi, "")
             .replace(/<p>\s*(<br\s*\/?>)\s*<\/p>/gi, "");
 
+        for (const placeholder of voicePlaceholders) {
+            trimmed = trimmed.replace(placeholder.token, placeholder.html);
+        }
+
         return trimmed;
-    }, [content, scopeClass]);
+    }, [content, scopeClass, voiceIdPrefix, playingVoiceSegmentId]);
 
     return <div className={scopeClass} style={{ whiteSpace: "normal" }} dangerouslySetInnerHTML={{ __html: html }} />;
 }
@@ -240,6 +295,36 @@ function useActionDelegate(containerRef: React.RefObject<HTMLDivElement | null>,
         el.addEventListener("click", handler, true);
         return () => el.removeEventListener("click", handler, true);
     }, [containerRef, onAction]);
+}
+
+function useStoryVoiceDelegate(
+    containerRef: React.RefObject<HTMLDivElement | null>,
+    onVoicePlay?: (segment: StoryVoiceSegment) => void,
+) {
+    useEffect(() => {
+        if (!onVoicePlay) return;
+        const el = containerRef.current;
+        if (!el) return;
+        const handler = (event: MouseEvent) => {
+            const button = (event.target as HTMLElement).closest<HTMLElement>("[data-story-voice-play]");
+            if (!button) return;
+            const segment = button.closest<HTMLElement>("[data-story-voice-segment]");
+            const id = button.dataset.storyVoicePlay;
+            const encodedText = segment?.dataset.storyVoiceText;
+            if (!id || !encodedText) return;
+            event.preventDefault();
+            event.stopPropagation();
+            onVoicePlay({
+                id,
+                text: decodeURIComponent(encodedText),
+                speaker: segment?.dataset.storyVoiceSpeaker
+                    ? decodeURIComponent(segment.dataset.storyVoiceSpeaker)
+                    : undefined,
+            });
+        };
+        el.addEventListener("click", handler, true);
+        return () => el.removeEventListener("click", handler, true);
+    }, [containerRef, onVoicePlay]);
 }
 
 // ── HTML page segment: srcDoc iframe ──
@@ -401,13 +486,16 @@ export interface StoryHtmlRendererProps {
     htmlPageMode?: "auto" | "contained";
     /** 剧情模式：给 iframe 生成页注入宋体默认字体兜底 */
     serifIframeFallback?: boolean;
+    onVoicePlay?: (segment: StoryVoiceSegment) => void;
+    playingVoiceSegmentId?: string | null;
 }
 
-function StoryHtmlRendererInner({ content, messageId, onOptionSelect, htmlPageMode = "auto", serifIframeFallback = false }: StoryHtmlRendererProps) {
+function StoryHtmlRendererInner({ content, messageId, onOptionSelect, htmlPageMode = "auto", serifIframeFallback = false, onVoicePlay, playingVoiceSegmentId }: StoryHtmlRendererProps) {
     const segments = useMemo(() => splitContent(content), [content]);
     const scopeClass = `smsg-${messageId.slice(-8)}`;
     const containerRef = useRef<HTMLDivElement>(null);
     useActionDelegate(containerRef, onOptionSelect);
+    useStoryVoiceDelegate(containerRef, onVoicePlay);
 
     return (
         <div className="story-richtext" ref={containerRef}>
@@ -425,16 +513,16 @@ function StoryHtmlRendererInner({ content, messageId, onOptionSelect, htmlPageMo
                                 if (innerSeg.type === "fold") {
                                     return (
                                         <StoryFoldBlock key={`fold-inner-${i}-${innerIndex}`} label={innerSeg.label} content={innerSeg.content} scopeClass={scopeClass}>
-                                            <MarkdownSegment content={innerSeg.content} scopeClass={scopeClass} />
+                                            <MarkdownSegment content={innerSeg.content} scopeClass={scopeClass} voiceIdPrefix={`${messageId}:fold:${i}:${innerIndex}`} playingVoiceSegmentId={playingVoiceSegmentId} />
                                         </StoryFoldBlock>
                                     );
                                 }
-                                return <MarkdownSegment key={`fold-md-${i}-${innerIndex}`} content={innerSeg.content} scopeClass={scopeClass} />;
+                                return <MarkdownSegment key={`fold-md-${i}-${innerIndex}`} content={innerSeg.content} scopeClass={scopeClass} voiceIdPrefix={`${messageId}:fold:${i}:${innerIndex}`} playingVoiceSegmentId={playingVoiceSegmentId} />;
                             })}
                         </StoryFoldBlock>
                     );
                 }
-                return <MarkdownSegment key={`md-${i}`} content={seg.content} scopeClass={scopeClass} />;
+                return <MarkdownSegment key={`md-${i}`} content={seg.content} scopeClass={scopeClass} voiceIdPrefix={`${messageId}:md:${i}`} playingVoiceSegmentId={playingVoiceSegmentId} />;
             })}
         </div>
     );

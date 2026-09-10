@@ -225,6 +225,77 @@
           font-size: calc(14px*var(--app-text-scale,1));
           color: var(--c-story-text, #3a3b3c);
         }
+        .story-pref-row > span {
+          display: flex;
+          min-width: 0;
+          flex-direction: column;
+          gap: 3px;
+        }
+        .story-pref-row strong {
+          font-size: calc(13px*var(--app-text-scale,1));
+          font-weight: 600;
+        }
+        .story-pref-row small,
+        .story-voice-help {
+          color: var(--c-story-sub, #94a3b8);
+          font-size: calc(10.5px*var(--app-text-scale,1));
+          line-height: 1.55;
+        }
+        .story-pref-row input[type="checkbox"] {
+          width: 18px;
+          height: 18px;
+          accent-color: var(--c-story-send-bg-active, #334155);
+          flex: 0 0 auto;
+        }
+        .story-voice-settings {
+          background: var(--c-story-panel, rgba(255, 255, 255, 0.5));
+          box-shadow: var(--story-paper-shadow-soft);
+          padding: 0 12px 10px;
+        }
+        .story-voice-setting-block {
+          display: flex;
+          flex-direction: column;
+          gap: 9px;
+          padding: 12px 4px;
+          border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+        }
+        .story-voice-setting-label {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          color: var(--c-story-text, #3a3b3c);
+          font-size: calc(12px*var(--app-text-scale,1));
+        }
+        .story-voice-setting-label strong {
+          font-size: calc(11px*var(--app-text-scale,1));
+          color: var(--c-story-sub, #94a3b8);
+        }
+        .story-voice-mode-switch {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 6px;
+        }
+        .story-voice-mode-switch button {
+          min-height: 34px;
+          border: 0;
+          border-radius: 0;
+          background: var(--c-story-css-box-bg, rgba(248, 250, 252, 0.72));
+          color: var(--c-story-sub, #94a3b8);
+          font: inherit;
+          font-size: calc(11px*var(--app-text-scale,1));
+        }
+        .story-voice-mode-switch button[data-active="true"] {
+          background: var(--c-story-send-bg-active, #334155);
+          color: var(--c-story-send-text, #fff);
+        }
+        .story-voice-speed {
+          width: 100%;
+          margin: 0;
+          accent-color: var(--c-story-send-bg-active, #334155);
+        }
+        .story-voice-help {
+          margin: 9px 4px 0;
+        }
         .story-css-box {
           width: 100%;
           min-height: 140px;
@@ -515,6 +586,57 @@
           background: transparent;
           border: none;
           box-shadow: none;
+        }
+        .story-voice-segment {
+          display: inline;
+        }
+        .story-voice-play {
+          width: 14px;
+          height: 14px;
+          margin: 0 0.05em 0 0.24em;
+          padding: 0;
+          border: 0;
+          border-radius: 50%;
+          background: transparent;
+          color: var(--c-story-sub, #94a3b8);
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          vertical-align: -0.08em;
+          line-height: 1;
+          font-size: 7px;
+          opacity: 0.78;
+          cursor: pointer;
+          touch-action: manipulation;
+        }
+        .story-voice-play:active {
+          transform: scale(0.88);
+          opacity: 1;
+        }
+        .story-voice-segment.is-playing .story-voice-play {
+          color: var(--c-story-heading, #1e293b);
+          opacity: 1;
+          animation: story-voice-pulse 1.15s ease-in-out infinite;
+        }
+        @keyframes story-voice-pulse {
+          0%, 100% { transform: scale(0.92); }
+          50% { transform: scale(1.08); }
+        }
+        .story-voice-notice {
+          position: absolute;
+          left: 50%;
+          bottom: calc(66px + env(safe-area-inset-bottom, 0px));
+          z-index: 60;
+          max-width: min(78%, 320px);
+          transform: translateX(-50%);
+          padding: 8px 12px;
+          background: rgba(30, 41, 59, 0.9);
+          color: #fff;
+          font-size: calc(11px*var(--app-text-scale,1));
+          line-height: 1.45;
+          text-align: center;
+          box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+          pointer-events: none;
         }
         .story-row[data-role="system"] {
           justify-content: center;
