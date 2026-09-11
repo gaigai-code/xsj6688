@@ -12,24 +12,29 @@ function escapeHtmlText(value: string): string {
     return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function buildSrcDoc(html: string, raw: string, frameId: string): string {
+function serializeForInlineScript(value: string): string {
+    return JSON.stringify(value).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
+}
+
+function buildSrcDoc(html: string, raw: string, frameId: string, kind: "status" | "theater"): string {
     const withRaw = html.split("{{RAW}}").join(escapeHtmlText(raw));
     const base = /<html[\s>]/i.test(withRaw)
         ? withRaw
         : `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head><body>${withRaw}</body></html>`;
-    const inject = `<script>window.STATUS_RAW=${JSON.stringify(raw)};</` + `script>`;
+    const serializedRaw = serializeForInlineScript(raw);
+    const inject = `<script>window.STATUS_RAW=${serializedRaw};window.STORY_RAW=${serializedRaw};window.STORY_TAIL_KIND=${JSON.stringify(kind)};${kind === "theater" ? `window.THEATER_RAW=${serializedRaw};` : ""}</` + `script>`;
     return /<head[\s>]/i.test(base)
         ? base.replace(/<head([^>]*)>/i, `<head$1>${inject}`)
         : inject + base;
 }
 
-export function CustomStatusFrame({ html, raw }: { html: string; raw: string }) {
+export function CustomStatusFrame({ html, raw, kind = "status", title = "自定义状态栏" }: { html: string; raw: string; kind?: "status" | "theater"; title?: string }) {
     const iframeRef = useRef<HTMLIFrameElement | null>(null);
     const [frameId] = useState(() => `csf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
     const [height, setHeight] = useState(FRAME_MIN_HEIGHT);
 
     const srcDoc = useMemo(() => {
-        const doc = buildSrcDoc(html, raw, frameId);
+        const doc = buildSrcDoc(html, raw, frameId, kind);
         const bridge = `<script>(function(){
   var frameId=${JSON.stringify(frameId)};
   function measure(){var b=document.body;if(!b)return ${FRAME_MIN_HEIGHT};var r=b.getBoundingClientRect();var h=r.height;
@@ -42,7 +47,7 @@ export function CustomStatusFrame({ html, raw }: { html: string; raw: string }) 
   setTimeout(send,60);setTimeout(send,400);
 })();</` + `script>`;
         return /<\/body>/i.test(doc) ? doc.replace(/<\/body>/i, `${bridge}</body>`) : doc + bridge;
-    }, [html, raw, frameId]);
+    }, [html, raw, frameId, kind]);
 
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
@@ -59,7 +64,7 @@ export function CustomStatusFrame({ html, raw }: { html: string; raw: string }) 
     return (
         <iframe
             ref={iframeRef}
-            title="自定义状态栏"
+            title={title}
             sandbox="allow-scripts"
             scrolling="no"
             srcDoc={srcDoc}

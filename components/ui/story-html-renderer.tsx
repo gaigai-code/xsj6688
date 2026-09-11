@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { LanguageIcon } from "@heroicons/react/24/solid";
 import { marked } from "marked";
 import { translateReasoningText } from "@/lib/reasoning-translate";
+import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
 
 export type StoryVoiceSegment = {
     id: string;
@@ -145,6 +146,12 @@ function splitContent(text: string): Segment[] {
 }
 
 function splitNonFoldContent(text: string): Segment[] {
+    const whole = text.trim();
+    // 带脚本的生成页必须放进可执行脚本的隔离 iframe；Markdown 路径会为安全
+    // 删除 script，正是剧情页 HTML 看起来“不能交互”的原因。
+    if (whole && /<script\b/i.test(whole)) {
+        return [{ type: "html-page", content: whole }];
+    }
     const segments: Segment[] = [];
     const rx = /```html\s*\n([\s\S]*?)```/g;
     let lastIndex = 0;
@@ -501,6 +508,7 @@ function HtmlPageSegment({ html, onOptionSelect, htmlPageMode, serifIframeFallba
             ref={iframeRef}
             srcDoc={srcDoc}
             title="HTML content"
+            sandbox="allow-scripts"
             style={{
                 width: "100%",
                 height,
@@ -539,9 +547,11 @@ export interface StoryHtmlRendererProps {
     serifIframeFallback?: boolean;
     onVoicePlay?: (segment: StoryVoiceSegment) => void;
     playingVoiceSegmentId?: string | null;
+    statusRenderHtml?: string;
+    theaterRenderHtml?: string;
 }
 
-function StoryHtmlRendererInner({ content, messageId, onOptionSelect, htmlPageMode = "auto", serifIframeFallback = false, onVoicePlay, playingVoiceSegmentId }: StoryHtmlRendererProps) {
+function StoryHtmlRendererInner({ content, messageId, onOptionSelect, htmlPageMode = "auto", serifIframeFallback = false, onVoicePlay, playingVoiceSegmentId, statusRenderHtml, theaterRenderHtml }: StoryHtmlRendererProps) {
     const segments = useMemo(() => splitContent(content), [content]);
     const scopeClass = `smsg-${messageId.slice(-8)}`;
     const containerRef = useRef<HTMLDivElement>(null);
@@ -556,9 +566,22 @@ function StoryHtmlRendererInner({ content, messageId, onOptionSelect, htmlPageMo
                     return <HtmlPageSegment key={`hp-${i}`} html={seg.content} onOptionSelect={onOptionSelect} htmlPageMode={htmlPageMode} serifIframeFallback={serifIframeFallback} />;
                 }
                 if (seg.type === "fold") {
+                    const tailKind = seg.label.toLowerCase() === "story_status"
+                        ? "status"
+                        : seg.label.toLowerCase() === "story_theater"
+                            ? "theater"
+                            : null;
+                    const tailRenderHtml = tailKind === "status" ? statusRenderHtml : tailKind === "theater" ? theaterRenderHtml : "";
                     return (
-                        <StoryFoldBlock key={`fold-${i}`} label={seg.label} content={seg.content} scopeClass={scopeClass}>
-                            {splitContent(seg.content).map((innerSeg, innerIndex) => {
+                        <StoryFoldBlock key={`fold-${i}`} label={tailKind === "status" ? "状态栏" : tailKind === "theater" ? "小剧场" : seg.label} content={seg.content} scopeClass={scopeClass}>
+                            {tailKind && tailRenderHtml ? (
+                                <CustomStatusFrame
+                                    html={tailRenderHtml}
+                                    raw={seg.content}
+                                    kind={tailKind}
+                                    title={tailKind === "status" ? "剧情状态栏" : "剧情小剧场"}
+                                />
+                            ) : splitContent(seg.content).map((innerSeg, innerIndex) => {
                                 if (innerSeg.type === "html-page") {
                                     return <HtmlPageSegment key={`fold-hp-${i}-${innerIndex}`} html={innerSeg.content} onOptionSelect={onOptionSelect} htmlPageMode={htmlPageMode} serifIframeFallback={serifIframeFallback} />;
                                 }

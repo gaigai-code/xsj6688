@@ -47,7 +47,7 @@ function MiniPhoneIcon({ size = 18 }: { size?: number }) {
 import CSSSchemeBar from "@/components/ui/css-scheme-picker";
 import { Avatar } from "@/components/ui/primitives";
 import { StoryHtmlRenderer, type StoryVoiceSegment } from "@/components/ui/story-html-renderer";
-import { StorySettingsPage } from "@/components/story/story-settings-page";
+import { StorySettingsPage, STORY_DEFAULT_STATUS_RENDER, STORY_DEFAULT_THEATER_RENDER } from "@/components/story/story-settings-page";
 import { loadCharacters } from "@/lib/character-storage";
 import { maybeRunSummarization } from "@/lib/memory-summarizer";
 import { incrementEventCounter } from "@/lib/memory-storage";
@@ -441,6 +441,12 @@ export function StoryApp({ onClose }: StoryAppProps) {
   );
   const uiPrefs = currentSession?.uiPrefs || {};
   const storySettings: StoryCharacterSettings = currentSession?.settings || {};
+  const activeStatusScheme = storySettings.statusSchemes?.find((item) => item.id === storySettings.activeStatusSchemeId);
+  const activeTheaterScheme = storySettings.theaterSchemes?.find((item) => item.id === storySettings.activeTheaterSchemeId);
+  const activeStatusRenderHtml = activeStatusScheme?.renderHtml
+    ?? (["status-default", "status-html"].includes(activeStatusScheme?.id || "") ? STORY_DEFAULT_STATUS_RENDER : "");
+  const activeTheaterRenderHtml = activeTheaterScheme?.renderHtml
+    ?? (["theater-default", "theater-furry"].includes(activeTheaterScheme?.id || "") ? STORY_DEFAULT_THEATER_RENDER : "");
   const boundPreset = useMemo(() => {
     if (!activeCharacterId) return null;
     const slot = resolveBinding(loadBindingConfig(), activeCharacterId, "story");
@@ -1155,6 +1161,8 @@ export function StoryApp({ onClose }: StoryAppProps) {
 
   function handleMsgPointerDown(e: React.PointerEvent, msgId: string) {
     if (e.pointerType === "mouse" && e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("button,a,input,textarea,select,summary,iframe,[data-action],[data-story-interactive]")) return;
     // Don't preventDefault — it blocks clicks on <details>, <summary>, <input> etc. inside messages
     startPosRef.current = { x: e.clientX, y: e.clientY };
     longPressTriggeredRef.current = false;
@@ -1551,6 +1559,8 @@ export function StoryApp({ onClose }: StoryAppProps) {
                               onOptionSelect={handleOptionSelect}
                               onVoicePlay={message.role === "assistant" ? handleStoryVoicePlay : undefined}
                               playingVoiceSegmentId={playingVoiceSegmentId}
+                              statusRenderHtml={activeStatusRenderHtml}
+                              theaterRenderHtml={activeTheaterRenderHtml}
                               serifIframeFallback
                             />
                           )}

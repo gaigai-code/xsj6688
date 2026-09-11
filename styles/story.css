@@ -963,6 +963,15 @@
         .story-settings-preview { margin-top: 9px; padding: 11px; border-radius: 14px; background: rgba(148,163,184,.07); }
         .story-settings-preview small { color: var(--c-story-sub, #94a3b8); font-size: calc(9.5px*var(--app-text-scale,1)); }
         .story-settings-preview textarea { margin-top: 7px; min-height: 62px; background: transparent; }
+        .story-tail-field-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 13px 2px 0; }
+        .story-tail-field-head strong, .story-tail-preview-head strong { color: var(--c-story-text,#334155); font-size: calc(11px*var(--app-text-scale,1)); }
+        .story-tail-field-head small { color: var(--c-story-sub,#94a3b8); font-size: calc(9px*var(--app-text-scale,1)); }
+        .story-prompt-textarea-wrap .story-render-textarea { min-height: 168px; font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; font-size: calc(10px*var(--app-text-scale,1)); }
+        .story-tail-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .story-tail-preview-head > span { display: flex; align-items: baseline; gap: 7px; }
+        .story-tail-preview-head button { width: 28px; height: 28px; border: 0; border-radius: 9px; background: rgba(148,163,184,.12); color: var(--c-story-text,#334155); display: grid; place-items: center; }
+        .story-tail-preview-frame { margin-top: 9px; padding: 8px; border: 1px solid rgba(100,116,139,.08); border-radius: 13px; background: color-mix(in srgb,var(--c-story-card,#fff) 88%,transparent); overflow: hidden; }
+        .story-tail-preview-empty { margin-top: 8px; padding: 13px; border: 1px dashed rgba(100,116,139,.16); border-radius: 11px; color: var(--c-story-sub,#94a3b8); text-align: center; font-size: calc(9px*var(--app-text-scale,1)); }
         .story-settings-row-button { width: 100%; border: 0; border-top: 1px solid rgba(100,116,139,.07); background: transparent; padding: 13px 1px; color: var(--c-story-text,#334155); display: flex; justify-content: space-between; align-items: center; text-align: left; }
         .story-settings-row-button > span { display: flex; flex-direction: column; gap: 3px; }
         .story-settings-row-button strong { font-size: calc(12px*var(--app-text-scale,1)); }
@@ -1289,6 +1298,10 @@
           line-height: 1.75;
           font-size: calc(12px*var(--app-text-scale,1));
         }
+        .story-fold-block[data-fold-tag="状态栏"],
+        .story-fold-block[data-fold-tag="小剧场"] { margin: 1.35em 0; }
+        .story-fold-block[data-fold-tag="状态栏"] > summary,
+        .story-fold-block[data-fold-tag="小剧场"] > summary { letter-spacing: .14em; text-transform: none; }
         .story-fold-translate-btn {
           float: right;
           margin-left: 8px;

@@ -20,7 +20,11 @@ export type StoryUiPrefs = {
 export type StoryTailScheme = {
   id: string;
   name: string;
+  /** 写入生成提示词的输出格式/契约。 */
   prompt: string;
+  /** 在沙盒 iframe 中运行的 HTML/CSS/JS 渲染模板。 */
+  renderHtml?: string;
+  /** 传给渲染模板的可编辑预览原文。 */
   preview: string;
 };
 
