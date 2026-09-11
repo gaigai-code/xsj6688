@@ -665,7 +665,12 @@ export function StoryApp({ onClose }: StoryAppProps) {
         ? CSS.escape(latestAssistantMessageId)
         : latestAssistantMessageId.replace(/["\\]/g, "\\$&");
       const latest = node.querySelector<HTMLElement>(`[data-story-message-id="${escapedId}"]`);
-      latest?.scrollIntoView({ block: "center", behavior: "auto" });
+      if (latest) {
+        const nodeRect = node.getBoundingClientRect();
+        const latestRect = latest.getBoundingClientRect();
+        const target = node.scrollTop + latestRect.top - nodeRect.top - node.clientHeight / 2;
+        node.scrollTop = Math.max(0, Math.min(node.scrollHeight - node.clientHeight, Math.round(target)));
+      }
     }
 
     setCurrentReadExpanded(false);
@@ -681,22 +686,37 @@ export function StoryApp({ onClose }: StoryAppProps) {
     }
 
     const speed = Math.max(12, Math.min(120, uiPrefs.autoReadingSpeed ?? DEFAULT_AUTO_READING_SPEED));
+    const previousScrollBehavior = node.style.getPropertyValue("scroll-behavior");
+    const previousScrollBehaviorPriority = node.style.getPropertyPriority("scroll-behavior");
+    // iOS PWA 会让 CSS smooth scrolling 和逐帧 scrollTop 互相抢位置。
+    node.style.setProperty("scroll-behavior", "auto", "important");
     let frame = 0;
     let previousTime = performance.now();
+    // Safari 会把不足 1px 的 scrollTop 写入取整；单独累计目标位置后再写整数，
+    // 慢速（默认每帧约 0.6px）也能稳定前进。
+    let desiredScrollTop = node.scrollTop;
     const tick = (time: number) => {
       const maxScrollTop = Math.max(0, node.scrollHeight - node.clientHeight);
-      if (node.scrollTop >= maxScrollTop - 1) {
+      if (desiredScrollTop >= maxScrollTop - 1) {
         node.scrollTop = maxScrollTop;
         setAutoReading(false);
         return;
       }
       const elapsed = Math.min(64, time - previousTime);
       previousTime = time;
-      node.scrollTop = Math.min(maxScrollTop, node.scrollTop + (speed * elapsed) / 1000);
+      desiredScrollTop = Math.min(maxScrollTop, desiredScrollTop + (speed * elapsed) / 1000);
+      node.scrollTop = Math.floor(desiredScrollTop);
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(frame);
+      if (previousScrollBehavior) {
+        node.style.setProperty("scroll-behavior", previousScrollBehavior, previousScrollBehaviorPriority);
+      } else {
+        node.style.removeProperty("scroll-behavior");
+      }
+    };
   }, [autoReading, uiPrefs.autoReadingSpeed]);
 
   useEffect(() => {
