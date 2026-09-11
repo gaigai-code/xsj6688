@@ -37,6 +37,77 @@ export type StoryTailScheme = {
   preview: string;
 };
 
+// ── 剧情尾部内置方案（剧情设置页与小卷工具共用）──────────
+// 渲染画布在沙盒 iframe 里运行，AI 输出原文经 window.STORY_RAW / {{RAW}} 注入。
+
+export const STORY_DEFAULT_STATUS_RENDER = `<style>
+:root{--bg:#fff;--text:#334155;--sub:#94a3b8;--line:#e2e8f0}
+@media(prefers-color-scheme:dark){:root{--bg:#1c1c1e;--text:#e5e7eb;--sub:#94a3b8;--line:#334155}}
+*{box-sizing:border-box}body{margin:0;background:transparent;color:var(--text);font:13px/1.55 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+.status{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:2px}
+.item{min-width:0;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
+.key{display:block;color:var(--sub);font-size:10px;margin-bottom:2px}.value{display:block;overflow-wrap:anywhere;white-space:pre-wrap}
+</style>
+<div id="status" class="status"></div>
+<script>
+const root=document.getElementById('status');
+const rows=(window.STORY_RAW||'').split(/\\n+/).flatMap(line=>line.split(/\\s{2,}/)).map(v=>v.trim()).filter(Boolean);
+for(const row of rows){const parts=row.split(/[｜|：:]/);const item=document.createElement('div');item.className='item';const key=document.createElement('span');key.className='key';key.textContent=parts.length>1?parts.shift().trim():'状态';const value=document.createElement('span');value.className='value';value.textContent=parts.join('｜').trim()||row;item.append(key,value);root.append(item)}
+</script>`;
+
+export const STORY_DEFAULT_THEATER_RENDER = `<style>
+:root{--paper:#fffdf8;--text:#4b5563;--sub:#9a8f80;--line:#eadfce}
+@media(prefers-color-scheme:dark){:root{--paper:#24211d;--text:#e7e1d8;--sub:#a89f94;--line:#4a433a}}
+*{box-sizing:border-box}body{margin:0;background:transparent;color:var(--text);font:13px/1.8 Georgia,"Songti SC",serif}
+.theater{position:relative;padding:16px 17px;border:1px solid var(--line);border-radius:14px;background:var(--paper)}
+.title{margin-bottom:7px;color:var(--sub);font:10px/1.2 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;letter-spacing:.22em}.text{white-space:pre-wrap;overflow-wrap:anywhere}
+</style>
+<section class="theater"><div class="title">小剧场</div><div id="text" class="text"></div></section>
+<script>document.getElementById('text').textContent=window.STORY_RAW||''</script>`;
+
+export const STORY_DEFAULT_STATUS_SCHEME: StoryTailScheme = {
+  id: "status-default",
+  name: "关系温度卡",
+  prompt: "在正文末尾输出 <story_status>，简洁记录当前时间、地点、关系温度和双方状态；内容会进入下一轮上下文。",
+  renderHtml: STORY_DEFAULT_STATUS_RENDER,
+  preview: "时间｜夜晚  地点｜窗边\n关系温度｜72%  状态｜靠近",
+};
+
+export const STORY_DEFAULT_STATUS_HTML_SCHEME: StoryTailScheme = {
+  id: "status-html",
+  name: "自定义 HTML 状态栏",
+  prompt: "在正文末尾输出 <story_status>，依次记录时间、地点、关系与双方状态；只输出结构化纯文本，不要自行输出 HTML。内容会进入下一轮上下文。",
+  renderHtml: STORY_DEFAULT_STATUS_RENDER,
+  preview: "时间｜夜晚  地点｜窗边\n关系｜逐渐靠近  状态｜安静相伴",
+};
+
+export const STORY_DEFAULT_THEATER_SCHEME: StoryTailScheme = {
+  id: "theater-default",
+  name: "片尾彩蛋",
+  prompt: "在正文末尾输出 <story_theater>，写一段不影响主线的短小片尾彩蛋；默认仅展示，不进入下一轮上下文。",
+  renderHtml: STORY_DEFAULT_THEATER_RENDER,
+  preview: "片尾彩蛋｜如果那一刻被拍成照片，大概会被珍藏很久。",
+};
+
+export const STORY_DEFAULT_FURRY_THEATER_SCHEME: StoryTailScheme = {
+  id: "theater-furry",
+  name: "毛茸茸派对小剧场",
+  prompt: "在正文末尾输出 <story_theater>，写一段“毛茸茸派对”小剧场：假设角色和用户都是某一种毛茸茸的动物，基于刚刚发生的剧情，描写一段他们以动物形态互动的小故事；默认仅展示，不进入下一轮上下文。",
+  renderHtml: STORY_DEFAULT_THEATER_RENDER,
+  preview: "毛茸茸派对｜大尾巴扫了扫你的鼻尖，你们依偎在阳光下打着呼噜。",
+};
+
+/** 读取某剧情会话设置里的尾部方案；从未配置过时返回内置默认方案（与设置页一致）。 */
+export function loadStoryTailSchemes(settings: StoryCharacterSettings | undefined): {
+  statusSchemes: StoryTailScheme[];
+  theaterSchemes: StoryTailScheme[];
+} {
+  return {
+    statusSchemes: settings?.statusSchemes?.length ? settings.statusSchemes : [STORY_DEFAULT_STATUS_SCHEME, STORY_DEFAULT_STATUS_HTML_SCHEME],
+    theaterSchemes: settings?.theaterSchemes?.length ? settings.theaterSchemes : [STORY_DEFAULT_THEATER_SCHEME, STORY_DEFAULT_FURRY_THEATER_SCHEME],
+  };
+}
+
 /** 剧情正文文风方案：只约束 AI 的写作方式，不定义任何尾部输出结构。 */
 export type StoryProseStyleScheme = {
   id: string;

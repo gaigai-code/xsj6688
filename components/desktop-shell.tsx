@@ -1134,21 +1134,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
     avatar: string | null;
     isGroup?: boolean;
   } | null>(null);
-  const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const chatMessageNoticeTimerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    const refreshChatUnread = () => {
-      setChatUnreadCount(loadChatSessions().reduce((sum, session) => sum + Math.max(0, session.unreadCount || 0), 0));
-    };
-    refreshChatUnread();
-    window.addEventListener("chat-messages-updated", refreshChatUnread);
-    window.addEventListener(CHAT_MESSAGE_PUSHED_EVENT, refreshChatUnread);
-    return () => {
-      window.removeEventListener("chat-messages-updated", refreshChatUnread);
-      window.removeEventListener(CHAT_MESSAGE_PUSHED_EVENT, refreshChatUnread);
-    };
-  }, []);
   // Swipe-up-to-dismiss state for the chat message notice banner.
   const [noticeDragY, setNoticeDragY] = useState(0);
   const noticeDragRef = useRef({ startY: 0, dy: 0, dragging: false, far: false });
@@ -4650,10 +4636,11 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                               if (isFolderIconId(iconId)) {
                                 const folder = folders[iconId];
                                 if (!folder) return null;
+                                // 聊天图标不再聚合未读红点：未读提醒只保留在聊天会话列表内
                                 const folderBadge = folder.icons.reduce((sum, memberId) => {
                                   const appId = customAppIdFromIconId(memberId);
                                   if (appId) return sum + (customAppBadges[appId] ?? 0);
-                                  return sum + (memberId === "chat" ? chatUnreadCount : 0);
+                                  return sum;
                                 }, 0);
                                 return (
                                   <button
@@ -4689,9 +4676,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                                 : null;
                               const iconImageUrl = iconSkinUrl || customIconUrl;
                               const hasImageIcon = Boolean(iconImageUrl);
-                              const badgeCount = customApp
-                                ? customAppBadges[customApp.id] ?? 0
-                                : (builtinIconId === "chat" ? chatUnreadCount : 0);
+                              // 聊天图标右上角不显示未读红点（用户偏好）：未读只在聊天会话列表内以红点展示
+                              const badgeCount = customApp ? customAppBadges[customApp.id] ?? 0 : 0;
                               return (
                                 <button
                                   key={iconId}

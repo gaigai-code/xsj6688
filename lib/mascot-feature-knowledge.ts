@@ -120,7 +120,7 @@ const OWNER_FEATURES: MascotFeatureKnowledgeRecord = {
         {
             id: "chat-unread",
             title: "私聊未读红点",
-            location: "聊天会话列表与桌面聊天图标",
+            location: "聊天会话列表",
             facts: [
                 "角色产生新消息且对应会话不在前台时，会累加未读数量并显示红点；进入会话后标记已读。",
                 "未读红点只出现在聊天 App 的会话列表里；桌面聊天图标右上角不显示未读红点，这是用户刻意的选择，不要建议加回。",

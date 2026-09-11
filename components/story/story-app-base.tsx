@@ -641,6 +641,18 @@ export function StoryApp({ onClose }: StoryAppProps) {
     return () => window.removeEventListener("story-session-css-updated", onCSSUpdate);
   }, [activeSessionId]);
 
+  // Listen for story tail scheme updates from 小卷 (剧情方案套件)
+  useEffect(() => {
+    const onSettingsUpdate = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.sessionId && detail.sessionId === activeSessionIdRef.current) {
+        setStorageVersion((value) => value + 1);
+      }
+    };
+    window.addEventListener("story-session-settings-updated", onSettingsUpdate);
+    return () => window.removeEventListener("story-session-settings-updated", onSettingsUpdate);
+  }, []);
+
   const autoBottomLockRef = useRef(true);
   const foldToggleSuppressUntilRef = useRef(0);
   // 段落编辑期间：贴底锁必须关掉，否则编辑框自适应高度每次变化都会被
