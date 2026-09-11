@@ -848,6 +848,45 @@ export function PresetManager({ isActive = true }: { isActive?: boolean } = {}) 
         setSelectMode(false);
     }, [actionableSelectedIds, presets, editingId, editingPromptId]);
 
+    // 复制单条提示词条目，插到原条目正下方。marker 条目由宿主按固定 identifier 注入内容，复制无意义，调用方已隐藏按钮。
+    const duplicatePrompt = (preset: PresetConfig, sourceIdentifier: string) => {
+        const source = preset.prompts.find(p => p.identifier === sourceIdentifier);
+        if (!source) return;
+        const copy = JSON.parse(JSON.stringify(source)) as Prompt;
+
+        // 生成不与现有条目冲突的 identifier（原id_copy / _copy_2 …），marker 标记一并去掉
+        const used = new Set((preset.prompts || []).map(p => p.identifier));
+        let id = `${sourceIdentifier}_copy`;
+        let n = 1;
+        while (used.has(id)) id = `${sourceIdentifier}_copy_${++n}`;
+        copy.identifier = id;
+        copy.name = `${source.name || "未命名提示词"} 副本`;
+        copy.marker = false;
+        if (copy.system_prompt) copy.system_prompt = false;
+
+        // 与渲染一致的显示顺序（去重后的 prompt_order + 孤儿条目），插到源条目下方
+        const displayed = buildDisplayedPrompts(preset);
+        const idx = displayed.findIndex(p => p.identifier === sourceIdentifier);
+        if (idx >= 0) displayed.splice(idx + 1, 0, copy);
+        else displayed.push(copy);
+        const newOrder = displayed.map(p => ({
+            identifier: p.identifier,
+            enabled: p.identifier === copy.identifier
+                ? true
+                : (preset.prompt_order
+                    ? (preset.prompt_order.find(o => o.identifier === p.identifier)?.enabled ?? p.enabled)
+                    : p.enabled),
+        }));
+        updatePreset(preset.id, { prompts: [...(preset.prompts || []), copy], prompt_order: newOrder });
+        swipe.close();
+        setEditingPromptId(copy.identifier);
+        window.setTimeout(() => {
+            promptListRef.current
+                ?.querySelector(`[data-swipe-id="${CSS.escape(copy.identifier)}"]`)
+                ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 80);
+    };
+
     const insertPromptAfter = (preset: PresetConfig, afterIdentifier: string) => {
         const newPrompt = {
             identifier: `prompt-${Date.now()}`,
@@ -1538,6 +1577,17 @@ export function PresetManager({ isActive = true }: { isActive?: boolean } = {}) 
                                                     onTouchStart={isEditing ? undefined : (e) => onPromptTouchStart(_flatIndex, e)}
                                                     actions={selectMode ? null : (
                                                         <>
+                                                            {!prompt.marker && (
+                                                                <button
+                                                                    type="button"
+                                                                    className="ui-swipe-action"
+                                                                    data-variant="duplicate"
+                                                                    onClick={() => { duplicatePrompt(preset, prompt.identifier); }}
+                                                                >
+                                                                    <Copy size={18} strokeWidth={2} />
+                                                                    <span>复制</span>
+                                                                </button>
+                                                            )}
                                                             <button
                                                                 type="button"
                                                                 className="ui-swipe-action"
