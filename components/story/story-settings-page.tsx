@@ -217,54 +217,108 @@ function SchemeEditor({
   onChange: (schemes: StoryTailScheme[], activeId: string) => void;
 }) {
   const active = schemes.find((item) => item.id === activeId) || schemes[0];
-  const [previewHtml, setPreviewHtml] = useState(active.renderHtml || "");
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [draftSchemes, setDraftSchemes] = useState<StoryTailScheme[]>(schemes);
+  const [draftId, setDraftId] = useState(active.id);
+  const draft = draftSchemes.find((item) => item.id === draftId) || draftSchemes[0] || active;
+  const [previewHtml, setPreviewHtml] = useState(draft.renderHtml || "");
   const [expandedField, setExpandedField] = useState<"prompt" | "render" | null>(null);
-  useEffect(() => setPreviewHtml(active.renderHtml || ""), [active.id]);
-  const updateActive = (updates: Partial<StoryTailScheme>) => {
-    onChange(schemes.map((item) => item.id === active.id ? { ...item, ...updates } : item), active.id);
+  useEffect(() => {
+    if (editorOpen) return;
+    setDraftSchemes(schemes);
+    setDraftId(active.id);
+    setPreviewHtml(active.renderHtml || "");
+  }, [active.id, active.renderHtml, editorOpen, schemes]);
+
+  const updateDraft = (updates: Partial<StoryTailScheme>) => {
+    setDraftSchemes((items) => items.map((item) => item.id === draft.id ? { ...item, ...updates } : item));
   };
+  const openEditor = () => {
+    setDraftSchemes(schemes.map((item) => ({ ...item })));
+    setDraftId(active.id);
+    setPreviewHtml(active.renderHtml || "");
+    setEditorOpen(true);
+  };
+  const closeEditor = () => {
+    setEditorOpen(false);
+    setExpandedField(null);
+  };
+
   return (
     <div className="story-scheme-editor">
-      <div className="story-settings-label-row"><label>{label}</label><span>{contextNote}</span></div>
-      <div className="story-settings-inline story-settings-inline-with-save">
-        <select value={active.id} onChange={(event) => onChange(schemes, event.target.value)}>
-          {schemes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-        </select>
-        <button type="button" aria-label={`新增${label}`} onClick={() => {
-          const id = `${tag}-${Date.now()}`;
-          const next = [...schemes, { id, name: `${label} ${schemes.length + 1}`, prompt: `在正文末尾输出 <${tag}>...</${tag}>。`, renderHtml: "", preview: "" }];
-          onChange(next, id);
-        }}><PlusIcon width={15} /></button>
-        <button type="button" aria-label={`删除${label}`} disabled={schemes.length <= 1} onClick={() => {
-          if (schemes.length <= 1) return;
-          const next = schemes.filter((item) => item.id !== active.id);
-          onChange(next, next[0].id);
-        }}><TrashIcon width={14} /></button>
-        <button type="button" className="story-scheme-save" onClick={() => onChange(schemes, active.id)}>保存</button>
-      </div>
-      <input value={active.name} onChange={(event) => updateActive({ name: event.target.value })} placeholder="方案名称" />
-      <div className="story-tail-field-head"><strong>输出格式</strong><small>整段写进提示词</small></div>
-      <div className="story-prompt-textarea-wrap">
-        <textarea value={active.prompt} onChange={(event) => updateActive({ prompt: event.target.value })} placeholder={`写给 AI 的输出契约，要求使用 <${tag}> 标签`} />
-        <button type="button" className="story-prompt-expand" onClick={() => setExpandedField("prompt")} aria-label="放大编辑输出格式"><Maximize2 size={14} /></button>
-      </div>
-      <div className="story-tail-field-head"><strong>输出渲染</strong><small>HTML · 沙盒运行</small></div>
-      <div className="story-prompt-textarea-wrap">
-        <textarea className="story-render-textarea" value={active.renderHtml || ""} onChange={(event) => updateActive({ renderHtml: event.target.value })} placeholder="填写 HTML/CSS/JS；可用 {{RAW}} 或 window.STORY_RAW 读取输出原文" spellCheck={false} />
-        <button type="button" className="story-prompt-expand" onClick={() => setExpandedField("render")} aria-label="放大编辑输出渲染"><Maximize2 size={14} /></button>
-      </div>
-      <div className="story-settings-preview">
-        <div className="story-tail-preview-head"><span><strong>预览</strong><small>示例数据可改 · &lt;{tag}&gt;</small></span><button type="button" onClick={() => setPreviewHtml(active.renderHtml || "")} aria-label="运行预览" title="运行预览"><Play size={14} /></button></div>
-        <textarea value={active.preview} onChange={(event) => updateActive({ preview: event.target.value })} placeholder="在这里编辑预览内容" />
-        {previewHtml.trim() ? <div className="story-tail-preview-frame"><CustomStatusFrame key={`${active.id}:${previewHtml}:${active.preview}`} html={previewHtml} raw={active.preview} kind={tag === "story_theater" ? "theater" : "status"} title={`${label}预览`} /></div> : <div className="story-tail-preview-empty">填写输出渲染后点击播放预览</div>}
-      </div>
-      {expandedField ? <TextExpandModal
-        title={`${active.name || label} · ${expandedField === "prompt" ? "输出格式" : "输出渲染"}`}
-        value={expandedField === "prompt" ? active.prompt : active.renderHtml || ""}
-        onChange={(value) => updateActive(expandedField === "prompt" ? { prompt: value } : { renderHtml: value })}
-        placeholder={expandedField === "prompt" ? `要求 AI 使用 <${tag}> 标签输出内容` : "填写 HTML/CSS/JS；使用 window.STORY_RAW 读取原文"}
-        onClose={() => setExpandedField(null)}
-      /> : null}
+      <button type="button" className="story-tail-editor-entry" onClick={openEditor}>
+        <span><strong>{label}</strong><small>{active.name} · {contextNote}</small></span>
+        <ChevronLeftIcon width={17} style={{ transform: "rotate(180deg)" }} />
+      </button>
+
+      {editorOpen ? (
+        <div className="story-tail-editor-overlay" onClick={closeEditor}>
+          <section className="story-tail-editor-modal" role="dialog" aria-modal="true" aria-label={`自定义${label}`} onClick={(event) => event.stopPropagation()}>
+            <header className="story-tail-editor-header">
+              <strong>自定义{tag === "story_theater" ? "小剧场" : "状态栏"}</strong>
+              <button type="button" onClick={closeEditor} aria-label="关闭"><XMarkIcon width={19} /></button>
+            </header>
+
+            <div className="story-tail-editor-scroll">
+              <div className="story-tail-scheme-row">
+                <select value={draft.id} onChange={(event) => {
+                  const next = draftSchemes.find((item) => item.id === event.target.value);
+                  setDraftId(event.target.value);
+                  setPreviewHtml(next?.renderHtml || "");
+                }}>
+                  {draftSchemes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+                <button type="button" aria-label={`新增${label}`} onClick={() => {
+                  const id = `${tag}-${Date.now()}`;
+                  const next: StoryTailScheme = { id, name: `${label} ${draftSchemes.length + 1}`, prompt: `在正文末尾输出 <${tag}>...</${tag}>。`, renderHtml: "", preview: "" };
+                  setDraftSchemes((items) => [...items, next]);
+                  setDraftId(id);
+                  setPreviewHtml("");
+                }}><PlusIcon width={16} /></button>
+                <button type="button" aria-label={`删除${label}`} disabled={draftSchemes.length <= 1} onClick={() => {
+                  if (draftSchemes.length <= 1) return;
+                  const next = draftSchemes.filter((item) => item.id !== draft.id);
+                  setDraftSchemes(next);
+                  setDraftId(next[0].id);
+                  setPreviewHtml(next[0].renderHtml || "");
+                }}><TrashIcon width={15} /></button>
+              </div>
+              <input className="story-tail-name-input" value={draft.name} onChange={(event) => updateDraft({ name: event.target.value })} placeholder="方案名称" />
+
+              <div className="story-tail-field-head"><strong>输出契约</strong><small>整节写进提示词</small></div>
+              <div className="story-prompt-textarea-wrap">
+                <textarea value={draft.prompt} onChange={(event) => updateDraft({ prompt: event.target.value })} placeholder={`写给 AI 的输出契约，要求使用 <${tag}> 标签`} />
+                <button type="button" className="story-prompt-expand" onClick={() => setExpandedField("prompt")} aria-label="放大编辑输出契约"><Maximize2 size={14} /></button>
+              </div>
+
+              <div className="story-tail-field-head"><strong>输出渲染</strong><small>HTML · 沙盒运行</small></div>
+              <div className="story-prompt-textarea-wrap">
+                <textarea className="story-render-textarea" value={draft.renderHtml || ""} onChange={(event) => updateDraft({ renderHtml: event.target.value })} placeholder="填写 HTML/CSS/JS；可用 {{RAW}} 或 window.STORY_RAW 读取输出原文" spellCheck={false} />
+                <button type="button" className="story-prompt-expand" onClick={() => setExpandedField("render")} aria-label="放大编辑输出渲染"><Maximize2 size={14} /></button>
+              </div>
+
+              <div className="story-settings-preview">
+                <div className="story-tail-preview-head"><span><strong>预览</strong><small>示例数据可改</small></span><button type="button" onClick={() => setPreviewHtml(draft.renderHtml || "")} aria-label="运行预览" title="运行预览"><Play size={15} /></button></div>
+                <textarea value={draft.preview} onChange={(event) => updateDraft({ preview: event.target.value })} placeholder="在这里编辑预览内容" />
+                {previewHtml.trim() ? <div className="story-tail-preview-frame"><CustomStatusFrame key={`${draft.id}:${previewHtml}:${draft.preview}`} html={previewHtml} raw={draft.preview} kind={tag === "story_theater" ? "theater" : "status"} title={`${label}预览`} /></div> : <div className="story-tail-preview-empty">填写输出渲染后点击播放预览</div>}
+              </div>
+            </div>
+
+            <footer className="story-tail-editor-footer">
+              <button type="button" onClick={closeEditor}>取消</button>
+              <button type="button" className="story-tail-editor-save" onClick={() => { onChange(draftSchemes, draft.id); closeEditor(); }}>保存并启用</button>
+            </footer>
+
+            {expandedField ? <TextExpandModal
+              title={`${draft.name || label} · ${expandedField === "prompt" ? "输出契约" : "输出渲染"}`}
+              value={expandedField === "prompt" ? draft.prompt : draft.renderHtml || ""}
+              onChange={(value) => updateDraft(expandedField === "prompt" ? { prompt: value } : { renderHtml: value })}
+              placeholder={expandedField === "prompt" ? `要求 AI 使用 <${tag}> 标签输出内容` : "填写 HTML/CSS/JS；使用 window.STORY_RAW 读取原文"}
+              onClose={() => setExpandedField(null)}
+            /> : null}
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

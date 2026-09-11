@@ -949,6 +949,28 @@
         .story-settings-toggle-row small { color: var(--c-story-sub, #94a3b8); font-size: calc(9.5px*var(--app-text-scale,1)); line-height: 1.45; }
         .story-settings-toggle-row input { width: 38px; height: 21px; flex: 0 0 auto; accent-color: var(--c-story-heading, #1e293b); }
         .story-scheme-editor + .story-scheme-editor { margin-top: 21px; padding-top: 18px; border-top: 1px dashed rgba(100,116,139,.15); }
+        .story-tail-editor-entry { width: 100%; min-height: 50px; padding: 4px 1px; border: 0; background: transparent; color: var(--c-story-text,#334155); display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: left; }
+        .story-tail-editor-entry > span { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+        .story-tail-editor-entry strong { font: 600 calc(12.5px*var(--app-text-scale,1))/1.3 var(--story-font); }
+        .story-tail-editor-entry small { color: var(--c-story-sub,#94a3b8); font-size: calc(9.5px*var(--app-text-scale,1)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .story-tail-editor-entry > svg { flex: 0 0 auto; color: var(--c-story-sub,#94a3b8); }
+        .story-tail-editor-overlay { position: absolute; inset: 0; z-index: 410; padding: max(18px,env(safe-area-inset-top,0px)) 14px max(18px,env(safe-area-inset-bottom,0px)); background: rgba(15,23,42,.36); backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center; }
+        .story-tail-editor-modal { width: min(100%,620px); max-height: min(88vh,780px); overflow: hidden; border-radius: 28px; background: var(--c-story-card,#fff); color: var(--c-story-text,#334155); box-shadow: 0 24px 80px rgba(15,23,42,.28); display: flex; flex-direction: column; }
+        .story-tail-editor-header { min-height: 62px; padding: 12px 18px 8px 22px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: 0 0 auto; }
+        .story-tail-editor-header strong { color: var(--c-story-heading,#1e293b); font-size: calc(17px*var(--app-text-scale,1)); }
+        .story-tail-editor-header button { width: 36px; height: 36px; border: 0; border-radius: 50%; background: transparent; color: var(--c-story-sub,#64748b); display: grid; place-items: center; }
+        .story-tail-editor-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 20px 16px; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+        .story-tail-scheme-row { display: grid; grid-template-columns: minmax(0,1fr) 40px 40px; gap: 8px; margin-bottom: 8px; }
+        .story-tail-scheme-row button { border: 0; border-radius: 12px; background: rgba(148,163,184,.11); color: var(--c-story-text,#334155); display: grid; place-items: center; }
+        .story-tail-scheme-row button:disabled { opacity: .32; }
+        .story-tail-name-input { margin-bottom: 4px; }
+        .story-tail-editor-modal .story-prompt-textarea-wrap textarea { min-height: 132px; border: 0; border-radius: 15px; background: color-mix(in srgb,var(--c-story-text,#334155) 6%,transparent); }
+        .story-tail-editor-modal .story-prompt-textarea-wrap .story-render-textarea { min-height: 210px; }
+        .story-tail-editor-modal .story-settings-preview { margin-top: 16px; padding: 0; background: transparent; }
+        .story-tail-editor-modal .story-settings-preview textarea { padding: 12px 14px; border: 0; border-radius: 15px; background: color-mix(in srgb,var(--c-story-text,#334155) 6%,transparent); }
+        .story-tail-editor-footer { flex: 0 0 auto; display: grid; grid-template-columns: 1fr 1.55fr; gap: 12px; padding: 13px 22px max(18px,env(safe-area-inset-bottom,0px)); border-top: 1px solid rgba(100,116,139,.07); }
+        .story-tail-editor-footer button { min-height: 48px; border: 0; border-radius: 15px; background: transparent; color: var(--c-story-sub,#64748b); font: 600 calc(13px*var(--app-text-scale,1))/1 var(--story-font); }
+        .story-tail-editor-footer .story-tail-editor-save { background: var(--c-story-heading,#303236); color: #fff; box-shadow: 0 8px 24px rgba(15,23,42,.18); }
         .story-settings-label-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px; }
         .story-settings-label-row span { font-size: calc(9.5px*var(--app-text-scale,1)); color: var(--c-story-sub, #94a3b8); }
         .story-settings-inline { display: grid; grid-template-columns: 1fr 38px 38px; gap: 7px; margin-bottom: 8px; }
