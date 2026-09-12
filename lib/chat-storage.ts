@@ -75,6 +75,11 @@ export type ChatSession = {
      * 关掉就只调一次 API，那一轮没摘要（不进短期记忆的事件流）。按次计费的接口想省一半调用时关它。
      */
     offlineSummaryRetry?: boolean;
+    /**
+     * 角色专属提示音（私聊聊天信息里设置）。按种类覆盖全局聊天信息里的同名配置：
+     * 会话里显式设置的字段优先，其余（音频来源、子开关等）继承全局；群聊暂无设置入口。
+     */
+    sounds?: ChatSoundsConfig;
     // Group chat fields
     isGroup?: boolean;
     groupName?: string;
@@ -319,9 +324,29 @@ export type ChatSoundsConfig = {
     hangup?: ChatSoundConfig;
 };
 
-/** 读取某个提示音的配置（未配置时返回空对象） */
-export function getChatSoundConfig(kind: ChatSoundKind): ChatSoundConfig {
-    return loadChatAppSettings().globalChatSounds?.[kind] ?? {};
+/**
+ * 提示音配置解析：私聊角色专属（单独会话 sounds）＞ 全局聊天信息（globalChatSounds）。
+ * 会话里显式设置的字段（开关 / 音频来源 / 子开关）覆盖全局，其余字段继承全局；
+ * “专属开启但没配音频”时沿用全局音频，“专属关闭”则该角色不播这个音。
+ */
+export function resolveChatSoundConfig(
+    kind: ChatSoundKind,
+    session: Pick<ChatSession, "sounds"> | null | undefined,
+): ChatSoundConfig {
+    const merged: ChatSoundConfig = { ...(loadChatAppSettings().globalChatSounds?.[kind] ?? {}) };
+    const own = session?.sounds?.[kind];
+    if (own) {
+        // 只覆盖会话里显式设置的字段；undefined（如“清除音频”后的残留键）不参与覆盖
+        for (const [key, value] of Object.entries(own)) {
+            if (value !== undefined) (merged as Record<string, unknown>)[key] = value;
+        }
+    }
+    return merged;
+}
+
+/** 按 id 从会话缓存取会话（提示音等同步读取路径用；找不到时返回 null）。 */
+export function findChatSessionById(sessionId: string): ChatSession | null {
+    return loadChatSessions().find(s => s.id === sessionId) ?? null;
 }
 
 /** 单条消息工具循环轮数上限（默认 5，夹在 1–20 之间） */

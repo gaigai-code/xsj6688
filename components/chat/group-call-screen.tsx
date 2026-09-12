@@ -137,8 +137,8 @@ export function GroupCallScreen({ type, session, characters, onEnd, initiator = 
     useEffect(() => { stateRef.current = callState; }, [callState]);
 
     // 来电等待接听：循环振动（开关在聊天主页，iOS 网页不支持自动无效果）
-    // + 来电/致电铃声与挂断音（开关与音频在"全局聊天信息 → 提示音"）
-    useCallScreenSounds({ initiator, callState });
+    // + 来电/致电铃声与挂断音（角色专属提示音优先，其余在"全局聊天信息 → 提示音"）
+    useCallScreenSounds({ initiator, callState, session });
     useEffect(() => {
         if (initiator !== "character" || callState !== "CONNECTING") return;
         const stop = startIncomingCallVibration();

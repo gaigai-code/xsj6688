@@ -130,7 +130,7 @@ import { WidgetRenderer } from "@/components/widgets/widget-renderer";
 import type { DIYWidgetTemplate } from "@/lib/widget-types";
 import { DebugPromptPanel } from "@/components/debug-prompt-panel";
 import { QuickActionFloat } from "@/components/quick-action-float";
-import { CHAT_MESSAGE_PUSHED_EVENT, CHAT_REQUEST_REPLY_EVENT, hydrateChatStorage, loadChatSessions, loadChatMessages, pushChatMessage, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
+import { CHAT_MESSAGE_PUSHED_EVENT, CHAT_REQUEST_REPLY_EVENT, findChatSessionById, hydrateChatStorage, loadChatSessions, loadChatMessages, pushChatMessage, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import { ensureGlobalBindingDefaults, resolveUserIdentity } from "@/lib/settings-storage";
 import { loadCharacters } from "@/lib/character-storage";
 import { generateChatCompletion, flattenCompletionResult } from "@/lib/chat-engine";
@@ -1118,14 +1118,14 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
     sessionId: string; type: "voice" | "video"; charName: string; charAvatar: string | null; isGroup?: boolean;
   } | null>(null);
   // 桌面来电横幅显示期间循环振动（开关在聊天主页"语音/视频来电振动"）
-  // + 循环来电铃声（开关与音频在"全局聊天信息 → 提示音"）
+  // + 循环来电铃声（角色专属提示音优先，其余在"全局聊天信息 → 提示音"）
   useEffect(() => {
     if (!incomingCall) return;
-    const stopRingtone = startChatSoundLoop("incomingCall");
+    const stopRingtone = startChatSoundLoop("incomingCall", findChatSessionById(incomingCall.sessionId));
     const stopVibration = startIncomingCallVibration();
     return () => { stopRingtone(); stopVibration(); };
   }, [incomingCall]);
-  // 全局聊天提示音（新消息/发送消息）：监听消息落库事件，按"全局聊天信息"里的配置播放
+  // 全局聊天提示音（新消息/发送消息）：监听消息落库事件，按各会话配置播放（角色专属优先于全局）
   useEffect(() => installChatSoundListener(), []);
   const [chatMessageNotice, setChatMessageNotice] = useState<{
     sessionId: string;
@@ -4397,7 +4397,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                       onClick={() => {
                         const call = incomingCall;
                         const callLabel = call.type === "voice" ? "语音通话" : "视频通话";
-                        playChatSoundOnce("hangup"); // 拒接也是结束通话：播挂断音
+                        playChatSoundOnce("hangup", findChatSessionById(call.sessionId)); // 拒接也是结束通话：播挂断音
                         pushChatMessage({
                           sessionId: call.sessionId,
                           role: "user",

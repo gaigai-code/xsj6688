@@ -1,26 +1,32 @@
 "use client";
 
 // 聊天提示音：新消息 / 发送消息 / 来电 / 致电 / 挂断。
-// 配置存在 ChatAppSettings.globalChatSounds（“全局聊天信息”里设置），
+// 配置优先级：私聊角色专属（单独会话 sounds，在私聊聊天信息里设置）
+// ＞ 全局聊天信息（ChatAppSettings.globalChatSounds）。
 // 音频来源支持上传文件（IndexedDB 资产）或音频 URL。
 
 import { useEffect, useRef } from "react";
 import {
     CHAT_MESSAGE_PUSHED_EVENT,
+    findChatSessionById,
     getActiveChatSessionId,
-    getChatSoundConfig,
+    resolveChatSoundConfig,
     type ChatMessage,
+    type ChatSession,
     type ChatSoundKind,
 } from "./chat-storage";
 import { getChatAudioFromIndexedDB } from "./chat-asset-storage";
+
+/** 提示音解析用的会话上下文（带 sounds 字段即可） */
+type SessionLike = Pick<ChatSession, "sounds"> | null | undefined;
 
 // ── 音频来源解析 ────────────────────────────────────────────────
 // IndexedDB 资产每次读取都要开库，data URL 也可能较大：按资产 id 缓存。
 
 const dataUrlCache = new Map<string, string>();
 
-async function resolveChatSoundSrc(kind: ChatSoundKind): Promise<string | null> {
-    const config = getChatSoundConfig(kind);
+async function resolveChatSoundSrc(kind: ChatSoundKind, session?: SessionLike): Promise<string | null> {
+    const config = resolveChatSoundConfig(kind, session);
     if (!config.value) return null;
     if (config.sourceType === "url") return config.value;
     // 兼容历史数据 / 手写配置：直接是 data: 或 http(s) 地址时原样使用
@@ -33,19 +39,19 @@ async function resolveChatSoundSrc(kind: ChatSoundKind): Promise<string | null> 
     return dataUrl;
 }
 
-/** 设置页“试听”：不检查开关，只要配置了音频来源就播放。 */
-export async function previewChatSound(kind: ChatSoundKind): Promise<void> {
-    const src = await resolveChatSoundSrc(kind);
+/** 设置页“试听”：不检查开关，只要配置了音频来源就播放（传会话时试听角色专属音频）。 */
+export async function previewChatSound(kind: ChatSoundKind, session?: SessionLike): Promise<void> {
+    const src = await resolveChatSoundSrc(kind, session);
     if (!src) return;
     const audio = new Audio(src);
     audio.play().catch(() => { /* 自动播放被拦截时静默 */ });
 }
 
-/** 播放一次提示音（开启且配置了来源才会响）。 */
-export async function playChatSoundOnce(kind: ChatSoundKind): Promise<void> {
-    const config = getChatSoundConfig(kind);
+/** 播放一次提示音（开启且配置了来源才会响；传会话时优先用该角色专属配置）。 */
+export async function playChatSoundOnce(kind: ChatSoundKind, session?: SessionLike): Promise<void> {
+    const config = resolveChatSoundConfig(kind, session);
     if (!config.enabled || !config.value) return;
-    const src = await resolveChatSoundSrc(kind);
+    const src = await resolveChatSoundSrc(kind, session);
     if (!src) return;
     const audio = new Audio(src);
     audio.play().catch(() => { /* 自动播放被拦截时静默 */ });
@@ -65,14 +71,14 @@ function stopActiveSoundLoop(): void {
     activeSoundLoop = null;
 }
 
-/** 循环播放某提示音（如铃声），返回停止函数。 */
-export function startChatSoundLoop(kind: ChatSoundKind): () => void {
-    const config = getChatSoundConfig(kind);
+/** 循环播放某提示音（如铃声），返回停止函数；传会话时优先用该角色专属配置。 */
+export function startChatSoundLoop(kind: ChatSoundKind, session?: SessionLike): () => void {
+    const config = resolveChatSoundConfig(kind, session);
     if (!config.enabled || !config.value) return () => {};
     let cancelled = false;
     const token = {};
     const mySeq = ++soundLoopSeq;
-    void resolveChatSoundSrc(kind).then(src => {
+    void resolveChatSoundSrc(kind, session).then(src => {
         if (cancelled || !src) return;
         // 异步解析乱序完成时，只认最新启动的那个循环
         if (mySeq !== soundLoopSeq) return;
@@ -94,21 +100,26 @@ export function startChatSoundLoop(kind: ChatSoundKind): () => void {
  * 通话屏（语音/视频/群聊）统一接入：
  * - CONNECTING 且对方发起 → 循环来电铃声；自己发起 → 循环致电等待音；
  * - callState 变为 ENDED 时立即播挂断音；未经 ENDED 直接退出（拒绝、返回、切会话）在卸载时补播。
+ * 传入 session 时优先用该会话（角色专属）的音效配置。
  */
-export function useCallScreenSounds(opts: { initiator: "user" | "character"; callState: string }): void {
+export function useCallScreenSounds(opts: { initiator: "user" | "character"; callState: string; session?: SessionLike }): void {
     const hangupPlayedRef = useRef(false);
     // React 严格模式（dev）会在挂载瞬间做一次假卸载：300ms 内的卸载不当作真实退出
     const realMountRef = useRef(false);
+    // 会话对象在通话期间可能被换引用（消息预览刷新等）：用 ref 读最新配置，
+    // 不进 effect 依赖，避免铃声因依赖变化被重启
+    const sessionRef = useRef(opts.session);
+    sessionRef.current = opts.session;
 
     useEffect(() => {
         if (opts.callState !== "CONNECTING") return;
-        return startChatSoundLoop(opts.initiator === "character" ? "incomingCall" : "outgoingCall");
+        return startChatSoundLoop(opts.initiator === "character" ? "incomingCall" : "outgoingCall", sessionRef.current);
     }, [opts.callState, opts.initiator]);
 
     useEffect(() => {
         if (opts.callState === "ENDED" && !hangupPlayedRef.current) {
             hangupPlayedRef.current = true;
-            void playChatSoundOnce("hangup");
+            void playChatSoundOnce("hangup", sessionRef.current);
         }
     }, [opts.callState]);
 
@@ -118,7 +129,7 @@ export function useCallScreenSounds(opts: { initiator: "user" | "character"; cal
             clearTimeout(timer);
             if (realMountRef.current && !hangupPlayedRef.current) {
                 hangupPlayedRef.current = true;
-                void playChatSoundOnce("hangup");
+                void playChatSoundOnce("hangup", sessionRef.current);
             }
         };
     }, []);
@@ -190,6 +201,7 @@ function markBurstPlayed(msg: ChatMessage): void {
 
 /**
  * 安装全局消息提示音监听（新消息音效 + 发送消息音效）。
+ * 每条消息按其所属会话解析配置：角色专属（私聊聊天信息）优先于全局聊天信息。
  * 挂在常驻的壳组件上一次即可，返回卸载函数。
  */
 export function installChatSoundListener(): () => void {
@@ -204,16 +216,17 @@ export function installChatSoundListener(): () => void {
             // 发送消息音效：用户消息落库时播放；通话屏写入的系统消息除外
             if (msg.origin && SILENT_ORIGINS.has(msg.origin)) return;
             if (CALL_SYS_MSG_RE.test(msg.content)) return;
-            void playChatSoundOnce("sendMessage");
+            void playChatSoundOnce("sendMessage", findChatSessionById(msg.sessionId));
             return;
         }
 
         if (msg.role === "assistant") {
-            const config = getChatSoundConfig("newMessage");
+            const session = findChatSessionById(msg.sessionId);
+            const config = resolveChatSoundConfig("newMessage", session);
             if (!config.enabled || !config.value) return;
             if (!shouldPlayNewMessageSound(msg, config.muteActiveChat === true, config.notifyOncePerBurst === true)) return;
             markBurstPlayed(msg);
-            void playChatSoundOnce("newMessage");
+            void playChatSoundOnce("newMessage", session);
         }
     };
 
