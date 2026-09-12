@@ -20,7 +20,7 @@ import { buildCalendarScheduleMarker, getCurrentCalendarScheduleForPrompt } from
 import { getWeekStartIso } from "./calendar-utils";
 import { parseStoryResponse } from "./story-parser";
 import { STORY_PARSER_VERSION } from "./story-parser";
-import { loadStoryMessages, replaceStoryMessages, type StoryCharacterSettings, type StoryMessage } from "./story-storage";
+import { loadStoryMessages, replaceStoryMessages, resolveActiveStorySchemes, type StoryCharacterSettings, type StoryMessage } from "./story-storage";
 import type { ChatMessage } from "./chat-storage";
 import { MacroEngine } from "./macro-engine";
 
@@ -63,9 +63,8 @@ function buildStorySettingsPrompt(settings: StoryCharacterSettings | undefined, 
     : settings.userPerspective === "username"
       ? `使用用户名“${userName}”称呼用户`
       : "使用第二人称“你”称呼用户";
-  const status = settings.statusSchemes?.find((item) => item.id === settings.activeStatusSchemeId);
-  const theater = settings.theaterSchemes?.find((item) => item.id === settings.activeTheaterSchemeId);
-  const proseStyle = settings.proseStyleSchemes?.find((item) => item.id === settings.activeProseStyleSchemeId);
+  // 方案定义统一存于公用仓库，角色设置只带“启用哪一个”的 id
+  const { proseStyle, status, theater } = resolveActiveStorySchemes(settings);
   return [
     "# 当前剧情 APP 专属生成设置",
     `正文长度以 ${minChars}—${maxChars} 字为目标；不得为了凑字数重复内容。`,

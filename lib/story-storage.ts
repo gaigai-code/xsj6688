@@ -1,6 +1,7 @@
 import { getNow } from "@/lib/virtual-time";
 import Dexie from "dexie";
 import { formatChatTimestamp } from "./llm-prompt-assembler";
+import { hydrateKvDb, kvGet, kvSet } from "./kv-db";
 
 export type StoryUiPrefs = {
   hideBubble?: boolean;
@@ -17,9 +18,11 @@ export type StoryUiPrefs = {
   autoReadingSpeed?: number;
   /** 是否在“续写”右侧显示快捷输入面板按钮。 */
   quickInputEnabled?: boolean;
-  /** 快捷输入面板的选项列表，点按即插入到输入框光标处。 */
+  /** 当前角色启用的快捷输入方案（存于公用方案仓库），仅保存选择。 */
+  activeQuickInputSchemeId?: string;
+  /** @deprecated 旧版按角色保存的快捷输入选项；已迁移进公用方案仓库。 */
   quickInputOptions?: string[];
-  /** 点按选项插入后，光标落在插入内容的左边/中间/右边。 */
+  /** @deprecated 旧版按角色保存的插入光标位置；已迁移进公用方案仓库。 */
   quickInputCursor?: "left" | "middle" | "right";
 };
 
@@ -97,15 +100,177 @@ export const STORY_DEFAULT_FURRY_THEATER_SCHEME: StoryTailScheme = {
   preview: "毛茸茸派对｜大尾巴扫了扫你的鼻尖，你们依偎在阳光下打着呼噜。",
 };
 
-/** 读取某剧情会话设置里的尾部方案；从未配置过时返回内置默认方案（与设置页一致）。 */
+/** 快捷输入面板方案：一组命名好的选项 + 插入光标位置，保存于公用方案仓库。 */
+export type StoryQuickInputScheme = {
+  id: string;
+  name: string;
+  /** 点按即插入输入框的选项列表。 */
+  options: string[];
+  /** 点按选项插入后，光标落在插入内容的左边/中间/右边。 */
+  cursor?: "left" | "middle" | "right";
+};
+
+/** 公用方案仓库：文风/状态栏/小剧场/快捷输入方案的定义都全局共享，角色只保存“启用哪一个”的选择。 */
+export type StorySchemeRepository = {
+  proseStyleSchemes: StoryProseStyleScheme[];
+  statusSchemes: StoryTailScheme[];
+  theaterSchemes: StoryTailScheme[];
+  quickInputSchemes: StoryQuickInputScheme[];
+};
+
+/** 文风方案内置默认（首次使用/仓库为空时注入公用仓库）。 */
+export const STORY_DEFAULT_PROSE_STYLE_SCHEMES: StoryProseStyleScheme[] = [
+  { id: "style-natural", name: "自然文风", prompt: "自然、连贯地推进场景，动作与对白比例均衡，不替用户决定心理和行动。" },
+  { id: "style-delicate", name: "细腻慢热", prompt: "节奏舒缓，重视细小动作、感官变化和情绪递进，避免突然跳转关系。" },
+  { id: "style-cinema", name: "电影感叙事", prompt: "使用清晰镜头感与场面调度推进剧情，语言克制，画面明确。" },
+];
+
+/** 快捷输入面板内置默认方案。 */
+export const STORY_DEFAULT_QUICK_INPUT_SCHEME: StoryQuickInputScheme = {
+  id: "quick-default",
+  name: "默认符号",
+  options: [...STORY_DEFAULT_QUICK_INPUT_OPTIONS],
+  cursor: "middle",
+};
+
+function defaultStorySchemeRepository(): StorySchemeRepository {
+  return {
+    proseStyleSchemes: STORY_DEFAULT_PROSE_STYLE_SCHEMES.map((item) => ({ ...item })),
+    statusSchemes: [STORY_DEFAULT_STATUS_SCHEME, STORY_DEFAULT_STATUS_HTML_SCHEME].map((item) => ({ ...item })),
+    theaterSchemes: [STORY_DEFAULT_THEATER_SCHEME, STORY_DEFAULT_FURRY_THEATER_SCHEME].map((item) => ({ ...item })),
+    quickInputSchemes: [{ ...STORY_DEFAULT_QUICK_INPUT_SCHEME, options: [...STORY_DEFAULT_QUICK_INPUT_SCHEME.options] }],
+  };
+}
+
+/** 公用方案仓库的 KV 键；已登记进数据备份模块（创作与玩法），随导出备份走。 */
+const STORY_SCHEME_REPO_KEY = "ai_phone_story_scheme_repo_v1";
+
+/** 仓库事件：仓库内容变化（设置页/小卷工具写入）时广播，剧情页据此刷新。 */
+export const STORY_SCHEME_REPO_EVENT = "story-scheme-repo-updated";
+
+function sanitizeProseStyleScheme(raw: unknown): StoryProseStyleScheme | null {
+  if (!raw || typeof raw !== "object") return null;
+  const item = raw as Record<string, unknown>;
+  if (typeof item.id !== "string" || !item.id.trim()) return null;
+  if (typeof item.prompt !== "string" || !item.prompt.trim()) return null;
+  return { id: item.id.trim(), name: typeof item.name === "string" && item.name.trim() ? item.name.trim() : "未命名文风", prompt: item.prompt };
+}
+
+function sanitizeTailScheme(raw: unknown): StoryTailScheme | null {
+  if (!raw || typeof raw !== "object") return null;
+  const item = raw as Record<string, unknown>;
+  if (typeof item.id !== "string" || !item.id.trim()) return null;
+  if (typeof item.prompt !== "string" || !item.prompt.trim()) return null;
+  return {
+    id: item.id.trim(),
+    name: typeof item.name === "string" && item.name.trim() ? item.name.trim() : "未命名方案",
+    prompt: item.prompt,
+    renderHtml: typeof item.renderHtml === "string" ? item.renderHtml : "",
+    preview: typeof item.preview === "string" ? item.preview : "",
+  };
+}
+
+function sanitizeQuickInputScheme(raw: unknown): StoryQuickInputScheme | null {
+  if (!raw || typeof raw !== "object") return null;
+  const item = raw as Record<string, unknown>;
+  if (typeof item.id !== "string" || !item.id.trim()) return null;
+  if (!Array.isArray(item.options)) return null;
+  const options = item.options.filter((option): option is string => typeof option === "string");
+  if (!options.length) return null;
+  const cursor = item.cursor === "left" || item.cursor === "right" ? item.cursor : "middle";
+  return {
+    id: item.id.trim(),
+    name: typeof item.name === "string" && item.name.trim() ? item.name.trim() : "未命名方案",
+    options,
+    cursor,
+  };
+}
+
+/** 读取公用方案仓库；列表缺失/为空时补默认方案，损坏数据自动剔除。 */
+export function loadStorySchemeRepository(): StorySchemeRepository {
+  const fallback = defaultStorySchemeRepository();
+  let raw: unknown = null;
+  try {
+    const text = kvGet(STORY_SCHEME_REPO_KEY);
+    if (text) raw = JSON.parse(text);
+  } catch {
+    raw = null;
+  }
+  if (!raw || typeof raw !== "object") return fallback;
+  const item = raw as Record<string, unknown>;
+
+  const proseStyleSchemes = Array.isArray(item.proseStyleSchemes)
+    ? item.proseStyleSchemes.map(sanitizeProseStyleScheme).filter((s): s is StoryProseStyleScheme => s !== null)
+    : [];
+  const statusSchemes = Array.isArray(item.statusSchemes)
+    ? item.statusSchemes.map(sanitizeTailScheme).filter((s): s is StoryTailScheme => s !== null)
+    : [];
+  const theaterSchemes = Array.isArray(item.theaterSchemes)
+    ? item.theaterSchemes.map(sanitizeTailScheme).filter((s): s is StoryTailScheme => s !== null)
+    : [];
+  const quickInputSchemes = Array.isArray(item.quickInputSchemes)
+    ? item.quickInputSchemes.map(sanitizeQuickInputScheme).filter((s): s is StoryQuickInputScheme => s !== null)
+    : [];
+
+  return {
+    proseStyleSchemes: proseStyleSchemes.length ? proseStyleSchemes : fallback.proseStyleSchemes,
+    statusSchemes: statusSchemes.length ? statusSchemes : fallback.statusSchemes,
+    theaterSchemes: theaterSchemes.length ? theaterSchemes : fallback.theaterSchemes,
+    quickInputSchemes: quickInputSchemes.length ? quickInputSchemes : fallback.quickInputSchemes,
+  };
+}
+
+/** 保存公用方案仓库并广播变更事件。 */
+export function saveStorySchemeRepository(repo: StorySchemeRepository): void {
+  kvSet(STORY_SCHEME_REPO_KEY, JSON.stringify(repo));
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(STORY_SCHEME_REPO_EVENT));
+  }
+}
+
+/** 读取公用仓库里的尾部方案；角色设置不再持有方案列表（迁移后仅剩启用选择）。 */
 export function loadStoryTailSchemes(settings: StoryCharacterSettings | undefined): {
   statusSchemes: StoryTailScheme[];
   theaterSchemes: StoryTailScheme[];
 } {
+  const repo = loadStorySchemeRepository();
+  // 兼容导入的旧备份：会话里还带着旧版方案列表时优先展示（hydrate 迁移会将其并入仓库）
   return {
-    statusSchemes: settings?.statusSchemes?.length ? settings.statusSchemes : [STORY_DEFAULT_STATUS_SCHEME, STORY_DEFAULT_STATUS_HTML_SCHEME],
-    theaterSchemes: settings?.theaterSchemes?.length ? settings.theaterSchemes : [STORY_DEFAULT_THEATER_SCHEME, STORY_DEFAULT_FURRY_THEATER_SCHEME],
+    statusSchemes: settings?.statusSchemes?.length ? settings.statusSchemes : repo.statusSchemes,
+    theaterSchemes: settings?.theaterSchemes?.length ? settings.theaterSchemes : repo.theaterSchemes,
   };
+}
+
+/** 解析某角色当前启用的文风/状态栏/小剧场方案（公用仓库 + 旧数据回退）。 */
+export function resolveActiveStorySchemes(settings: StoryCharacterSettings | undefined): {
+  proseStyle: StoryProseStyleScheme | null;
+  status: StoryTailScheme | null;
+  theater: StoryTailScheme | null;
+} {
+  const repo = loadStorySchemeRepository();
+  const pickProse = settings?.proseStyleSchemes?.find((item) => item.id === settings?.activeProseStyleSchemeId) || null;
+  const pickStatus = settings?.statusSchemes?.find((item) => item.id === settings?.activeStatusSchemeId) || null;
+  const pickTheater = settings?.theaterSchemes?.find((item) => item.id === settings?.activeTheaterSchemeId) || null;
+  return {
+    proseStyle: repo.proseStyleSchemes.find((item) => item.id === settings?.activeProseStyleSchemeId) || pickProse,
+    status: repo.statusSchemes.find((item) => item.id === settings?.activeStatusSchemeId) || pickStatus,
+    theater: repo.theaterSchemes.find((item) => item.id === settings?.activeTheaterSchemeId) || pickTheater,
+  };
+}
+
+/** 解析某角色当前启用的快捷输入方案；旧版字段迁移前的兜底也在这里处理。 */
+export function resolveActiveQuickInputScheme(prefs: StoryUiPrefs | undefined, repoInput?: StorySchemeRepository): StoryQuickInputScheme {
+  const repo = repoInput ?? loadStorySchemeRepository();
+  const selected = repo.quickInputSchemes.find((item) => item.id === prefs?.activeQuickInputSchemeId);
+  if (selected) return selected;
+  // 迁移前/旧备份兜底：用角色自己保存的选项匹配仓库里的同内容方案
+  const legacyOptions = (prefs?.quickInputOptions ?? []).filter((item) => item.trim());
+  if (legacyOptions.length) {
+    const cursor = prefs?.quickInputCursor ?? "middle";
+    const matched = repo.quickInputSchemes.find((item) => item.cursor === cursor && item.options.length === legacyOptions.length && item.options.every((option, index) => option === legacyOptions[index]));
+    if (matched) return matched;
+  }
+  return repo.quickInputSchemes[0] || STORY_DEFAULT_QUICK_INPUT_SCHEME;
 }
 
 /** 剧情正文文风方案：只约束 AI 的写作方式，不定义任何尾部输出结构。 */
@@ -132,12 +297,18 @@ export type StoryCharacterSettings = {
   userPerspective?: "second" | "third" | "username";
   proseStyle?: string;
   proseStylePrompt?: string;
-  proseStyleSchemes?: StoryProseStyleScheme[];
+  /** 当前角色启用的文风方案（存于公用方案仓库），仅保存选择。 */
   activeProseStyleSchemeId?: string;
-  statusSchemes?: StoryTailScheme[];
+  /** 当前角色启用的状态栏方案（存于公用方案仓库），仅保存选择。 */
   activeStatusSchemeId?: string;
-  theaterSchemes?: StoryTailScheme[];
+  /** 当前角色启用的小剧场方案（存于公用方案仓库），仅保存选择。 */
   activeTheaterSchemeId?: string;
+  /** @deprecated 旧版按角色保存的文风方案列表；已迁移进公用方案仓库。 */
+  proseStyleSchemes?: StoryProseStyleScheme[];
+  /** @deprecated 旧版按角色保存的状态栏方案列表；已迁移进公用方案仓库。 */
+  statusSchemes?: StoryTailScheme[];
+  /** @deprecated 旧版按角色保存的小剧场方案列表；已迁移进公用方案仓库。 */
+  theaterSchemes?: StoryTailScheme[];
   floatingPhoneEnabled?: boolean;
   floatingPhoneInContext?: boolean;
 };
@@ -262,6 +433,139 @@ function persistStorySessionsSnapshot(sessions: StorySession[]): void {
   }).catch(() => undefined);
 }
 
+// ── 旧版按角色保存的方案 → 公用方案仓库迁移 ──────────────────
+// 旧数据里文风/状态栏/小剧场方案列表挂在每个角色的 settings 上、快捷输入
+// 选项挂在 uiPrefs 上；现在统一并入公用仓库（去重后共享），角色侧只保留
+// “启用哪一个”的 id 选择。导入旧备份后同样走这里再迁一次。
+async function migrateLegacyStorySchemeData(): Promise<void> {
+  const hasLegacy = _sessionsCache.some((session) => Boolean(
+    session.settings?.proseStyleSchemes?.length
+    || session.settings?.statusSchemes?.length
+    || session.settings?.theaterSchemes?.length
+    || session.uiPrefs?.quickInputOptions?.length,
+  ));
+  if (!hasLegacy) return;
+  // 必须先等 kv 水合完成再读仓库，否则会把已有仓库误判为空、用默认值覆盖
+  try { await hydrateKvDb(); } catch { /* 读取失败时按当前缓存继续 */ }
+
+  const repo = loadStorySchemeRepository();
+  let repoChanged = false;
+  const tailKey = (item: StoryTailScheme) => `${item.name}∥${item.prompt}∥${item.renderHtml || ""}∥${item.preview || ""}`;
+  const proseKey = (item: StoryProseStyleScheme) => `${item.name}∥${item.prompt}`;
+
+  // 合并去重规则：内容完全相同 → 视为同一方案；id 空闲 → 沿用原 id；
+  // id 已被占用但内容不同（该角色改过同名方案）→ 另存为新方案并重映射启用选择
+  function makeMerger<T extends { id: string; name: string }>(
+    existing: T[],
+    contentKey: (item: T) => string,
+    clone: (item: T, id: string, name: string) => T,
+  ) {
+    const seenIds = new Set(existing.map((item) => item.id));
+    const seenContent = new Set(existing.map(contentKey));
+    const seenNames = new Set(existing.map((item) => item.name));
+    return (list: T[], idMap: Map<string, string>) => {
+      for (const scheme of list) {
+        const content = contentKey(scheme);
+        if (seenContent.has(content)) continue;
+        let id = scheme.id;
+        let name = scheme.name;
+        if (seenIds.has(id)) {
+          // 同 id 不同内容：保留这份角色自定义，另立新方案
+          id = `${id}-migrated-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          let n = 2;
+          while (seenNames.has(name)) { name = `${scheme.name} ${n}`; n += 1; }
+          idMap.set(scheme.id, id);
+        }
+        seenIds.add(id);
+        seenContent.add(content);
+        seenNames.add(name);
+        existing.push(clone(scheme, id, name));
+        repoChanged = true;
+      }
+    };
+  }
+
+  const mergeProse = makeMerger(repo.proseStyleSchemes, proseKey, (item, id, name) => ({ id, name, prompt: item.prompt }));
+  const mergeStatus = makeMerger(repo.statusSchemes, tailKey, (item, id, name) => ({ ...item, id, name }));
+  const mergeTheater = makeMerger(repo.theaterSchemes, tailKey, (item, id, name) => ({ ...item, id, name }));
+
+  const quickSigs = new Map<string, string>();
+  for (const scheme of repo.quickInputSchemes) {
+    quickSigs.set(`${scheme.cursor || "middle"}∥${scheme.options.join("\u0000")}`, scheme.id);
+  }
+  const quickNames = new Set(repo.quickInputSchemes.map((item) => item.name));
+
+  for (const session of [..._sessionsCache]) {
+    const settings = session.settings;
+    const prefs = session.uiPrefs;
+    let settingsChanged = false;
+    let prefsChanged = false;
+    let nextSettings = settings ? { ...settings } : undefined;
+    let activeQuickInputSchemeId = prefs?.activeQuickInputSchemeId;
+
+    if (settings?.proseStyleSchemes?.length) {
+      const idMap = new Map<string, string>();
+      mergeProse(settings.proseStyleSchemes, idMap);
+      if (idMap.has(settings.activeProseStyleSchemeId || "")) {
+        nextSettings = { ...nextSettings!, activeProseStyleSchemeId: idMap.get(settings.activeProseStyleSchemeId!) };
+      }
+      settingsChanged = true;
+    }
+    if (settings?.statusSchemes?.length) {
+      const idMap = new Map<string, string>();
+      mergeStatus(settings.statusSchemes, idMap);
+      if (idMap.has(settings.activeStatusSchemeId || "")) {
+        nextSettings = { ...nextSettings!, activeStatusSchemeId: idMap.get(settings.activeStatusSchemeId!) };
+      }
+      settingsChanged = true;
+    }
+    if (settings?.theaterSchemes?.length) {
+      const idMap = new Map<string, string>();
+      mergeTheater(settings.theaterSchemes, idMap);
+      if (idMap.has(settings.activeTheaterSchemeId || "")) {
+        nextSettings = { ...nextSettings!, activeTheaterSchemeId: idMap.get(settings.activeTheaterSchemeId!) };
+      }
+      settingsChanged = true;
+    }
+
+    if (prefs?.quickInputOptions?.length) {
+      const options = prefs.quickInputOptions.filter((item) => item.trim());
+      if (options.length) {
+        const cursor = prefs.quickInputCursor ?? "middle";
+        const sig = `${cursor}∥${options.join("\u0000")}`;
+        const existingId = quickSigs.get(sig);
+        if (existingId) {
+          activeQuickInputSchemeId = existingId;
+        } else {
+          const id = `quick-migrated-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          let name = "自定义符号";
+          let n = 2;
+          while (quickNames.has(name)) { name = `自定义符号 ${n}`; n += 1; }
+          quickNames.add(name);
+          repo.quickInputSchemes.push({ id, name, options, cursor });
+          quickSigs.set(sig, id);
+          repoChanged = true;
+          activeQuickInputSchemeId = id;
+        }
+      }
+      // 选项全空 = 使用默认选项，交给 resolveActiveQuickInputScheme 回落首个方案
+      prefsChanged = true;
+    } else if (prefs && (prefs.quickInputOptions !== undefined || prefs.quickInputCursor !== undefined)) {
+      prefsChanged = true; // 显式清空过的旧字段也一并移除
+    }
+
+    if (!settingsChanged && !prefsChanged) continue;
+    updateStorySession(session.id, {
+      ...(settingsChanged ? { settings: { ...nextSettings, proseStyleSchemes: undefined, statusSchemes: undefined, theaterSchemes: undefined } } : {}),
+      ...(prefsChanged ? { uiPrefs: { ...prefs, quickInputOptions: undefined, quickInputCursor: undefined, activeQuickInputSchemeId } } : {}),
+      // 迁移是数据结构调整而非用户活动，保留原排序时间戳
+      updatedAt: session.updatedAt,
+    });
+  }
+
+  if (repoChanged) saveStorySchemeRepository(repo);
+}
+
 export async function hydrateStoryStorage(): Promise<void> {
   if (_hydrated || typeof window === "undefined") return;
   const [sessions, messages] = await Promise.all([
@@ -272,6 +576,12 @@ export async function hydrateStoryStorage(): Promise<void> {
   const normalized = normalizeStorySessions(sessions);
   _sessionsCache = normalized.items;
   if (normalized.changed) persistStorySessionsSnapshot(normalized.items);
+  // 迁移失败不应阻塞剧情数据水合（旧结构数据下次启动会再尝试迁移）
+  try {
+    await migrateLegacyStorySchemeData();
+  } catch (error) {
+    console.warn("[StoryStorage] scheme migration failed:", error);
+  }
   _hydrated = true;
 }
 

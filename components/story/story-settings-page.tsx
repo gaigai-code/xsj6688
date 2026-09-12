@@ -9,8 +9,15 @@ import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
 import { downloadFile } from "@/lib/download-utils";
 import type { Character } from "@/lib/character-types";
 import type { PresetConfig } from "@/lib/settings-types";
-import type { StoryCharacterSettings, StoryProseStyleScheme, StoryTailScheme, StoryUiPrefs } from "@/lib/story-storage";
-import { STORY_DEFAULT_QUICK_INPUT_OPTIONS } from "@/lib/story-storage";
+import type { StoryCharacterSettings, StoryProseStyleScheme, StoryQuickInputScheme, StorySchemeRepository, StoryTailScheme, StoryUiPrefs } from "@/lib/story-storage";
+import {
+  STORY_DEFAULT_STATUS_RENDER,
+  STORY_DEFAULT_THEATER_RENDER,
+  STORY_DEFAULT_QUICK_INPUT_OPTIONS,
+} from "@/lib/story-storage";
+
+// 兼容旧导入（story-app-base 从这里取渲染画布常量）
+export { STORY_DEFAULT_STATUS_RENDER, STORY_DEFAULT_THEATER_RENDER };
 
 type StorySettingsPageProps = {
   characters: Character[];
@@ -18,6 +25,8 @@ type StorySettingsPageProps = {
   userName: string;
   uiPrefs: StoryUiPrefs;
   settings: StoryCharacterSettings;
+  /** 公用方案仓库：文风/状态栏/小剧场/快捷输入方案的定义（所有角色共享）。 */
+  schemeRepo: StorySchemeRepository;
   boundPreset: PresetConfig | null;
   foldTags: string;
   contextExcludedTags: string;
@@ -25,43 +34,30 @@ type StorySettingsPageProps = {
   onCharacterChange: (characterId: string) => void;
   onUiPrefsChange: (prefs: StoryUiPrefs) => void;
   onSettingsChange: (settings: StoryCharacterSettings) => void;
+  /** 编辑公用仓库里的方案定义（新增/删除/改名/改内容都在这里落盘）。 */
+  onSchemeRepoChange: (repo: StorySchemeRepository) => void;
   onTagsChange: (foldTags: string, contextExcludedTags: string) => void;
   onOpenCss: () => void;
   onRebuildCache: () => void;
 };
 
-const DEFAULT_STYLES: StoryProseStyleScheme[] = [
-  { id: "style-natural", name: "自然文风", prompt: "自然、连贯地推进场景，动作与对白比例均衡，不替用户决定心理和行动。" },
-  { id: "style-delicate", name: "细腻慢热", prompt: "节奏舒缓，重视细小动作、感官变化和情绪递进，避免突然跳转关系。" },
-  { id: "style-cinema", name: "电影感叙事", prompt: "使用清晰镜头感与场面调度推进剧情，语言克制，画面明确。" },
-];
-
-function normalizeSettings(value: StoryCharacterSettings): StoryCharacterSettings {
-  const proseStyleSchemes = value.proseStyleSchemes?.length
-    ? value.proseStyleSchemes.map((item) => ({ id: item.id, name: item.name, prompt: item.prompt }))
-    : DEFAULT_STYLES;
+function normalizeSettings(value: StoryCharacterSettings, repo: StorySchemeRepository): StoryCharacterSettings {
   return {
     ...value,
     presetName: value.presetName || "默认剧情",
     minChars: value.minChars ?? 800,
     maxChars: value.maxChars ?? 1500,
     userPerspective: value.userPerspective || "second",
-    proseStyle: value.proseStyle || "自然文风",
-    proseStylePrompt: value.proseStylePrompt || "自然、连贯地推进场景，动作与对白比例均衡，不替用户决定心理和行动。",
-    proseStyleSchemes,
-    activeProseStyleSchemeId: proseStyleSchemes.some((item) => item.id === value.activeProseStyleSchemeId)
+    // 启用选择超出仓库范围时回落：旧 id → 按旧文风名匹配 → 首个方案
+    activeProseStyleSchemeId: repo.proseStyleSchemes.some((item) => item.id === value.activeProseStyleSchemeId)
       ? value.activeProseStyleSchemeId
-      : proseStyleSchemes.find((item) => item.name === value.proseStyle)?.id || proseStyleSchemes[0].id,
-    statusSchemes: value.statusSchemes?.length ? value.statusSchemes.map((item) => ({
-      ...item,
-      renderHtml: item.renderHtml ?? ([DEFAULT_STATUS.id, DEFAULT_STATUS_HTML.id].includes(item.id) ? STORY_DEFAULT_STATUS_RENDER : ""),
-    })) : [DEFAULT_STATUS, DEFAULT_STATUS_HTML],
-    activeStatusSchemeId: value.activeStatusSchemeId || DEFAULT_STATUS.id,
-    theaterSchemes: value.theaterSchemes?.length ? value.theaterSchemes.map((item) => ({
-      ...item,
-      renderHtml: item.renderHtml ?? ([DEFAULT_THEATER.id, DEFAULT_FURRY_THEATER.id].includes(item.id) ? STORY_DEFAULT_THEATER_RENDER : ""),
-    })) : [DEFAULT_THEATER, DEFAULT_FURRY_THEATER],
-    activeTheaterSchemeId: value.activeTheaterSchemeId || DEFAULT_THEATER.id,
+      : repo.proseStyleSchemes.find((item) => item.name === value.proseStyle)?.id || repo.proseStyleSchemes[0].id,
+    activeStatusSchemeId: repo.statusSchemes.some((item) => item.id === value.activeStatusSchemeId)
+      ? value.activeStatusSchemeId
+      : repo.statusSchemes[0].id,
+    activeTheaterSchemeId: repo.theaterSchemes.some((item) => item.id === value.activeTheaterSchemeId)
+      ? value.activeTheaterSchemeId
+      : repo.theaterSchemes[0].id,
   };
 }
 
@@ -82,7 +78,7 @@ function ProseStyleEditor({
 
   return (
     <div className="story-scheme-editor story-prose-style-editor">
-      <div className="story-settings-label-row"><label>文风方案</label><span>写给 AI 的正文文风要求</span></div>
+      <div className="story-settings-label-row"><label>文风方案</label><span>所有角色共用，当前角色选择启用哪一套</span></div>
       <div className="story-settings-inline story-settings-inline-with-save">
         <select value={active.id} onChange={(event) => onChange(schemes, event.target.value)}>
           {schemes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -110,6 +106,7 @@ function ProseStyleEditor({
           <Maximize2 size={14} />
         </button>
       </div>
+      <p className="story-settings-note">文风方案保存在公用仓库，所有角色共享同一套方案；修改会同步影响每个角色。</p>
       {expanded ? (
         <TextExpandModal
           title={`${active.name || "文风方案"} · 文风要求`}
@@ -392,7 +389,17 @@ function QuickOptionsEditor({
 }
 
 export function StorySettingsPage(props: StorySettingsPageProps) {
-  const normalized = useMemo(() => normalizeSettings(props.settings), [props.settings]);
+  const normalized = useMemo(() => normalizeSettings(props.settings, props.schemeRepo), [props.settings, props.schemeRepo]);
+  const repo = props.schemeRepo;
+  // 方案定义 → 公用仓库；启用选择 → 当前角色设置
+  const patchRepo = (updates: Partial<StorySchemeRepository>) => {
+    props.onSchemeRepoChange({ ...repo, ...updates });
+  };
+  const quickInputActive = repo.quickInputSchemes.find((item) => item.id === props.uiPrefs.activeQuickInputSchemeId) || repo.quickInputSchemes[0];
+  const updateQuickInputScheme = (updates: Partial<StoryQuickInputScheme>) => {
+    if (!quickInputActive) return;
+    patchRepo({ quickInputSchemes: repo.quickInputSchemes.map((item) => item.id === quickInputActive.id ? { ...item, ...updates } : item) });
+  };
   const [wallpaperOpen, setWallpaperOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const availablePrompts = useMemo(
@@ -440,7 +447,7 @@ export function StorySettingsPage(props: StorySettingsPageProps) {
         <button type="button" onClick={props.onClose} aria-label="关闭设置"><XMarkIcon width={17} /></button>
       </header>
       <main className="story-settings-scroll">
-        <SettingCard title="选择见面对象" hint="每个角色的设置都会单独保存">
+        <SettingCard title="选择见面对象" hint="预设与方案启用选择按角色保存；方案内容统一存于公用仓库">
           <div className="story-meeting-characters">
             {props.characters.map((character) => (
               <button key={character.id} type="button" data-active={character.id === props.activeCharacterId ? "true" : undefined} onClick={() => props.onCharacterChange(character.id)}>
@@ -486,7 +493,7 @@ export function StorySettingsPage(props: StorySettingsPageProps) {
             <label><span>最多字数</span><input type="number" min={50} max={4000} value={normalized.maxChars} onChange={(event) => patchSettings({ maxChars: Math.max(50, Math.min(4000, Number(event.target.value) || 50)) })} /></label>
           </div>
           <label className="story-settings-field"><span>用户人称</span><select value={normalized.userPerspective} onChange={(event) => patchSettings({ userPerspective: event.target.value as StoryCharacterSettings["userPerspective"] })}><option value="second">第二人称“你”</option><option value="third">第三人称“TA”</option><option value="username">使用用户名“{props.userName}”</option></select></label>
-          <ProseStyleEditor schemes={normalized.proseStyleSchemes!} activeId={normalized.activeProseStyleSchemeId!} onChange={(proseStyleSchemes, activeProseStyleSchemeId) => patchSettings({ proseStyleSchemes, activeProseStyleSchemeId })} />
+          <ProseStyleEditor schemes={repo.proseStyleSchemes} activeId={normalized.activeProseStyleSchemeId!} onChange={(proseStyleSchemes, activeProseStyleSchemeId) => { patchRepo({ proseStyleSchemes }); patchSettings({ activeProseStyleSchemeId }); }} />
         </SettingCard>
 
         <SettingCard title="语音与播放">
@@ -512,20 +519,37 @@ export function StorySettingsPage(props: StorySettingsPageProps) {
           ) : null}
         </SettingCard>
 
-        <SettingCard title="快捷输入面板" hint="开启后“续写”右侧出现“输入”按钮，点按展开或收起">
+        <SettingCard title="快捷输入面板" hint="开启后“续写”右侧出现“输入”按钮；方案保存在公用仓库，所有角色共享">
           <ToggleRow
             title="开启快捷输入面板"
             detail="输入框上方展开窄长横幅，点按选项即插入输入框，选项过多可左右滑动"
             checked={Boolean(props.uiPrefs.quickInputEnabled)}
             onChange={(value) => props.onUiPrefsChange({ ...props.uiPrefs, quickInputEnabled: value })}
           />
-          {props.uiPrefs.quickInputEnabled ? (
+          {props.uiPrefs.quickInputEnabled && quickInputActive ? (
             <>
+              <div className="story-settings-label-row"><label>输入方案</label><span>所有角色共用，当前角色选择启用哪一套</span></div>
+              <div className="story-settings-inline">
+                <select value={quickInputActive.id} onChange={(event) => props.onUiPrefsChange({ ...props.uiPrefs, activeQuickInputSchemeId: event.target.value })}>
+                  {repo.quickInputSchemes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+                <button type="button" aria-label="新增快捷输入方案" onClick={() => {
+                  const id = `quick-${Date.now()}`;
+                  patchRepo({ quickInputSchemes: [...repo.quickInputSchemes, { id, name: `输入方案 ${repo.quickInputSchemes.length + 1}`, options: [...STORY_DEFAULT_QUICK_INPUT_OPTIONS], cursor: "middle" as const }] });
+                  props.onUiPrefsChange({ ...props.uiPrefs, activeQuickInputSchemeId: id });
+                }}><PlusIcon width={15} /></button>
+                <button type="button" aria-label="删除快捷输入方案" disabled={repo.quickInputSchemes.length <= 1} onClick={() => {
+                  if (repo.quickInputSchemes.length <= 1) return;
+                  const next = repo.quickInputSchemes.filter((item) => item.id !== quickInputActive.id);
+                  patchRepo({ quickInputSchemes: next });
+                  props.onUiPrefsChange({ ...props.uiPrefs, activeQuickInputSchemeId: next[0].id });
+                }}><TrashIcon width={14} /></button>
+              </div>
               <div className="story-quick-cursor-row">
                 <span className="story-quick-cursor-label">插入后光标位置</span>
                 <div className="story-quick-cursor-options" role="radiogroup" aria-label="插入后光标位置">
                   {([["left", "选项左边"], ["middle", "选项中间"], ["right", "选项右边"]] as const).map(([value, label]) => {
-                    const active = (props.uiPrefs.quickInputCursor ?? "middle") === value;
+                    const active = (quickInputActive.cursor ?? "middle") === value;
                     return (
                       <button
                         key={value}
@@ -533,7 +557,7 @@ export function StorySettingsPage(props: StorySettingsPageProps) {
                         role="radio"
                         aria-checked={active}
                         data-active={active ? "true" : undefined}
-                        onClick={() => props.onUiPrefsChange({ ...props.uiPrefs, quickInputCursor: value })}
+                        onClick={() => updateQuickInputScheme({ cursor: value })}
                       >
                         {label}
                       </button>
@@ -542,17 +566,17 @@ export function StorySettingsPage(props: StorySettingsPageProps) {
                 </div>
               </div>
               <QuickOptionsEditor
-                options={props.uiPrefs.quickInputOptions ?? [...STORY_DEFAULT_QUICK_INPUT_OPTIONS]}
-                onChange={(quickInputOptions) => props.onUiPrefsChange({ ...props.uiPrefs, quickInputOptions })}
+                options={quickInputActive.options}
+                onChange={(options) => updateQuickInputScheme({ options })}
               />
-              <p className="story-settings-note">点按面板选项时按上面设置的光标位置插入；“选项中间”适合成对引号，光标会落在引号正中。</p>
+              <p className="story-settings-note">点按面板选项时按上面设置的光标位置插入；“选项中间”适合成对引号，光标会落在引号正中。方案保存在公用仓库，修改会同步影响所有角色。</p>
             </>
           ) : null}
         </SettingCard>
 
-        <SettingCard title="剧情尾部" hint="状态栏与小剧场分别保存多个方案，并可随时切换">
-          <SchemeEditor label="状态栏方案" schemes={normalized.statusSchemes!} activeId={normalized.activeStatusSchemeId!} tag="story_status" contextNote="进入上下文" onChange={(schemes, activeStatusSchemeId) => patchSettings({ statusSchemes: schemes, activeStatusSchemeId })} />
-          <SchemeEditor label="小剧场方案" schemes={normalized.theaterSchemes!} activeId={normalized.activeTheaterSchemeId!} tag="story_theater" contextNote="默认不进上下文" onChange={(schemes, activeTheaterSchemeId) => patchSettings({ theaterSchemes: schemes, activeTheaterSchemeId })} />
+        <SettingCard title="剧情尾部" hint="状态栏与小剧场方案保存在公用仓库，所有角色共享；每个角色单独选择启用哪一套">
+          <SchemeEditor label="状态栏方案" schemes={repo.statusSchemes} activeId={normalized.activeStatusSchemeId!} tag="story_status" contextNote="进入上下文" onChange={(schemes, activeStatusSchemeId) => { patchRepo({ statusSchemes: schemes }); patchSettings({ activeStatusSchemeId }); }} />
+          <SchemeEditor label="小剧场方案" schemes={repo.theaterSchemes} activeId={normalized.activeTheaterSchemeId!} tag="story_theater" contextNote="默认不进上下文" onChange={(schemes, activeTheaterSchemeId) => { patchRepo({ theaterSchemes: schemes }); patchSettings({ activeTheaterSchemeId }); }} />
         </SettingCard>
 
         <SettingCard title="悬浮小手机" hint="开启后剧情正文右侧出现手机悬浮球">

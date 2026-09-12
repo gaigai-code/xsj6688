@@ -863,7 +863,7 @@ const STORY_SCHEME_PROMPT = `剧情尾部方案 = 剧情 APP 每轮生成的"正
 再由一段固定的 HTML 把它们画成卡片。数据每轮变、画法不变。
 
 ===== 适用范围（务必先分流）=====
-· 只适用于**剧情 APP**（每个角色一份独立设置，方案存在该角色的剧情会话上）。
+· 只适用于**剧情 APP**（方案统一存在公用仓库、所有角色共享；每个角色的剧情会话只记录"启用哪一个"）。
 · 线上聊天（单聊/群聊）的状态栏用「线上聊天状态栏套件」；线下/漫卷等场景仍走正则老办法。
 · 剧情设置页（剧情 → 右上角设置 → 剧情尾部）可手动查看和继续修改这些方案。
 
@@ -872,11 +872,11 @@ const STORY_SCHEME_PROMPT = `剧情尾部方案 = 剧情 APP 每轮生成的"正
 · theater 小剧场：默认**仅展示、不进上下文**（靠"不进上下文标签"机制剔除），可以放开写，不影响主线。
 
 ===== 工作流（5 个工具）=====
-1. 列出剧情方案 —— 看该角色已有哪些状态栏/小剧场方案、当前启用哪个。**改之前先看**。
+1. 列出剧情方案 —— 看公用仓库里有哪些状态栏/小剧场方案、该角色当前启用哪个。**改之前先看**。
 2. 读取剧情方案 —— 看某方案的完整契约/渲染/示例。已有内容要先问用户是覆盖还是在原基础上改。
-3. 创建剧情方案 —— 新建一套方案（契约 + 渲染 + 示例一次写入），默认立即启用。
-4. 更新剧情方案 —— 改方案的名字/契约/渲染/示例（只传要改的字段），或切换启用方案。
-5. 删除剧情方案 —— 删掉某方案；每个类别至少保留一个，删不掉。
+3. 创建剧情方案 —— 新建一套方案（契约 + 渲染 + 示例一次写入）存进公用仓库，默认为该角色立即启用。
+4. 更新剧情方案 —— 改方案的名字/契约/渲染/示例（只传要改的字段），或切换启用方案。方案全角色共享，改动会影响所有启用它的角色。
+5. 删除剧情方案 —— 从公用仓库删掉某方案；每个类别至少保留一个，删不掉；启用它的角色会自动切换。
 
 ===== 契约怎么写（硬规则，违反会被工具拒绝）=====
 · **必须出现与 kind 对应的标签**：status 要含 <story_status>，theater 要含 <story_theater>。
@@ -898,7 +898,7 @@ const STORY_SCHEME_PROMPT = `剧情尾部方案 = 剧情 APP 每轮生成的"正
   用户在设置页点开预览才能立刻看到效果。
 
 ===== 写完要告诉用户的 =====
-· 已写入哪个角色，可在 剧情 → 右上角设置 → 剧情尾部 里看到并继续手改。
+· 方案已存入公用仓库（所有角色可用），已为哪个角色启用，可在 剧情 → 右上角设置 → 剧情尾部 里看到并继续手改。
 · 新方案默认已启用（activate=false 时只保存不启用）。`;
 
 
@@ -1166,13 +1166,13 @@ export const MASCOT_TOOL_PACKAGES: MascotToolPackage[] = [
     {
         id: "story_scheme_pack",
         label: "剧情方案套件",
-        description: "管理**剧情 APP** 的「状态栏方案」与「小剧场方案」：每个角色可保存多套方案（输出契约 + HTML 渲染 + 示例数据）并随时切换启用。状态栏内容进入下一轮上下文，小剧场默认仅展示。只覆盖剧情 APP；线上聊天的状态栏用「线上聊天状态栏套件」。",
+        description: "管理**剧情 APP** 的「状态栏方案」与「小剧场方案」：方案保存在公用仓库（所有角色共享），每个角色可单独选择启用哪一套（输出契约 + HTML 渲染 + 示例数据）。状态栏内容进入下一轮上下文，小剧场默认仅展示。只覆盖剧情 APP；线上聊天的状态栏用「线上聊天状态栏套件」。",
         subTools: [
-            { name: "列出剧情方案", description: "列出某角色剧情会话的全部状态栏方案与小剧场方案（含方案名、是否启用、契约摘要）。修改前先看。不传会话名时用当前打开的剧情会话。", parameterSchema: LIST_STORY_SCHEMES_SCHEMA },
+            { name: "列出剧情方案", description: "列出公用仓库里的全部状态栏方案与小剧场方案（含方案名、该角色是否启用、契约摘要）。修改前先看。不传会话名时用当前打开的剧情会话。", parameterSchema: LIST_STORY_SCHEMES_SCHEMA },
             { name: "读取剧情方案", description: "读取某方案的完整契约、渲染与示例数据。不传方案名时读当前启用的方案。", parameterSchema: READ_STORY_SCHEME_SCHEMA },
-            { name: "创建剧情方案", description: "为某角色新建一套状态栏或小剧场方案，默认立即启用。契约必须含与类别对应的 <story_status>/<story_theater> 标签，否则工具会拒绝。", parameterSchema: CREATE_STORY_SCHEME_SCHEMA },
-            { name: "更新剧情方案", description: "修改某方案的名字/契约/渲染/示例（只传要改的字段），或把它设为当前启用方案。", parameterSchema: UPDATE_STORY_SCHEME_SCHEMA },
-            { name: "删除剧情方案", description: "删除某套方案；每个类别至少保留一个方案，最后一个不可删。", parameterSchema: DELETE_STORY_SCHEME_SCHEMA },
+            { name: "创建剧情方案", description: "在公用仓库新建一套状态栏或小剧场方案（所有角色可用），默认为该角色立即启用。契约必须含与类别对应的 <story_status>/<story_theater> 标签，否则工具会拒绝。", parameterSchema: CREATE_STORY_SCHEME_SCHEMA },
+            { name: "更新剧情方案", description: "修改公用仓库里某方案的名字/契约/渲染/示例（只传要改的字段；全角色共享，会影响所有启用它的角色），或把它设为该角色当前启用的方案。", parameterSchema: UPDATE_STORY_SCHEME_SCHEMA },
+            { name: "删除剧情方案", description: "从公用仓库删除某套方案；每个类别至少保留一个方案，最后一个不可删；原本启用它的角色会自动切换到剩余首个方案。", parameterSchema: DELETE_STORY_SCHEME_SCHEMA },
         ],
         usageGuide: STORY_SCHEME_PROMPT,
     },
@@ -2070,6 +2070,7 @@ type StorySchemeTarget = {
     sessionId: string;
     displayName: string;
     settings: StoryCharacterSettings;
+    repo: import("./story-storage").StorySchemeRepository;
     schemes: StoryTailScheme[];
     activeId: string;
 };
@@ -2086,15 +2087,16 @@ async function storySchemeTarget(
         const hint = resolved.choices?.length ? `。可选：${resolved.choices.join("、")}` : "";
         return { err: { name: toolName, success: false, error: resolved.error + hint } as ToolResult };
     }
-    const { loadStorySessions, loadStoryTailSchemes, STORY_DEFAULT_STATUS_SCHEME, STORY_DEFAULT_THEATER_SCHEME } = await import("./story-storage");
+    // 方案定义统一存于公用仓库（所有角色共享）；会话设置里只保留“启用哪一个”
+    const { loadStorySessions, loadStorySchemeRepository, STORY_DEFAULT_STATUS_SCHEME, STORY_DEFAULT_THEATER_SCHEME } = await import("./story-storage");
     const session = loadStorySessions().find((item) => item.id === resolved.sessionId);
     if (!session) return { err: { name: toolName, success: false, error: "找不到该剧情会话" } as ToolResult };
     const settings = session.settings || {};
-    const { statusSchemes, theaterSchemes } = loadStoryTailSchemes(settings);
-    const schemes = kind === "status" ? statusSchemes : theaterSchemes;
+    const repo = loadStorySchemeRepository();
+    const schemes = kind === "status" ? repo.statusSchemes : repo.theaterSchemes;
     const activeId = (kind === "status" ? settings.activeStatusSchemeId : settings.activeTheaterSchemeId)
         || (kind === "status" ? STORY_DEFAULT_STATUS_SCHEME.id : STORY_DEFAULT_THEATER_SCHEME.id);
-    return { ok: { sessionId: resolved.sessionId, displayName: resolved.displayName, settings, schemes, activeId } };
+    return { ok: { sessionId: resolved.sessionId, displayName: resolved.displayName, settings, repo, schemes, activeId } };
 }
 
 function parseStorySchemeKind(value: unknown): "status" | "theater" | null {
@@ -2107,11 +2109,26 @@ function storySchemeRenderHtml(scheme: StoryTailScheme): string {
     return "";
 }
 
-async function persistStorySchemeSettings(sessionId: string, settings: StoryCharacterSettings): Promise<void> {
-    const { updateStorySession } = await import("./story-storage");
-    updateStorySession(sessionId, { settings });
-    // 广播：剧情页/剧情设置页开着时同步刷新
-    if (typeof window !== "undefined") {
+/** 保存公用方案仓库；activateId 存在时同时把该角色的启用选择切过去。 */
+async function persistStorySchemeRepo(
+    sessionId: string,
+    repo: import("./story-storage").StorySchemeRepository,
+    kind: "status" | "theater",
+    activateId: string | undefined,
+    settings: StoryCharacterSettings | undefined,
+): Promise<void> {
+    const { saveStorySchemeRepository, updateStorySession } = await import("./story-storage");
+    if (activateId && settings) {
+        updateStorySession(sessionId, {
+            settings: {
+                ...settings,
+                ...(kind === "status" ? { activeStatusSchemeId: activateId } : { activeTheaterSchemeId: activateId }),
+            },
+        });
+    }
+    // 保存仓库会派发 story-scheme-repo-updated；会话设置变化单独广播
+    saveStorySchemeRepository(repo);
+    if (activateId && typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("story-session-settings-updated", { detail: { sessionId } }));
     }
 }
@@ -2131,11 +2148,11 @@ async function handleListStorySchemes(args: Record<string, unknown>, ctx: Mascot
         const hint = resolved.choices?.length ? `。可选：${resolved.choices.join("、")}` : "";
         return { name: NAME, success: false, error: resolved.error + hint };
     }
-    const { loadStorySessions, loadStoryTailSchemes, STORY_DEFAULT_STATUS_SCHEME, STORY_DEFAULT_THEATER_SCHEME } = await import("./story-storage");
+    const { loadStorySessions, loadStorySchemeRepository, STORY_DEFAULT_STATUS_SCHEME, STORY_DEFAULT_THEATER_SCHEME } = await import("./story-storage");
     const session = loadStorySessions().find((item) => item.id === resolved.sessionId);
     if (!session) return { name: NAME, success: false, error: "找不到该剧情会话" };
     const settings = session.settings || {};
-    const { statusSchemes, theaterSchemes } = loadStoryTailSchemes(settings);
+    const repo = loadStorySchemeRepository();
     const activeStatusId = settings.activeStatusSchemeId || STORY_DEFAULT_STATUS_SCHEME.id;
     const activeTheaterId = settings.activeTheaterSchemeId || STORY_DEFAULT_THEATER_SCHEME.id;
     const fmt = (list: StoryTailScheme[], activeId: string) => list.map((item) => {
@@ -2147,12 +2164,12 @@ async function handleListStorySchemes(args: Record<string, unknown>, ctx: Mascot
         `剧情会话：${resolved.displayName}`,
         "",
         `【状态栏方案】（内容进入下一轮上下文）`,
-        ...fmt(statusSchemes, activeStatusId),
+        ...fmt(repo.statusSchemes, activeStatusId),
         "",
         `【小剧场方案】（默认仅展示、不进上下文）`,
-        ...fmt(theaterSchemes, activeTheaterId),
+        ...fmt(repo.theaterSchemes, activeTheaterId),
         "",
-        "提示：★ 是当前启用方案。看全文用 读取剧情方案；改内容用 更新剧情方案；换启用也用 更新剧情方案（activate=true）。",
+        "提示：★ 是该角色当前启用的方案；全部方案保存在公用仓库、所有角色共享。看全文用 读取剧情方案；改内容用 更新剧情方案；换启用也用 更新剧情方案（activate=true）。",
     ];
     return { name: NAME, success: true, data: lines.join("\n") };
 }
@@ -2201,25 +2218,21 @@ async function handleCreateStoryScheme(args: Record<string, unknown>, ctx: Masco
     }
     const r = await storySchemeTarget(args, ctx, NAME);
     if (r.err) return r.err;
-    const { settings, schemes } = r.ok;
+    const { repo, schemes } = r.ok;
     if (schemes.some((item) => item.name.toLowerCase() === name.toLowerCase())) {
         return { name: NAME, success: false, error: `已存在同名方案「${name}」。想改内容请用 更新剧情方案；想另建一套请换个名字。` };
     }
     const id = `${kind === "status" ? "story_status" : "story_theater"}-${Date.now()}`;
     const scheme: StoryTailScheme = { id, name, prompt, renderHtml, preview };
-    const nextSchemes = [...schemes, scheme];
+    // 方案存入公用仓库（所有角色共享）；activate 只改这一个角色的启用选择
+    if (kind === "status") repo.statusSchemes = [...repo.statusSchemes, scheme];
+    else repo.theaterSchemes = [...repo.theaterSchemes, scheme];
     const activate = args.activate !== false;
-    const nextSettings: StoryCharacterSettings = {
-        ...settings,
-        ...(kind === "status"
-            ? { statusSchemes: nextSchemes, ...(activate ? { activeStatusSchemeId: id } : {}) }
-            : { theaterSchemes: nextSchemes, ...(activate ? { activeTheaterSchemeId: id } : {}) }),
-    };
-    await persistStorySchemeSettings(r.ok.sessionId, nextSettings);
+    await persistStorySchemeRepo(r.ok.sessionId, repo, kind, activate ? id : undefined, r.ok.settings);
     return {
         name: NAME,
         success: true,
-        data: `已为「${r.ok.displayName}」创建${STORY_SCHEME_KIND_LABEL[kind]}「${name}」${activate ? "并启用" : "（未启用，仅保存）"}。用户可在 剧情 → 右上角设置 → 剧情尾部 里看到并继续手改。`,
+        data: `已在公用仓库创建${STORY_SCHEME_KIND_LABEL[kind]}「${name}」（所有角色可用），并为「${r.ok.displayName}」${activate ? "启用" : "保存（未启用）"}。用户可在 剧情 → 右上角设置 → 剧情尾部 里看到并继续手改。`,
     };
 }
 
@@ -2229,7 +2242,7 @@ async function handleUpdateStoryScheme(args: Record<string, unknown>, ctx: Masco
     if (!kind) return { name: NAME, success: false, error: "kind 必须是 status（状态栏）或 theater（小剧场）" };
     const r = await storySchemeTarget(args, ctx, NAME);
     if (r.err) return r.err;
-    const { settings, schemes, activeId } = r.ok;
+    const { settings, repo, schemes, activeId } = r.ok;
     const target = findStorySchemeByName(schemes, args.schemeName as string | undefined, activeId);
     if (!target) {
         return { name: NAME, success: false, error: `找不到方案「${args.schemeName || ""}」。可先用 列出剧情方案 查看现有方案名。` };
@@ -2255,19 +2268,15 @@ async function handleUpdateStoryScheme(args: Record<string, unknown>, ctx: Masco
         return { name: NAME, success: false, error: "没有要改的字段：至少传 name/prompt/renderHtml/preview 之一，或传 activate 切换启用。" };
     }
     const nextSchemes = schemes.map((item) => item.id === target.id ? { ...item, ...updates } : item);
+    if (kind === "status") repo.statusSchemes = nextSchemes;
+    else repo.theaterSchemes = nextSchemes;
     const activate = args.activate === true || (updates.prompt || updates.renderHtml || updates.preview) && target.id === activeId;
-    const nextSettings: StoryCharacterSettings = {
-        ...settings,
-        ...(kind === "status"
-            ? { statusSchemes: nextSchemes, ...(activate ? { activeStatusSchemeId: target.id } : {}) }
-            : { theaterSchemes: nextSchemes, ...(activate ? { activeTheaterSchemeId: target.id } : {}) }),
-    };
-    await persistStorySchemeSettings(r.ok.sessionId, nextSettings);
+    await persistStorySchemeRepo(r.ok.sessionId, repo, kind, activate ? target.id : undefined, settings);
     const changed = Object.keys(updates).join("、") || "无字段改动";
     return {
         name: NAME,
         success: true,
-        data: `已更新「${r.ok.displayName}」的${STORY_SCHEME_KIND_LABEL[kind]}「${target.name}」（改动：${changed}${activate ? "；已设为启用方案" : ""}）。`,
+        data: `已更新公用仓库里的${STORY_SCHEME_KIND_LABEL[kind]}「${target.name}」（改动：${changed}${activate ? `；已为「${r.ok.displayName}」设为启用方案` : ""}）。方案为所有角色共享，其他启用该方案的角色会一并生效。`,
     };
 }
 
@@ -2277,28 +2286,38 @@ async function handleDeleteStoryScheme(args: Record<string, unknown>, ctx: Masco
     if (!kind) return { name: NAME, success: false, error: "kind 必须是 status（状态栏）或 theater（小剧场）" };
     const r = await storySchemeTarget(args, ctx, NAME);
     if (r.err) return r.err;
-    const { settings, schemes, activeId } = r.ok;
+    const { repo, schemes, activeId } = r.ok;
     if (schemes.length <= 1) {
-        return { name: NAME, success: false, error: `每个类别至少要保留一个方案；「${r.ok.displayName}」当前只有 1 个${STORY_SCHEME_KIND_LABEL[kind]}，不能删。` };
+        return { name: NAME, success: false, error: `公用仓库里每个类别至少要保留一个方案；当前只有 1 个${STORY_SCHEME_KIND_LABEL[kind]}，不能删。` };
     }
     const target = findStorySchemeByName(schemes, args.schemeName as string | undefined, activeId);
     if (!target) {
         return { name: NAME, success: false, error: `找不到方案「${args.schemeName || ""}」。可先用 列出剧情方案 查看现有方案名。` };
     }
     const nextSchemes = schemes.filter((item) => item.id !== target.id);
-    const wasActive = target.id === activeId;
-    const nextActiveId = wasActive ? nextSchemes[0].id : activeId;
-    const nextSettings: StoryCharacterSettings = {
-        ...settings,
-        ...(kind === "status"
-            ? { statusSchemes: nextSchemes, activeStatusSchemeId: nextActiveId }
-            : { theaterSchemes: nextSchemes, activeTheaterSchemeId: nextActiveId }),
-    };
-    await persistStorySchemeSettings(r.ok.sessionId, nextSettings);
+    if (kind === "status") repo.statusSchemes = nextSchemes;
+    else repo.theaterSchemes = nextSchemes;
+    const nextActiveId = nextSchemes[0].id;
+    // 公用方案被删后，所有还选着它的角色都回落到剩余首个方案
+    const { loadStorySessions, updateStorySession } = await import("./story-storage");
+    for (const session of loadStorySessions()) {
+        const currentId = kind === "status" ? session.settings?.activeStatusSchemeId : session.settings?.activeTheaterSchemeId;
+        if (currentId !== target.id) continue;
+        updateStorySession(session.id, {
+            settings: {
+                ...session.settings,
+                ...(kind === "status" ? { activeStatusSchemeId: nextActiveId } : { activeTheaterSchemeId: nextActiveId }),
+            },
+        });
+        if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("story-session-settings-updated", { detail: { sessionId: session.id } }));
+        }
+    }
+    await persistStorySchemeRepo(r.ok.sessionId, repo, kind, undefined, undefined);
     return {
         name: NAME,
         success: true,
-        data: `已删除「${r.ok.displayName}」的${STORY_SCHEME_KIND_LABEL[kind]}「${target.name}」${wasActive ? `，启用方案切换为「${nextSchemes[0].name}」` : ""}。`,
+        data: `已从公用仓库删除${STORY_SCHEME_KIND_LABEL[kind]}「${target.name}」；所有角色共享该仓库，原本启用它的角色已自动切换为「${nextSchemes[0].name}」。`,
     };
 }
 

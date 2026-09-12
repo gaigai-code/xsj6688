@@ -62,15 +62,20 @@ import {
   hydrateStoryStorage,
   loadStoryMessages,
   loadStorySessions,
+  loadStorySchemeRepository,
   pushStoryMessage,
+  resolveActiveQuickInputScheme,
+  saveStorySchemeRepository,
+  STORY_DEFAULT_QUICK_INPUT_OPTIONS,
+  STORY_SCHEME_REPO_EVENT,
   deleteStoryMessage,
   deleteStoryMessagesFrom,
   editStoryMessage,
   type StoryMessage,
+  type StorySchemeRepository,
   type StorySession,
   updateStorySession,
   type StoryCharacterSettings,
-  STORY_DEFAULT_QUICK_INPUT_OPTIONS,
 } from "@/lib/story-storage";
 import { createOrGetSession, hydrateChatStorage, loadChatMessages, loadChatSessions, markChatSessionRead, pushChatMessage } from "@/lib/chat-storage";
 import { flattenCompletionResult, generateChatCompletion } from "@/lib/chat-engine";
@@ -446,6 +451,8 @@ const StoryComposer = memo(function StoryComposer({
 export function StoryApp({ onClose }: StoryAppProps) {
   const [ready, setReady] = useState(false);
   const [, setStorageVersion] = useState(0);
+  // 公用方案仓库版本：仓库内容变化（设置页/小卷工具写入）时刷新方案相关 UI
+  const [schemeRepoVersion, setSchemeRepoVersion] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [floatingPhoneOpen, setFloatingPhoneOpen] = useState(false);
   const [floatingChatDraft, setFloatingChatDraft] = useState("");
@@ -515,8 +522,16 @@ export function StoryApp({ onClose }: StoryAppProps) {
   );
   const uiPrefs = currentSession?.uiPrefs || {};
   const storySettings: StoryCharacterSettings = currentSession?.settings || {};
-  const activeStatusScheme = storySettings.statusSchemes?.find((item) => item.id === storySettings.activeStatusSchemeId);
-  const activeTheaterScheme = storySettings.theaterSchemes?.find((item) => item.id === storySettings.activeTheaterSchemeId);
+  // 方案定义统一来自公用仓库（所有角色共享），角色设置里只有“启用哪一个”
+  const schemeRepo: StorySchemeRepository = useMemo(
+    () => loadStorySchemeRepository(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [schemeRepoVersion, ready],
+  );
+  const activeStatusScheme = schemeRepo.statusSchemes.find((item) => item.id === storySettings.activeStatusSchemeId)
+    ?? storySettings.statusSchemes?.find((item) => item.id === storySettings.activeStatusSchemeId);
+  const activeTheaterScheme = schemeRepo.theaterSchemes.find((item) => item.id === storySettings.activeTheaterSchemeId)
+    ?? storySettings.theaterSchemes?.find((item) => item.id === storySettings.activeTheaterSchemeId);
   const activeStatusRenderHtml = activeStatusScheme?.renderHtml
     ?? (["status-default", "status-html"].includes(activeStatusScheme?.id || "") ? STORY_DEFAULT_STATUS_RENDER : "");
   const activeTheaterRenderHtml = activeTheaterScheme?.renderHtml
@@ -651,6 +666,16 @@ export function StoryApp({ onClose }: StoryAppProps) {
     };
     window.addEventListener("story-session-settings-updated", onSettingsUpdate);
     return () => window.removeEventListener("story-session-settings-updated", onSettingsUpdate);
+  }, []);
+
+  // 公用方案仓库变化（设置页保存/小卷工具写入/迁移）时刷新方案相关 UI
+  useEffect(() => {
+    const onRepoUpdate = () => {
+      setSchemeRepoVersion((value) => value + 1);
+      setStorageVersion((value) => value + 1);
+    };
+    window.addEventListener(STORY_SCHEME_REPO_EVENT, onRepoUpdate);
+    return () => window.removeEventListener(STORY_SCHEME_REPO_EVENT, onRepoUpdate);
   }, []);
 
   const autoBottomLockRef = useRef(true);
@@ -1460,10 +1485,11 @@ export function StoryApp({ onClose }: StoryAppProps) {
     }
   }
 
-  // 快捷输入面板：设置里没存或清空时回落到默认选项
-  const quickInputOptionsRaw = (uiPrefs.quickInputOptions ?? []).filter((item) => item.trim());
+  // 快捷输入面板：选项与光标位置来自公用仓库中当前角色选中的方案；选项全空时回落默认符号
+  const activeQuickInputScheme = resolveActiveQuickInputScheme(uiPrefs, schemeRepo);
+  const quickInputOptionsRaw = activeQuickInputScheme.options.filter((item) => item.trim());
   const quickInputOptions = quickInputOptionsRaw.length > 0 ? quickInputOptionsRaw : STORY_DEFAULT_QUICK_INPUT_OPTIONS;
-  const quickInputCursor = uiPrefs.quickInputCursor ?? "middle";
+  const quickInputCursor = activeQuickInputScheme.cursor ?? "middle";
 
   if (!ready) return null;
 
@@ -1516,6 +1542,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
           userName={userIdentity?.name || "用户"}
           uiPrefs={uiPrefs}
           settings={storySettings}
+          schemeRepo={schemeRepo}
           boundPreset={boundPreset}
           foldTags={foldTagsDraft}
           contextExcludedTags={contextExcludedTagsDraft}
@@ -1523,6 +1550,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
           onCharacterChange={setActiveCharacterId}
           onUiPrefsChange={(next) => applySessionUpdates({ uiPrefs: next })}
           onSettingsChange={(next) => applySessionUpdates({ settings: next })}
+          onSchemeRepoChange={saveStorySchemeRepository}
           onTagsChange={(foldTags, contextExcludedTags) => {
             setFoldTagsDraft(foldTags);
             setContextExcludedTagsDraft(contextExcludedTags);
