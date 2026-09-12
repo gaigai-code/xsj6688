@@ -253,10 +253,13 @@ export function resolveActiveStorySchemes(settings: StoryCharacterSettings | und
   const pickProse = settings?.proseStyleSchemes?.find((item) => item.id === settings?.activeProseStyleSchemeId) || null;
   const pickStatus = settings?.statusSchemes?.find((item) => item.id === settings?.activeStatusSchemeId) || null;
   const pickTheater = settings?.theaterSchemes?.find((item) => item.id === settings?.activeTheaterSchemeId) || null;
+  // 启用的方案被删（如别的角色删掉了公用方案，本角色选择悬空）时回落首个方案，
+  // 与设置页 normalizeSettings、resolveActiveQuickInputScheme 的回落语义一致，
+  // 避免该角色的文风/尾部输出静默失效。
   return {
-    proseStyle: repo.proseStyleSchemes.find((item) => item.id === settings?.activeProseStyleSchemeId) || pickProse,
-    status: repo.statusSchemes.find((item) => item.id === settings?.activeStatusSchemeId) || pickStatus,
-    theater: repo.theaterSchemes.find((item) => item.id === settings?.activeTheaterSchemeId) || pickTheater,
+    proseStyle: repo.proseStyleSchemes.find((item) => item.id === settings?.activeProseStyleSchemeId) || pickProse || repo.proseStyleSchemes[0] || null,
+    status: repo.statusSchemes.find((item) => item.id === settings?.activeStatusSchemeId) || pickStatus || repo.statusSchemes[0] || null,
+    theater: repo.theaterSchemes.find((item) => item.id === settings?.activeTheaterSchemeId) || pickTheater || repo.theaterSchemes[0] || null,
   };
 }
 
