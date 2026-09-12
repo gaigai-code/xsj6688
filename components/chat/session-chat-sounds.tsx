@@ -6,6 +6,7 @@
 // 会话里显式设置的字段覆盖全局，其余（音频来源、子开关）继承全局。
 
 import { useState, type CSSProperties } from "react";
+import { BellRing } from "lucide-react";
 import {
     loadChatAppSettings,
     type ChatSession,
@@ -13,6 +14,7 @@ import {
     type ChatSoundKind,
     type ChatSoundsConfig,
 } from "@/lib/chat-storage";
+import { dispatchChatMessageNotice } from "@/lib/chat-notification-events";
 import { previewChatSound } from "@/lib/chat-sound";
 import { Toggle } from "@/components/ui/form";
 import { ChatSoundSourceEditor, SOUND_ITEMS } from "./chat-sound-editor";
@@ -73,6 +75,17 @@ export function SessionChatSoundsSection({ session, accent, onUpdate }: {
         });
     };
 
+    // 新消息音效“测试弹窗”：用当前角色会话模拟一条真实新消息——
+    // 播放该角色生效的音效（专属优先全局）+ 弹桌面通知横幅。
+    const testNewMessageNotice = () => {
+        void previewChatSound("newMessage", session);
+        dispatchChatMessageNotice({
+            sessionId: session.id,
+            body: "【提示音测试】模拟收到一条新消息",
+            isTest: true,
+        });
+    };
+
     return (
         <div className="menu-group">
             {SOUND_ITEMS.map(({ kind, icon: Icon, label, desc }) => {
@@ -121,24 +134,34 @@ export function SessionChatSoundsSection({ session, accent, onUpdate }: {
                                     onPreview={() => void previewChatSound(kind, session)}
                                 />
                                 {kind === "newMessage" ? (
-                                    <div className="chat-sound-subtoggles">
-                                        <SubToggle
-                                            label="实时聊天不通知"
-                                            desc="正打开该聊天时，角色新消息不播放音效"
-                                            checked={own.muteActiveChat ?? globalConfig.muteActiveChat ?? false}
-                                            explicit={own.muteActiveChat !== undefined}
-                                            onChange={checked => changeSound(kind, { muteActiveChat: checked })}
-                                            onReset={() => clearSubToggle(kind, "muteActiveChat")}
-                                        />
-                                        <SubToggle
-                                            label="多条消息只通知1次"
-                                            desc="同一角色连续多条消息只在第一条时播放"
-                                            checked={own.notifyOncePerBurst ?? globalConfig.notifyOncePerBurst ?? false}
-                                            explicit={own.notifyOncePerBurst !== undefined}
-                                            onChange={checked => changeSound(kind, { notifyOncePerBurst: checked })}
-                                            onReset={() => clearSubToggle(kind, "notifyOncePerBurst")}
-                                        />
-                                    </div>
+                                    <>
+                                        <div className="chat-sound-subtoggles">
+                                            <SubToggle
+                                                label="实时聊天不通知"
+                                                desc="正打开该聊天时，角色新消息不播放音效"
+                                                checked={own.muteActiveChat ?? globalConfig.muteActiveChat ?? false}
+                                                explicit={own.muteActiveChat !== undefined}
+                                                onChange={checked => changeSound(kind, { muteActiveChat: checked })}
+                                                onReset={() => clearSubToggle(kind, "muteActiveChat")}
+                                            />
+                                            <SubToggle
+                                                label="多条消息只通知1次"
+                                                desc="同一角色连续多条消息只在第一条时播放"
+                                                checked={own.notifyOncePerBurst ?? globalConfig.notifyOncePerBurst ?? false}
+                                                explicit={own.notifyOncePerBurst !== undefined}
+                                                onChange={checked => changeSound(kind, { notifyOncePerBurst: checked })}
+                                                onReset={() => clearSubToggle(kind, "notifyOncePerBurst")}
+                                            />
+                                        </div>
+                                        {own.value || globalConfig.value ? (
+                                            <div className="chat-sound-editor-row chat-sound-test-row">
+                                                <button className="ui-btn ui-btn-outline chat-sound-file-btn" onClick={testNewMessageNotice}>
+                                                    <BellRing size={14} /> 测试弹窗
+                                                </button>
+                                                <span className="chat-sound-source">模拟该角色发来一条新消息：弹通知横幅并播放音效</span>
+                                            </div>
+                                        ) : null}
+                                    </>
                                 ) : null}
                             </div>
                         ) : null}

@@ -3852,6 +3852,10 @@
   align-items: center;
   gap: 10px;
 }
+/* 新消息音效“测试弹窗”行：与子开关分隔，按钮 + 说明 */
+.chat-sound-test-row {
+  margin-top: 8px;
+}
 
 /* ── 私聊聊天信息 → 角色专属提示音 ── */
 

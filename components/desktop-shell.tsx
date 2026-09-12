@@ -2584,7 +2584,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
 
       const isCurrentMainChat = activeApp === "chat" && activeChatSession?.id === detail.sessionId;
       const isCurrentMiniChat = showMiniChat && miniSessionRef.current?.id === detail.sessionId;
-      if (isCurrentMainChat || isCurrentMiniChat) return;
+      // 测试弹窗（提示音设置里触发）不受“正在实时聊天则不弹横幅”限制
+      if (!detail.isTest && (isCurrentMainChat || isCurrentMiniChat)) return;
 
       const sessions = loadChatSessions();
       const session = sessions.find(s => s.id === detail.sessionId);

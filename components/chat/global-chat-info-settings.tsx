@@ -1,20 +1,24 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight, Code, Image as ImageIcon, LayoutPanelTop, User, X } from "lucide-react";
+import { BellRing, ChevronRight, Code, Image as ImageIcon, LayoutPanelTop, RotateCcw, User, X } from "lucide-react";
 import { PageShell } from "@/components/ui/page-shell";
 import CSSSchemeBar from "@/components/ui/css-scheme-picker";
 import { Toggle } from "@/components/ui/form";
 import {
     MAX_VISION_IMAGE_PROMPT_LIMIT,
+    getActiveChatSessionId,
     loadChatAppSettings,
+    loadChatSessions,
     normalizeVisionImagePromptLimit,
     saveChatAppSettings,
+    saveChatSessions,
     type ChatSoundConfig,
     type ChatSoundKind,
     type ChatSoundsConfig,
 } from "@/lib/chat-storage";
 import { getChatImageFromIndexedDB, saveChatImageToIndexedDB } from "@/lib/chat-asset-storage";
+import { dispatchChatMessageNotice } from "@/lib/chat-notification-events";
 import { ChatSoundSourceEditor, SOUND_ITEMS } from "./chat-sound-editor";
 import { previewChatSound } from "@/lib/chat-sound";
 import {
@@ -45,6 +49,23 @@ function ChatSoundsSection() {
         });
     };
 
+    // 新消息音效“测试弹窗”：模拟一条真实新消息——播提示音 + 弹桌面通知横幅。
+    // 横幅挑最近活跃的会话来演（优先避开正打开的那个），点击横幅会跳进那个聊天。
+    const testNewMessageNotice = () => {
+        void previewChatSound("newMessage");
+        const sessions = loadChatSessions()
+            .slice()
+            .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+        const activeId = getActiveChatSessionId();
+        const target = sessions.find(s => s.id !== activeId) || sessions[0];
+        if (!target) { alert("还没有聊天会话，先和角色聊一句再测试弹窗"); return; }
+        dispatchChatMessageNotice({
+            sessionId: target.id,
+            body: "【提示音测试】模拟收到一条新消息",
+            isTest: true,
+        });
+    };
+
     return (
         <div className="menu-group">
             {SOUND_ITEMS.map(({ kind, icon: Icon, label, desc }) => {
@@ -67,16 +88,26 @@ function ChatSoundsSection() {
                                     onPreview={() => void previewChatSound(kind)}
                                 />
                                 {kind === "newMessage" ? (
-                                    <div className="chat-sound-subtoggles">
-                                        <div className="chat-sound-subtoggle">
-                                            <div className="menu-label-group"><span className="menu-label">实时聊天不通知</span><span className="menu-desc">正打开该聊天时，角色新消息不播放音效</span></div>
-                                            <Toggle checked={config.muteActiveChat === true} onChange={checked => changeSound(kind, { muteActiveChat: checked })} />
+                                    <>
+                                        <div className="chat-sound-subtoggles">
+                                            <div className="chat-sound-subtoggle">
+                                                <div className="menu-label-group"><span className="menu-label">实时聊天不通知</span><span className="menu-desc">正打开该聊天时，角色新消息不播放音效</span></div>
+                                                <Toggle checked={config.muteActiveChat === true} onChange={checked => changeSound(kind, { muteActiveChat: checked })} />
+                                            </div>
+                                            <div className="chat-sound-subtoggle">
+                                                <div className="menu-label-group"><span className="menu-label">多条消息只通知1次</span><span className="menu-desc">同一角色连续多条消息只在第一条时播放</span></div>
+                                                <Toggle checked={config.notifyOncePerBurst === true} onChange={checked => changeSound(kind, { notifyOncePerBurst: checked })} />
+                                            </div>
                                         </div>
-                                        <div className="chat-sound-subtoggle">
-                                            <div className="menu-label-group"><span className="menu-label">多条消息只通知1次</span><span className="menu-desc">同一角色连续多条消息只在第一条时播放</span></div>
-                                            <Toggle checked={config.notifyOncePerBurst === true} onChange={checked => changeSound(kind, { notifyOncePerBurst: checked })} />
-                                        </div>
-                                    </div>
+                                        {config.value ? (
+                                            <div className="chat-sound-editor-row chat-sound-test-row">
+                                                <button className="ui-btn ui-btn-outline chat-sound-file-btn" onClick={testNewMessageNotice}>
+                                                    <BellRing size={14} /> 测试弹窗
+                                                </button>
+                                                <span className="chat-sound-source">模拟一条新消息：弹通知横幅并播放音效</span>
+                                            </div>
+                                        ) : null}
+                                    </>
                                 ) : null}
                             </div>
                         ) : null}
@@ -137,6 +168,20 @@ export function GlobalChatInfoSettings({ onBack }: { onBack: () => void }) {
         const next = normalizeVisionImagePromptLimit(value);
         setVisionLimit(next);
         saveSettings({ globalVisionImagePromptLimit: next });
+    };
+
+    // 全部角色恢复默认：清空每个会话的单独聊天室 CSS，全部回落到全局聊天室 CSS / 主页外观 CSS。
+    // 逐个派发 chat-session-css-updated，让正打开的聊天室（含桌面小窗）立即生效。
+    const resetAllSessionCSS = () => {
+        const sessions = loadChatSessions();
+        const withCSS = sessions.filter(s => (s.customCSS || "").trim());
+        if (!withCSS.length) { alert("所有聊天都在跟随全局样式，没有需要恢复的"); return; }
+        if (!window.confirm(`将清除 ${withCSS.length} 个私聊/群聊的单独 CSS，全部恢复为默认样式（全局聊天室 CSS 不受影响）。确定继续吗？`)) return;
+        saveChatSessions(sessions.map(s => (s.customCSS || "").trim() ? { ...s, customCSS: "" } : s));
+        for (const s of withCSS) {
+            window.dispatchEvent(new CustomEvent("chat-session-css-updated", { detail: { sessionId: s.id, css: "" } }));
+        }
+        alert(`已恢复 ${withCSS.length} 个聊天的默认样式`);
     };
 
     const statusPayload = JSON.stringify({
@@ -237,6 +282,11 @@ export function GlobalChatInfoSettings({ onBack }: { onBack: () => void }) {
                         <Code size={20} className="text-[var(--c-icon)]" />
                         <div className="menu-label-group"><span className="menu-label">聊天室自定义 CSS 样式</span><span className="menu-desc">与单独私聊共用资源方案</span></div>
                         <div className="menu-right"><span className="menu-desc mr-1">{customCSS ? "已设置" : "未设置"}</span><ChevronRight size={16} /></div>
+                    </button>
+                    <button className="menu-item" onClick={resetAllSessionCSS}>
+                        <RotateCcw size={20} className="text-[var(--c-icon)]" />
+                        <div className="menu-label-group"><span className="menu-label">全部角色恢复默认</span><span className="menu-desc">清除所有私聊和群聊的单独 CSS，改用全局样式</span></div>
+                        <div className="menu-right" />
                     </button>
                     <div className="menu-item">
                         <ImageIcon size={20} className="text-[var(--c-icon)]" />
