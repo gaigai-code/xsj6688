@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ChevronRight, Code, Image as ImageIcon, LayoutPanelTop, User, X } from "lucide-react";
+import { useEffect, useRef, useState, type ComponentType } from "react";
+import { AudioLines, ChevronRight, Code, Image as ImageIcon, LayoutPanelTop, MessageSquare, PhoneIncoming, PhoneOff, PhoneOutgoing, Play, Send, User, X } from "lucide-react";
 import { PageShell } from "@/components/ui/page-shell";
 import CSSSchemeBar from "@/components/ui/css-scheme-picker";
 import { Toggle } from "@/components/ui/form";
@@ -10,8 +10,12 @@ import {
     loadChatAppSettings,
     normalizeVisionImagePromptLimit,
     saveChatAppSettings,
+    type ChatSoundConfig,
+    type ChatSoundKind,
+    type ChatSoundsConfig,
 } from "@/lib/chat-storage";
-import { getChatImageFromIndexedDB, saveChatImageToIndexedDB } from "@/lib/chat-asset-storage";
+import { getChatImageFromIndexedDB, saveChatAudioToIndexedDB, saveChatImageToIndexedDB } from "@/lib/chat-asset-storage";
+import { previewChatSound } from "@/lib/chat-sound";
 import {
     GLOBAL_CHAT_STATUS_REGION_ID,
     getStatusRegionConfig,
@@ -25,6 +29,130 @@ import { fileToUserAvatarDataUrl } from "@/lib/user-avatar-image";
 
 function saveSettings(patch: Record<string, unknown>) {
     saveChatAppSettings({ ...loadChatAppSettings(), ...patch });
+}
+
+// ── 提示音设置分区 ──────────────────────────────────────────────
+
+const SOUND_ITEMS: {
+    kind: ChatSoundKind;
+    icon: ComponentType<{ size?: number; className?: string }>;
+    label: string;
+    desc: string;
+}[] = [
+    { kind: "newMessage", icon: MessageSquare, label: "新消息音效", desc: "角色发来新消息时播放" },
+    { kind: "sendMessage", icon: Send, label: "发送消息音效", desc: "发出消息时播放" },
+    { kind: "incomingCall", icon: PhoneIncoming, label: "来电音效", desc: "来电等待接听时循环播放" },
+    { kind: "outgoingCall", icon: PhoneOutgoing, label: "致电音效", desc: "呼叫等待接通时循环播放" },
+    { kind: "hangup", icon: PhoneOff, label: "挂断音效", desc: "通话结束或挂断时播放" },
+];
+
+function ChatSoundsSection() {
+    const [sounds, setSounds] = useState<ChatSoundsConfig>(() => loadChatAppSettings().globalChatSounds || {});
+    const [urlDrafts, setUrlDrafts] = useState<Partial<Record<ChatSoundKind, string>>>({});
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const uploadKindRef = useRef<ChatSoundKind | null>(null);
+
+    const changeSound = (kind: ChatSoundKind, patch: Partial<ChatSoundConfig>) => {
+        setSounds(current => {
+            const next: ChatSoundsConfig = { ...current, [kind]: { ...current[kind], ...patch } };
+            saveChatAppSettings({ ...loadChatAppSettings(), globalChatSounds: next });
+            return next;
+        });
+    };
+
+    const pickFile = (kind: ChatSoundKind) => {
+        uploadKindRef.current = kind;
+        fileInputRef.current?.click();
+    };
+
+    const changeFile = async (file?: File) => {
+        const kind = uploadKindRef.current;
+        if (!kind || !file) return;
+        if (file.size > 8 * 1024 * 1024) { alert("音频文件过大，请控制在 8MB 以内"); return; }
+        try {
+            const id = await saveChatAudioToIndexedDB(file);
+            changeSound(kind, { sourceType: "file", value: id });
+        } catch { alert("音频文件保存失败，请换一个文件重试"); }
+    };
+
+    const applyUrl = (kind: ChatSoundKind) => {
+        const url = (urlDrafts[kind] || "").trim();
+        if (!url) return;
+        if (!/^(https?:\/\/|data:audio)/i.test(url)) { alert("请输入 http(s) 开头的音频链接"); return; }
+        changeSound(kind, { sourceType: "url", value: url });
+    };
+
+    return (
+        <div className="menu-group">
+            <input
+                ref={fileInputRef}
+                type="file"
+                accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac"
+                className="hidden"
+                onChange={event => { void changeFile(event.target.files?.[0]); event.target.value = ""; }}
+            />
+            {SOUND_ITEMS.map(({ kind, icon: Icon, label, desc }) => {
+                const config: ChatSoundConfig = sounds[kind] || {};
+                const enabled = config.enabled === true;
+                const hasSource = Boolean(config.value);
+                return (
+                    <div key={kind} className="chat-sound-block">
+                        <div className="menu-item">
+                            <Icon size={20} className="text-[var(--c-icon)]" />
+                            <div className="menu-label-group"><span className="menu-label">{label}</span><span className="menu-desc">{desc}</span></div>
+                            <div className="menu-right">
+                                <Toggle checked={enabled} onChange={checked => changeSound(kind, { enabled: checked })} />
+                            </div>
+                        </div>
+                        {enabled ? (
+                            <div className="chat-sound-editor">
+                                <div className="chat-sound-editor-row">
+                                    <button className="ui-btn ui-btn-outline chat-sound-file-btn" onClick={() => pickFile(kind)}>
+                                        <AudioLines size={14} /> 选择音频文件
+                                    </button>
+                                    <span className="chat-sound-source">
+                                        {config.sourceType === "file" ? "已用音频文件" : config.sourceType === "url" ? "已用音频 URL" : "未设置音频"}
+                                    </span>
+                                    <div className="chat-sound-editor-actions">
+                                        <button className="ui-btn ui-btn-ghost h-8 w-8 p-0" disabled={!hasSource} onClick={() => void previewChatSound(kind)} aria-label="试听" title="试听"><Play size={14} /></button>
+                                        {hasSource ? (
+                                            <button className="ui-btn ui-btn-ghost h-8 w-8 p-0" onClick={() => changeSound(kind, { sourceType: undefined, value: undefined })} aria-label="清除音频" title="清除音频"><X size={14} /></button>
+                                        ) : null}
+                                    </div>
+                                </div>
+                                <div className="chat-sound-editor-row">
+                                    <span className="chat-sound-or">或</span>
+                                    <input
+                                        className="ui-input flex-1 h-8 ts-12"
+                                        placeholder="输入音频 URL（mp3 / wav 等）"
+                                        value={urlDrafts[kind] ?? (config.sourceType === "url" ? config.value || "" : "")}
+                                        onChange={event => setUrlDrafts(current => ({ ...current, [kind]: event.target.value }))}
+                                        inputMode="url"
+                                        autoCapitalize="off"
+                                        autoCorrect="off"
+                                        spellCheck={false}
+                                    />
+                                    <button className="ui-btn ui-btn-soft-action" onClick={() => applyUrl(kind)}>使用</button>
+                                </div>
+                                {kind === "newMessage" ? (
+                                    <div className="chat-sound-subtoggles">
+                                        <div className="chat-sound-subtoggle">
+                                            <div className="menu-label-group"><span className="menu-label">实时聊天不通知</span><span className="menu-desc">正打开该聊天时，角色新消息不播放音效</span></div>
+                                            <Toggle checked={config.muteActiveChat === true} onChange={checked => changeSound(kind, { muteActiveChat: checked })} />
+                                        </div>
+                                        <div className="chat-sound-subtoggle">
+                                            <div className="menu-label-group"><span className="menu-label">多条消息只通知1次</span><span className="menu-desc">同一角色连续多条消息只在第一条时播放</span></div>
+                                            <Toggle checked={config.notifyOncePerBurst === true} onChange={checked => changeSound(kind, { notifyOncePerBurst: checked })} />
+                                        </div>
+                                    </div>
+                                ) : null}
+                            </div>
+                        ) : null}
+                    </div>
+                );
+            })}
+        </div>
+    );
 }
 
 export function GlobalChatInfoSettings({ onBack }: { onBack: () => void }) {
@@ -188,6 +316,8 @@ export function GlobalChatInfoSettings({ onBack }: { onBack: () => void }) {
                         </div>
                     </div>
                 </div>
+                <div className="px-4 pt-3 pb-2 ts-12 font-medium text-[var(--c-text-title)] opacity-80">提示音</div>
+                <ChatSoundsSection />
             </div>
         </PageShell>
     );

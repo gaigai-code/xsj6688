@@ -138,6 +138,7 @@ import { parseAIResponse } from "@/lib/rich-message-parser";
 import { requestBackgroundChatReply, scheduleFollowUp } from "@/lib/follow-up-service";
 import { CHAT_MESSAGE_NOTICE_EVENT, CHAT_OPEN_SESSION_EVENT, type ChatMessageNoticeDetail } from "@/lib/chat-notification-events";
 import { startIncomingCallVibration } from "@/lib/call-vibration";
+import { installChatSoundListener, playChatSoundOnce, setMiniChatSoundSessionId, startChatSoundLoop } from "@/lib/chat-sound";
 import { setMascotContext } from "@/lib/mascot-context";
 import { DESKTOP_WIDGETS_CHANGED_EVENT } from "@/lib/mascot-events";
 import { useWeixinBridge } from "@/lib/use-weixin-bridge";
@@ -1117,10 +1118,15 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
     sessionId: string; type: "voice" | "video"; charName: string; charAvatar: string | null; isGroup?: boolean;
   } | null>(null);
   // 桌面来电横幅显示期间循环振动（开关在聊天主页"语音/视频来电振动"）
+  // + 循环来电铃声（开关与音频在"全局聊天信息 → 提示音"）
   useEffect(() => {
     if (!incomingCall) return;
-    return startIncomingCallVibration();
+    const stopRingtone = startChatSoundLoop("incomingCall");
+    const stopVibration = startIncomingCallVibration();
+    return () => { stopRingtone(); stopVibration(); };
   }, [incomingCall]);
+  // 全局聊天提示音（新消息/发送消息）：监听消息落库事件，按"全局聊天信息"里的配置播放
+  useEffect(() => installChatSoundListener(), []);
   const [chatMessageNotice, setChatMessageNotice] = useState<{
     sessionId: string;
     title: string;
@@ -2456,9 +2462,13 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
   const [showMiniChat, setShowMiniChat] = useState(false);
   const [miniSharePayload, setMiniSharePayload] = useState<ChatSharePayload | null>(null);
   const miniSessionRef = useRef<ChatSession | null>(null);
-  const handleMiniChatClose = useCallback(() => setShowMiniChat(false), []);
+  const handleMiniChatClose = useCallback(() => {
+    setShowMiniChat(false);
+    setMiniChatSoundSessionId(null); // 小窗关闭后该会话不再算"实时聊天"
+  }, []);
   const handleMiniChatSessionChange = useCallback((session: ChatSession | null) => {
     miniSessionRef.current = session;
+    setMiniChatSoundSessionId(session?.id ?? null); // 小窗正打开的会话视为实时聊天
   }, []);
   const handleMiniShareDone = useCallback(() => setMiniSharePayload(null), []);
   const handleMiniChatExpand = useCallback(() => {
@@ -4387,6 +4397,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                       onClick={() => {
                         const call = incomingCall;
                         const callLabel = call.type === "voice" ? "语音通话" : "视频通话";
+                        playChatSoundOnce("hangup"); // 拒接也是结束通话：播挂断音
                         pushChatMessage({
                           sessionId: call.sessionId,
                           role: "user",

@@ -23,8 +23,8 @@ type MascotFeatureKnowledgeRecord = {
 
 const OWNER_FEATURES: MascotFeatureKnowledgeRecord = {
     key: OWNER_FEATURES_KEY,
-    revision: "2026-09-09.4",
-    updatedAt: "2026-09-09T00:00:00.000Z",
+    revision: "2026-09-12.2",
+    updatedAt: "2026-09-12T00:00:00.000Z",
     entries: [
         {
             id: "theme-presets",
@@ -101,6 +101,17 @@ const OWNER_FEATURES: MascotFeatureKnowledgeRecord = {
                 "用户头像、聊天背景、聊天室 CSS 与传入最近图片数量对私聊和群聊通用；全局状态栏只对私聊生效。",
                 "优先级为：单独会话设置 ＞ 全局聊天信息；CSS 额外遵循：单独会话 CSS ＞ 全局聊天室 CSS ＞ 主页外观 CSS。",
                 "全局状态栏和全局聊天室 CSS 可以从与单独会话相同的资源方案中导入。",
+            ],
+        },
+        {
+            id: "chat-sounds",
+            title: "聊天提示音",
+            location: "聊天 → 我的 → 全局聊天信息 → 提示音",
+            facts: [
+                "有 5 种提示音：新消息音效、发送消息音效、来电音效、致电音效、挂断音效；每种开启后会展开音频来源设置，可上传音频文件（存本机，8MB 以内）或填音频 URL，并可试听和清除。",
+                "来电音效在来电等待接听时循环播放（桌面来电横幅和通话屏都会响）；致电音效在呼叫等待接通时循环；挂断音效在通话结束、挂断或拒接时播放一次。",
+                "新消息音效有两个子开关：“实时聊天不通知”（正打开该聊天时角色新消息不响）和“多条消息只通知1次”（同一角色连续多条消息 10 秒内只响一次）。",
+                "提示音对私聊和群聊通用；通话产生的系统消息（如“发起了语音通话”）不会触发新消息音效。",
             ],
         },
         {

@@ -290,7 +290,39 @@ export type ChatAppSettings = {
     maxToolRounds?: number; // 单条消息的工具循环轮数上限（默认 5；每轮=一次模型请求，轮内调用条数不限）
     floatingDockEnabled?: boolean; // 悬浮球贴边半隐藏收拢模式（默认关）
     virtualTimeFloatEnabled?: boolean; // 虚拟时间悬浮球（默认开）
+    /** 全局聊天提示音配置（新消息/发送消息/来电/致电/挂断），在“全局聊天信息”里设置 */
+    globalChatSounds?: ChatSoundsConfig;
 };
+
+// ── 聊天提示音配置 ────────────────────────────────────────────────
+
+export type ChatSoundKind = "newMessage" | "sendMessage" | "incomingCall" | "outgoingCall" | "hangup";
+
+export type ChatSoundConfig = {
+    /** 是否开启该提示音 */
+    enabled?: boolean;
+    /** 音频来源："file"=用户上传的音频文件（IndexedDB 资产 id）；"url"=音频 URL */
+    sourceType?: "file" | "url";
+    /** sourceType="file" 时为资产 id；sourceType="url" 时为音频地址 */
+    value?: string;
+    /** （仅新消息音效）开启后当前正打开该聊天时，角色新消息不播放音效 */
+    muteActiveChat?: boolean;
+    /** （仅新消息音效）开启后同一角色连续多条消息只播一次音效 */
+    notifyOncePerBurst?: boolean;
+};
+
+export type ChatSoundsConfig = {
+    newMessage?: ChatSoundConfig;
+    sendMessage?: ChatSoundConfig;
+    incomingCall?: ChatSoundConfig;
+    outgoingCall?: ChatSoundConfig;
+    hangup?: ChatSoundConfig;
+};
+
+/** 读取某个提示音的配置（未配置时返回空对象） */
+export function getChatSoundConfig(kind: ChatSoundKind): ChatSoundConfig {
+    return loadChatAppSettings().globalChatSounds?.[kind] ?? {};
+}
 
 /** 单条消息工具循环轮数上限（默认 5，夹在 1–20 之间） */
 export function getMaxToolRounds(): number {
@@ -340,6 +372,11 @@ let _activeChatSessionId: string | null = null;
 /** 告诉共享消息层当前真正显示在前台的聊天室，供未读计数统一判断。 */
 export function setActiveChatSessionId(sessionId: string | null): void {
     _activeChatSessionId = sessionId;
+}
+
+/** 当前显示在前台的聊天室 id（没有打开任何聊天室时为 null）。 */
+export function getActiveChatSessionId(): string | null {
+    return _activeChatSessionId;
 }
 
 export function markChatSessionRead(sessionId: string): void {
