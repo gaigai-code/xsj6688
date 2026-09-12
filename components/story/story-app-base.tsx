@@ -749,6 +749,81 @@ export function StoryApp({ onClose }: StoryAppProps) {
     loadMoreRestoreRef.current = null;
   }, [visibleMessages.length]);
 
+  useEffect(() => {
+    messagesLengthRef.current = messages.length;
+  }, [messages.length]);
+
+  // 从剧情设置页返回：把滚动位置恢复到进设置之前停留的地方
+  useLayoutEffect(() => {
+    if (settingsOpen) {
+      settingsOpenSnapshotRef.current = {
+        sessionId: activeSessionIdRef.current,
+        messageCount: messagesLengthRef.current,
+      };
+      return;
+    }
+    const snapshot = settingsOpenSnapshotRef.current;
+    settingsOpenSnapshotRef.current = null;
+    const node = scrollRef.current;
+    if (!node || !snapshot) return;
+    const contentChanged = snapshot.sessionId !== activeSessionIdRef.current
+      || snapshot.messageCount !== messagesLengthRef.current;
+    if (contentChanged) {
+      // 设置期间切换了角色或有新消息：贴到底部看最新内容（贴底 effect 在设置
+      // 打开期间已按旧依赖跑过空转，返回时不会再触发，需要在这里补一次）
+      autoBottomLockRef.current = true;
+      scrollStoryToBottom();
+      const stickTimers = [80, 300, 800].map((delay) => window.setTimeout(() => {
+        if (autoBottomLockRef.current) scrollStoryToBottom();
+      }, delay));
+      return () => stickTimers.forEach((id) => window.clearTimeout(id));
+    }
+    const target = stageScrollMemoRef.current;
+    if (target <= 0) return;
+    autoBottomLockRef.current = false; // 恢复期间不要被贴底逻辑拽走
+    // .story-stage 的 CSS scroll-behavior:smooth 会把 scrollTop 赋值变成
+    // 平滑滚动动画（表现为"返回后看着页面从顶部一路滑下来"，很晕）。
+    // 恢复期间用内联样式强制瞬时定位，全部校正结束后再交还给 CSS。
+    node.style.scrollBehavior = "auto";
+    let done = false;
+    let cancelled = false;
+    const timers: number[] = [];
+    const restoreBehavior = () => {
+      if (done) return;
+      done = true;
+      if (node.style.scrollBehavior === "auto") node.style.scrollBehavior = "";
+    };
+    const apply = () => {
+      if (cancelled) return;
+      const max = Math.max(0, node.scrollHeight - node.clientHeight);
+      node.scrollTop = Math.min(target, max);
+    };
+    apply();
+    // iOS 上刚挂载的容器同帧写 scrollTop 偶发不生效；rAF 回调仍在首帧
+    // 绘制前执行，补写一次确保用户看到的第一帧就是目标位置
+    requestAnimationFrame(apply);
+    // 状态栏/小剧场 iframe 高度异步确定，内容高度随后会变，补几次校正；
+    // 校正期间保持瞬时定位，最后一次校正结束后才还原平滑滚动
+    [80, 300, 800].forEach((delay, index) => timers.push(window.setTimeout(() => {
+      if (cancelled) return;
+      apply();
+      if (index === 2) restoreBehavior();
+    }, delay)));
+    const cancel = () => {
+      if (cancelled) return;
+      cancelled = true;
+      timers.forEach((id) => window.clearTimeout(id));
+      restoreBehavior();
+    };
+    // 用户一动手（触摸/滚轮）就停止校正，避免和手动滚动打架
+    node.addEventListener("pointerdown", cancel, { capture: true, once: true });
+    node.addEventListener("wheel", cancel, { capture: true, once: true, passive: true });
+    return () => {
+      cancel();
+      node.removeEventListener("pointerdown", cancel, { capture: true });
+      node.removeEventListener("wheel", cancel, { capture: true });
+    };
+  }, [settingsOpen, scrollStoryToBottom]);
   const handleOptionSelect = useCallback((text: string) => {
     composerAppendIdRef.current += 1;
     setComposerAppendRequest({ id: composerAppendIdRef.current, text });
