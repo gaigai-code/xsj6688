@@ -2,25 +2,15 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeftIcon, PhotoIcon, PlusIcon, TrashIcon, XMarkIcon } from "@heroicons/react/24/solid";
-import { Maximize2, Play } from "lucide-react";
+import { Maximize2, Play, Download, Upload } from "lucide-react";
 import { Avatar } from "@/components/ui/primitives";
 import { TextExpandModal } from "@/components/ui/modal";
 import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
+import { downloadFile } from "@/lib/download-utils";
 import type { Character } from "@/lib/character-types";
 import type { PresetConfig } from "@/lib/settings-types";
 import type { StoryCharacterSettings, StoryProseStyleScheme, StoryTailScheme, StoryUiPrefs } from "@/lib/story-storage";
-import {
-  STORY_DEFAULT_STATUS_RENDER,
-  STORY_DEFAULT_THEATER_RENDER,
-  STORY_DEFAULT_STATUS_SCHEME as DEFAULT_STATUS,
-  STORY_DEFAULT_STATUS_HTML_SCHEME as DEFAULT_STATUS_HTML,
-  STORY_DEFAULT_THEATER_SCHEME as DEFAULT_THEATER,
-  STORY_DEFAULT_FURRY_THEATER_SCHEME as DEFAULT_FURRY_THEATER,
-  STORY_DEFAULT_QUICK_INPUT_OPTIONS,
-} from "@/lib/story-storage";
-
-// 兼容旧导入（story-app-base 从这里取渲染画布常量）
-export { STORY_DEFAULT_STATUS_RENDER, STORY_DEFAULT_THEATER_RENDER };
+import { STORY_DEFAULT_QUICK_INPUT_OPTIONS } from "@/lib/story-storage";
 
 type StorySettingsPageProps = {
   characters: Character[];
@@ -256,6 +246,75 @@ function SchemeEditor({
     setExpandedField(null);
   };
 
+  // ── 方案导入导出 ──────────────────────────────────────────
+  // 导出：当前类型的全部方案打包成一个 JSON 文件（去掉本机 id，导入时重新生成）；
+  // 导入：识别导出文件 / 方案数组 / 单个方案对象，合并进编辑列表，重名自动加序号。
+  const kind = tag === "story_theater" ? "theater" : "status";
+  const kindLabel = tag === "story_theater" ? "小剧场" : "状态栏";
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  const exportSchemes = async () => {
+    try {
+      const payload = {
+        type: "ai-phone-story-scheme",
+        version: 1,
+        kind,
+        schemes: draftSchemes.map((item) => ({ name: item.name, prompt: item.prompt, renderHtml: item.renderHtml || "", preview: item.preview || "" })),
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      await downloadFile(blob, `剧情${kindLabel}方案.json`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "导出失败，请重试");
+    }
+  };
+
+  const importSchemes = async (file: File) => {
+    try {
+      let parsed: unknown;
+      try { parsed = JSON.parse(await file.text()); } catch { throw new Error("文件不是有效的 JSON，请确认是方案导出文件"); }
+      let incoming: unknown[];
+      if (Array.isArray(parsed)) incoming = parsed;
+      else if (parsed && typeof parsed === "object") {
+        const wrapper = parsed as { kind?: string; schemes?: unknown; name?: unknown; prompt?: unknown; renderHtml?: unknown };
+        // 带 kind 标记的文件导错了编辑器时直接拦下，避免状态栏/小剧场互串
+        if (typeof wrapper.kind === "string" && wrapper.kind !== kind) {
+          throw new Error(`这是「${wrapper.kind === "theater" ? "小剧场" : "状态栏"}」方案文件，请在对应的方案编辑器里导入`);
+        }
+        if (Array.isArray(wrapper.schemes)) incoming = wrapper.schemes;
+        else if (typeof wrapper.name === "string" || typeof wrapper.prompt === "string" || typeof wrapper.renderHtml === "string") incoming = [wrapper];
+        else throw new Error("没有找到有效的方案（方案需要包含名称、输出契约或渲染 HTML）");
+      } else throw new Error("文件内容不是有效的方案数据");
+
+      const sanitize = (raw: unknown): StoryTailScheme | null => {
+        if (!raw || typeof raw !== "object") return null;
+        const item = raw as Record<string, unknown>;
+        const name = typeof item.name === "string" ? item.name.trim().slice(0, 40) : "";
+        const prompt = typeof item.prompt === "string" ? item.prompt : "";
+        const renderHtml = typeof item.renderHtml === "string" ? item.renderHtml : "";
+        const preview = typeof item.preview === "string" ? item.preview : "";
+        if (!name && !prompt.trim() && !renderHtml.trim()) return null;
+        return { id: `${tag}-import-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: name || "导入的方案", prompt, renderHtml, preview };
+      };
+      const imported = incoming.map(sanitize).filter((item): item is StoryTailScheme => item !== null);
+      if (!imported.length) throw new Error("没有找到有效的方案（方案需要包含名称、输出契约或渲染 HTML）");
+
+      const existing = new Set(draftSchemes.map((item) => item.name));
+      const renamed = imported.map((item) => {
+        if (!existing.has(item.name)) { existing.add(item.name); return item; }
+        let n = 2;
+        while (existing.has(`${item.name} ${n}`)) n += 1;
+        const name = `${item.name} ${n}`;
+        existing.add(name);
+        return { ...item, name };
+      });
+      setDraftSchemes((items) => [...items, ...renamed]);
+      setDraftId(renamed[0].id);
+      setPreviewHtml(renamed[0].renderHtml || "");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "导入失败，请重试");
+    }
+  };
+
   return (
     <div className="story-scheme-editor">
       <button type="button" className="story-tail-editor-entry" onClick={openEditor}>
@@ -294,7 +353,15 @@ function SchemeEditor({
                   setDraftId(next[0].id);
                   setPreviewHtml(next[0].renderHtml || "");
                 }}><TrashIcon width={15} /></button>
+                <button type="button" aria-label={`导出${label}`} title={`导出全部${label}为文件`} onClick={() => void exportSchemes()}><Download size={15} /></button>
+                <button type="button" aria-label={`导入${label}`} title={`从文件导入${label}`} onClick={() => fileRef.current?.click()}><Upload size={15} /></button>
               </div>
+              <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void importSchemes(file);
+                event.target.value = "";
+              }} />
+              <p className="story-tail-io-note">导出会把全部{kindLabel}方案存成一个 JSON 文件；导入会把文件里的方案追加进列表（重名自动加序号），点「保存并启用」生效。</p>
               <input className="story-tail-name-input" value={draft.name} onChange={(event) => updateDraft({ name: event.target.value })} placeholder="方案名称" />
 
               <div className="story-tail-field-head"><strong>输出契约</strong><small>整节写进提示词</small></div>
