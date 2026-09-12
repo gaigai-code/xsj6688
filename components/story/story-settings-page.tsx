@@ -9,6 +9,18 @@ import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
 import type { Character } from "@/lib/character-types";
 import type { PresetConfig } from "@/lib/settings-types";
 import type { StoryCharacterSettings, StoryProseStyleScheme, StoryTailScheme, StoryUiPrefs } from "@/lib/story-storage";
+import {
+  STORY_DEFAULT_STATUS_RENDER,
+  STORY_DEFAULT_THEATER_RENDER,
+  STORY_DEFAULT_STATUS_SCHEME as DEFAULT_STATUS,
+  STORY_DEFAULT_STATUS_HTML_SCHEME as DEFAULT_STATUS_HTML,
+  STORY_DEFAULT_THEATER_SCHEME as DEFAULT_THEATER,
+  STORY_DEFAULT_FURRY_THEATER_SCHEME as DEFAULT_FURRY_THEATER,
+  STORY_DEFAULT_QUICK_INPUT_OPTIONS,
+} from "@/lib/story-storage";
+
+// 兼容旧导入（story-app-base 从这里取渲染画布常量）
+export { STORY_DEFAULT_STATUS_RENDER, STORY_DEFAULT_THEATER_RENDER };
 
 type StorySettingsPageProps = {
   characters: Character[];
@@ -323,6 +335,52 @@ function SchemeEditor({
   );
 }
 
+function QuickOptionsEditor({
+  options,
+  onChange,
+}: {
+  options: string[];
+  onChange: (options: string[]) => void;
+}) {
+  const updateOption = (index: number, value: string) => {
+    onChange(options.map((item, i) => (i === index ? value : item)));
+  };
+  const removeOption = (index: number) => {
+    onChange(options.filter((_, i) => i !== index));
+  };
+
+  return (
+    <div className="story-quick-options-editor">
+      <div className="story-settings-subhead">
+        <strong>快捷选项</strong>
+        <button className="story-settings-mini-add" type="button" onClick={() => onChange([...options, ""])}><PlusIcon width={13} />增加</button>
+      </div>
+      <div className="story-quick-options">
+        {options.map((option, index) => (
+          <div key={index} className="story-quick-option-item">
+            <input
+              value={option}
+              maxLength={16}
+              placeholder="符号或短语"
+              onChange={(event) => updateOption(index, event.target.value)}
+            />
+            <button
+              type="button"
+              aria-label="删除快捷选项"
+              disabled={options.length <= 1}
+              onClick={() => removeOption(index)}
+            >
+              <TrashIcon width={13} />
+            </button>
+          </div>
+        ))}
+        {!options.length ? <p className="story-settings-empty">没有选项，点“增加”添加。</p> : null}
+      </div>
+      <p className="story-settings-note">留空的选项不会显示在面板里；删除全部后剧情页会使用默认选项 “” 「」 ，？ ……。</p>
+    </div>
+  );
+}
+
 export function StorySettingsPage(props: StorySettingsPageProps) {
   const normalized = useMemo(() => normalizeSettings(props.settings), [props.settings]);
   const [wallpaperOpen, setWallpaperOpen] = useState(false);
@@ -441,6 +499,44 @@ export function StorySettingsPage(props: StorySettingsPageProps) {
               />
               <div><small>慢</small><small>快</small></div>
             </label>
+          ) : null}
+        </SettingCard>
+
+        <SettingCard title="快捷输入面板" hint="开启后“续写”右侧出现“输入”按钮，点按展开或收起">
+          <ToggleRow
+            title="开启快捷输入面板"
+            detail="输入框上方展开窄长横幅，点按选项即插入输入框，选项过多可左右滑动"
+            checked={Boolean(props.uiPrefs.quickInputEnabled)}
+            onChange={(value) => props.onUiPrefsChange({ ...props.uiPrefs, quickInputEnabled: value })}
+          />
+          {props.uiPrefs.quickInputEnabled ? (
+            <>
+              <div className="story-quick-cursor-row">
+                <span className="story-quick-cursor-label">插入后光标位置</span>
+                <div className="story-quick-cursor-options" role="radiogroup" aria-label="插入后光标位置">
+                  {([["left", "选项左边"], ["middle", "选项中间"], ["right", "选项右边"]] as const).map(([value, label]) => {
+                    const active = (props.uiPrefs.quickInputCursor ?? "middle") === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        data-active={active ? "true" : undefined}
+                        onClick={() => props.onUiPrefsChange({ ...props.uiPrefs, quickInputCursor: value })}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <QuickOptionsEditor
+                options={props.uiPrefs.quickInputOptions ?? [...STORY_DEFAULT_QUICK_INPUT_OPTIONS]}
+                onChange={(quickInputOptions) => props.onUiPrefsChange({ ...props.uiPrefs, quickInputOptions })}
+              />
+              <p className="story-settings-note">点按面板选项时按上面设置的光标位置插入；“选项中间”适合成对引号，光标会落在引号正中。</p>
+            </>
           ) : null}
         </SettingCard>
 

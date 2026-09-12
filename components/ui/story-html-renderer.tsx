@@ -233,9 +233,12 @@ function MarkdownSegment({
         const semanticPlaceholders: Array<{ token: string; html: string }> = [];
         let voiceIndex = 0;
         const voicePrepared = voiceIdPrefix
-            ? content.replace(/「([^」\n]+)」|⌈([^⌈⌋]+)⌋/g, (_whole, standardInner: string | undefined, legacyInner: string | undefined) => {
+            ? content.replace(/「([^」\n]+)」|⌈([^⌈⌋]+)⌋|“([^“”\n]+)”/g, (_whole, standardInner: string | undefined, legacyInner: string | undefined, curlyInner: string | undefined) => {
+                // “……”按剧情格式约定是环境音效（非人声），不配语音按钮；
+                // 其余“……”对白作为兼容识别，同样可点按朗读
+                if (curlyInner != null && /^[…．.。・~～！!？?\s]+$/.test(curlyInner)) return _whole;
                 const parsed = legacyInner == null
-                    ? { text: (standardInner ?? "").trim(), speaker: undefined }
+                    ? { text: (standardInner ?? curlyInner ?? "").trim(), speaker: undefined }
                     : parseLegacyStoryVoiceMarker(legacyInner);
                 if (!parsed.text) return _whole;
                 const id = `${voiceIdPrefix}:${voiceIndex++}`;

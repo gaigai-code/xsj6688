@@ -70,6 +70,7 @@ import {
   type StorySession,
   updateStorySession,
   type StoryCharacterSettings,
+  STORY_DEFAULT_QUICK_INPUT_OPTIONS,
 } from "@/lib/story-storage";
 import { createOrGetSession, hydrateChatStorage, loadChatMessages, loadChatSessions, markChatSessionRead, pushChatMessage } from "@/lib/chat-storage";
 import { flattenCompletionResult, generateChatCompletion } from "@/lib/chat-engine";
@@ -247,6 +248,9 @@ const StoryComposer = memo(function StoryComposer({
   onCurrentReadControl,
   onStop,
   onPlayNext,
+  quickInputEnabled,
+  quickInputOptions,
+  quickInputCursor,
 }: {
   isGenerating: boolean;
   appendRequest: StoryComposerAppendRequest | null;
@@ -263,10 +267,44 @@ const StoryComposer = memo(function StoryComposer({
   onCurrentReadControl: () => void;
   onStop: () => void;
   onPlayNext: () => void;
+  quickInputEnabled: boolean;
+  quickInputOptions: string[];
+  quickInputCursor: "left" | "middle" | "right";
 }) {
   const [draft, setDraft] = useState("");
+  const [quickPanelOpen, setQuickPanelOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const lastAppendIdRef = useRef<number | null>(null);
+  // 记录输入框最近一次选区/光标：点快捷选项时按钮会抢走焦点，
+  // 这时 selectionStart 已经不可靠，用这个 ref 兜底
+  const lastSelectionRef = useRef<{ start: number; end: number } | null>(null);
+
+  const rememberSelection = (el: HTMLTextAreaElement) => {
+    lastSelectionRef.current = { start: el.selectionStart, end: el.selectionEnd };
+  };
+
+  const insertQuickOption = (option: string) => {
+    const sel = lastSelectionRef.current;
+    const start = Math.min(sel ? sel.start : draft.length, draft.length);
+    const end = Math.max(start, Math.min(sel ? sel.end : draft.length, draft.length));
+    const nextDraft = draft.slice(0, start) + option + draft.slice(end);
+    // 光标落点：左边=插入内容之前；中间=成对符号正中（单字符视作末尾）；右边=插入内容之后
+    const caretOffset = quickInputCursor === "left"
+      ? 0
+      : quickInputCursor === "right"
+        ? option.length
+        : Math.ceil(option.length / 2);
+    const caret = start + caretOffset;
+    setDraft(nextDraft);
+    lastSelectionRef.current = { start: caret, end: caret };
+    requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      resizeStoryComposerTextarea(textarea);
+      textarea.focus({ preventScroll: true });
+      textarea.setSelectionRange(caret, caret);
+    });
+  };
 
   useEffect(() => {
     if (!appendRequest || appendRequest.id === lastAppendIdRef.current) return;
@@ -296,7 +334,21 @@ const StoryComposer = memo(function StoryComposer({
   };
 
   return (
-    <div className="story-composer">
+    <div className="story-composer" data-quick-input={quickInputEnabled ? "true" : undefined}>
+      {quickInputEnabled && quickPanelOpen && quickInputOptions.length > 0 ? (
+        <div className="story-quick-panel" role="toolbar" aria-label="快捷输入面板">
+          {quickInputOptions.map((option, index) => (
+            <button
+              key={`${index}-${option}`}
+              type="button"
+              className="story-quick-chip"
+              onClick={() => insertQuickOption(option)}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <button
         type="button"
         className="story-sequence-play"
@@ -320,6 +372,18 @@ const StoryComposer = memo(function StoryComposer({
       >
         续写
       </button>
+      {quickInputEnabled ? (
+        <button
+          type="button"
+          className="story-quick-input-btn"
+          data-open={quickPanelOpen ? "true" : undefined}
+          onClick={() => setQuickPanelOpen((open) => !open)}
+          aria-expanded={quickPanelOpen}
+          aria-label={quickPanelOpen ? "收起快捷输入面板" : "展开快捷输入面板"}
+        >
+          输入
+        </button>
+      ) : null}
       {autoReadingEnabled ? (
         <>
           <button
@@ -350,9 +414,12 @@ const StoryComposer = memo(function StoryComposer({
         ref={textareaRef}
         rows={1}
         value={draft}
-        onFocus={(event) => resizeStoryComposerTextarea(event.currentTarget)}
+        onFocus={(event) => { resizeStoryComposerTextarea(event.currentTarget); rememberSelection(event.currentTarget); }}
+        onSelect={(event) => rememberSelection(event.currentTarget)}
+        onKeyUp={(event) => rememberSelection(event.currentTarget)}
         onChange={(event) => {
           setDraft(event.target.value);
+          rememberSelection(event.currentTarget);
           resizeStoryComposerTextarea(event.currentTarget);
         }}
         onKeyDown={(event) => {
@@ -416,6 +483,13 @@ export function StoryApp({ onClose }: StoryAppProps) {
   const cacheRefreshKeyRef = useRef<string | null>(null);
   const composerAppendIdRef = useRef(0);
   const loadMoreRestoreRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
+  // ── 设置页往返的滚动位置恢复 ──
+  // 设置页会整体卸载 story-stage（提前 return 渲染设置页），返回后是全新 DOM，
+  // scrollTop 归零表现为"一进设置再回来就跳回顶部"。这里在 onScroll 里持续记录
+  // 位置，返回时写回；设置期间切换角色或消息数量变化则放弃恢复、贴到底部。
+  const stageScrollMemoRef = useRef(0);
+  const settingsOpenSnapshotRef = useRef<{ sessionId: string; messageCount: number } | null>(null);
+  const messagesLengthRef = useRef(0);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggeredRef = useRef(false);
   const startPosRef = useRef<{ x: number; y: number } | null>(null);
@@ -638,7 +712,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, [activeSessionId, scrollStoryToBottom]);
+  }, [activeSessionId, scrollStoryToBottom, settingsOpen]);
 
   useEffect(() => {
     const node = scrollRef.current;
@@ -653,7 +727,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
     };
     node.addEventListener("toggle", handleToggle, true);
     return () => node.removeEventListener("toggle", handleToggle, true);
-  }, [activeSessionId]);
+  }, [activeSessionId, settingsOpen]);
 
   const currentPreview = useMemo(() => getStoryPreview(messages), [messages]);
   const visibleMessages = useMemo(() => {
@@ -1374,6 +1448,11 @@ export function StoryApp({ onClose }: StoryAppProps) {
     }
   }
 
+  // 快捷输入面板：设置里没存或清空时回落到默认选项
+  const quickInputOptionsRaw = (uiPrefs.quickInputOptions ?? []).filter((item) => item.trim());
+  const quickInputOptions = quickInputOptionsRaw.length > 0 ? quickInputOptionsRaw : STORY_DEFAULT_QUICK_INPUT_OPTIONS;
+  const quickInputCursor = uiPrefs.quickInputCursor ?? "middle";
+
   if (!ready) return null;
 
   if (characters.length === 0) {
@@ -1508,6 +1587,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
           ref={scrollRef}
           onScroll={(event) => {
             const node = event.currentTarget;
+            stageScrollMemoRef.current = node.scrollTop; // 持续记录，供设置页返回时恢复
             if (performance.now() < foldToggleSuppressUntilRef.current) return;
             const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
             autoBottomLockRef.current = distanceFromBottom <= 12;
@@ -1705,6 +1785,9 @@ export function StoryApp({ onClose }: StoryAppProps) {
         }}
         onStop={handleStopGeneration}
         onPlayNext={() => { void handlePlayNextStoryVoice(); }}
+        quickInputEnabled={Boolean(uiPrefs.quickInputEnabled)}
+        quickInputOptions={quickInputOptions}
+        quickInputCursor={quickInputCursor}
       />
 
       {storySettings.floatingPhoneEnabled ? (

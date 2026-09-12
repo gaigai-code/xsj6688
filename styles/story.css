@@ -851,6 +851,62 @@
         .story-current-read-btn:not([data-expanded="true"]) { width: 26px; max-width: 26px; justify-content: center; padding: 0; }
         .story-current-read-btn[data-expanded="true"] { color: var(--c-story-heading, #1e293b); }
 
+        /* ── 快捷输入面板：“续写”右侧的“输入”按钮 + 输入框上方的横幅面板 ── */
+        .story-quick-input-btn {
+          position: absolute;
+          left: 126px;
+          top: -30px;
+          height: 26px;
+          padding: 0 10px;
+          border: 0;
+          border-radius: 13px;
+          background: var(--c-story-bubble-bg, rgba(255,255,255,.96));
+          color: var(--c-story-sub, #94a3b8);
+          box-shadow: var(--story-paper-shadow-soft);
+          font: 500 calc(10px*var(--app-text-scale,1))/1 var(--story-font);
+        }
+        .story-quick-input-btn[data-open="true"] { color: var(--c-story-heading, #1e293b); }
+        /* 开启快捷输入后，“自动/从当前位置阅读”按钮整体右移，避免重叠 */
+        .story-composer[data-quick-input="true"] .story-auto-read-btn { left: 176px; }
+        .story-composer[data-quick-input="true"] .story-current-read-btn { left: 224px; }
+        /* 窄长横幅面板：位于悬浮按钮行上方，选项过多时左右滑动 */
+        .story-quick-panel {
+          position: absolute;
+          left: 10px;
+          right: 10px;
+          top: -64px;
+          z-index: 2;
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          min-height: 32px;
+          padding: 4px 9px;
+          border-radius: 13px;
+          background: var(--c-story-bubble-bg, rgba(255,255,255,.96));
+          box-shadow: var(--story-paper-shadow-soft);
+          overflow-x: auto;
+          overflow-y: hidden;
+          scrollbar-width: none;
+          -webkit-overflow-scrolling: touch;
+          touch-action: pan-x;
+          overscroll-behavior-x: contain;
+        }
+        .story-quick-panel::-webkit-scrollbar { display: none; }
+        .story-quick-chip {
+          flex: 0 0 auto;
+          height: 24px;
+          min-width: 30px;
+          padding: 0 9px;
+          border: 0;
+          border-radius: 12px;
+          background: var(--c-story-input-inner, rgba(248,250,252,.78));
+          color: var(--c-story-text, #3a3b3c);
+          font: 500 calc(12px*var(--app-text-scale,1))/1 var(--story-font);
+          white-space: nowrap;
+          letter-spacing: .02em;
+        }
+        .story-quick-chip:active { background: var(--c-story-panel-active, rgba(148,163,184,.18)); }
+
         .story-wallpaper-layer {
           position: absolute;
           inset: 0;
@@ -943,6 +999,17 @@
         .story-settings-empty { color: var(--c-story-sub, #94a3b8); font-size: calc(11px*var(--app-text-scale,1)); }
         .story-number-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .story-number-grid label { display: flex; flex-direction: column; gap: 6px; }
+        /* ── 快捷输入面板设置 ── */
+        .story-quick-cursor-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0 2px; flex-wrap: wrap; }
+        .story-quick-cursor-label { font-size: calc(12px*var(--app-text-scale,1)); }
+        .story-quick-cursor-options { display: inline-flex; gap: 5px; padding: 3px; border-radius: 12px; background: rgba(148,163,184,.1); }
+        .story-quick-cursor-options button { border: 0; border-radius: 9px; padding: 6px 10px; background: transparent; color: var(--c-story-sub,#94a3b8); font: 500 calc(10.5px*var(--app-text-scale,1))/1 var(--story-font); }
+        .story-quick-cursor-options button[data-active="true"] { background: var(--c-story-card,#fff); color: var(--c-story-heading,#1e293b); box-shadow: 0 1px 4px rgba(15,23,42,.1); }
+        .story-quick-options { display: flex; flex-wrap: wrap; gap: 8px; }
+        .story-quick-option-item { display: inline-flex; align-items: center; gap: 4px; padding: 4px 5px 4px 9px; border-radius: 12px; background: rgba(148,163,184,.07); }
+        .story-quick-option-item input { width: 88px; border: 0; background: transparent; color: var(--c-story-text,#334155); font: 500 calc(12px*var(--app-text-scale,1))/1.4 var(--story-font); }
+        .story-quick-option-item button { width: 26px; height: 26px; border: 0; border-radius: 9px; background: transparent; color: #ef4444; display: flex; align-items: center; justify-content: center; }
+        .story-quick-option-item button:disabled { opacity: .35; }
         .story-settings-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 8px 0; }
         .story-settings-toggle-row > span { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
         .story-settings-toggle-row strong { font-size: calc(12.5px*var(--app-text-scale,1)); }

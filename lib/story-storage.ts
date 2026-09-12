@@ -15,7 +15,16 @@ export type StoryUiPrefs = {
   autoReadingEnabled?: boolean;
   /** 自动阅读滚动速度，单位为像素/秒。 */
   autoReadingSpeed?: number;
+  /** 是否在“续写”右侧显示快捷输入面板按钮。 */
+  quickInputEnabled?: boolean;
+  /** 快捷输入面板的选项列表，点按即插入到输入框光标处。 */
+  quickInputOptions?: string[];
+  /** 点按选项插入后，光标落在插入内容的左边/中间/右边。 */
+  quickInputCursor?: "left" | "middle" | "right";
 };
+
+/** 快捷输入面板默认选项：成对引号 + 常用标点。 */
+export const STORY_DEFAULT_QUICK_INPUT_OPTIONS = ["“”", "「」", "，", "？", "……"];
 
 export type StoryTailScheme = {
   id: string;
