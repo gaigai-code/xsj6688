@@ -152,19 +152,22 @@ function sanitizeProseStyleScheme(raw: unknown): StoryProseStyleScheme | null {
   if (!raw || typeof raw !== "object") return null;
   const item = raw as Record<string, unknown>;
   if (typeof item.id !== "string" || !item.id.trim()) return null;
-  if (typeof item.prompt !== "string" || !item.prompt.trim()) return null;
-  return { id: item.id.trim(), name: typeof item.name === "string" && item.name.trim() ? item.name.trim() : "未命名文风", prompt: item.prompt };
+  // 新建方案时 prompt 留空是正常状态（等用户填写），不能因此丢弃整个方案。
+  return {
+    id: item.id.trim(),
+    name: typeof item.name === "string" && item.name.trim() ? item.name.trim() : "未命名文风",
+    prompt: typeof item.prompt === "string" ? item.prompt : "",
+  };
 }
 
 function sanitizeTailScheme(raw: unknown): StoryTailScheme | null {
   if (!raw || typeof raw !== "object") return null;
   const item = raw as Record<string, unknown>;
   if (typeof item.id !== "string" || !item.id.trim()) return null;
-  if (typeof item.prompt !== "string" || !item.prompt.trim()) return null;
   return {
     id: item.id.trim(),
     name: typeof item.name === "string" && item.name.trim() ? item.name.trim() : "未命名方案",
-    prompt: item.prompt,
+    prompt: typeof item.prompt === "string" ? item.prompt : "",
     renderHtml: typeof item.renderHtml === "string" ? item.renderHtml : "",
     preview: typeof item.preview === "string" ? item.preview : "",
   };
@@ -176,7 +179,6 @@ function sanitizeQuickInputScheme(raw: unknown): StoryQuickInputScheme | null {
   if (typeof item.id !== "string" || !item.id.trim()) return null;
   if (!Array.isArray(item.options)) return null;
   const options = item.options.filter((option): option is string => typeof option === "string");
-  if (!options.length) return null;
   const cursor = item.cursor === "left" || item.cursor === "right" ? item.cursor : "middle";
   return {
     id: item.id.trim(),
