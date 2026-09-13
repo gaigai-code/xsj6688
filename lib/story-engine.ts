@@ -36,6 +36,9 @@ const STORY_VOICE_FORMAT_PROMPT = `# 剧情正文格式
 - 对白标点唯一格式：无论用户或历史消息里的对话使用什么标点形式（“”、""、『』、''等），你输出的角色对白一律使用「」，不要模仿用户的标点。
 旁白、动作以及用户的话不得写进「」；不要解释这些格式，也不要输出额外的语音清单。`;
 
+const STORY_ILLUSTRATION_PROMPT = `# 剧情配图提示词
+在正文最末尾单独输出一行 <illustration>...</illustration>，内容是适合文生图的一小段画面描述（英文为主，可含少量中文专有名词），描述这段剧情最值得定格的一帧：主体人物/外貌、动作、场景、构图、光线、氛围与画风。不要输出画面描述以外的任何解释，正文里也不要出现 <illustration> 标签。`;
+
 export type StoryGenerationOptions = {
   sessionFoldTags?: string;
   sessionContextExcludedTags?: string;
@@ -60,6 +63,7 @@ export type StoryGenerationResult = {
   rawText: string;
   renderedText: string;
   storySummary: string;
+  illustrationText: string;
   regexSignature: string;
   parserVersion: number;
   promptMessages: LLMMessage[];
@@ -195,6 +199,7 @@ export async function generateStoryCompletion(
     rawText: parsed.rawText,
     renderedText: parsed.renderedText,
     storySummary: parsed.summaryText,
+    illustrationText: parsed.illustrationText,
     regexSignature,
     parserVersion: STORY_PARSER_VERSION,
     promptMessages: llmMessages,
@@ -255,6 +260,9 @@ async function buildStoryPromptMessages(
     messages.push({ role: "system", content: `# 悬浮小手机最近线上聊天\n以下记录用于衔接线上与线下剧情，不要逐字复述：\n${floatingChatContext.trim()}` });
   }
   messages.push({ role: "system", content: STORY_VOICE_FORMAT_PROMPT });
+  if (settings?.illustrationEnabled) {
+    messages.push({ role: "system", content: STORY_ILLUSTRATION_PROMPT });
+  }
   return messages;
 }
 
@@ -306,6 +314,7 @@ export function rebuildStorySessionRenderCache(characterId: string, sessionId: s
       ...message,
       renderedContent: parsed.renderedText,
       storySummary: parsed.summaryText || message.storySummary,
+      illustrationDescription: parsed.illustrationText || message.illustrationDescription,
       regexSignature,
       parserVersion,
     };

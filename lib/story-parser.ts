@@ -2,12 +2,13 @@ import type { RegexConfig } from "./settings-types";
 import { applyAllOutputRegex, applyAllReasoningRegex } from "./llm-prompt-assembler";
 import type { MacroEngine } from "./macro-engine";
 
-export const STORY_PARSER_VERSION = 8;
+export const STORY_PARSER_VERSION = 9;
 
 export type ParsedStoryResponse = {
   rawText: string;
   renderedText: string;
   summaryText: string;
+  illustrationText: string;
 };
 
 function escapeTagName(tag: string): string {
@@ -25,6 +26,12 @@ function extractXmlField(rawText: string, preferredTag?: string): string {
     if (content) return content;
   }
   return "";
+}
+
+/** 提取 <illustration> 标签内容（不 fallback 到 summary）。 */
+function extractIllustrationText(rawText: string): string {
+  const match = rawText.match(/<illustration>([\s\S]*?)<\/illustration>/i);
+  return match?.[1]?.trim() || "";
 }
 
 /** Convert `<tagname>...</tagname>` into renderer fold markers for each configured fold tag. */
@@ -81,6 +88,7 @@ export function parseStoryResponse(
     }
   }
   const summaryText = extractXmlField(textForSummary, options?.summaryTag);
+  const illustrationText = extractIllustrationText(textForSummary);
 
   // Temporarily replace fold-tag blocks with placeholders before output regex,
   // so that <content>/<summary> mentioned inside thinking aren't matched by regex rules
@@ -123,6 +131,7 @@ export function parseStoryResponse(
 
   const folded = applyFoldTags(reasoningProcessed, options?.foldTags);
   const renderedText = folded
+    .replace(/<illustration>[\s\S]*?<\/illustration>/gi, "")
     .replace(/\r\n/g, "\n")
     .replace(/\n{4,}/g, "\n\n\n")
     .trim();
@@ -131,5 +140,6 @@ export function parseStoryResponse(
     rawText: trimmed,
     renderedText,
     summaryText,
+    illustrationText,
   };
 }

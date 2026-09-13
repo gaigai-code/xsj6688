@@ -9,7 +9,7 @@ import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
 import { downloadFile } from "@/lib/download-utils";
 import type { Character } from "@/lib/character-types";
 import type { PresetConfig } from "@/lib/settings-types";
-import type { StoryCharacterSettings, StoryQuickInputScheme, StorySchemeRepository, StoryTailScheme, StoryUiPrefs } from "@/lib/story-storage";
+import type { StoryCharacterSettings, StoryQuickInputScheme, StorySchemeRepository, StorySession, StoryTailScheme, StoryUiPrefs } from "@/lib/story-storage";
 import {
   STORY_DEFAULT_STATUS_RENDER,
   STORY_DEFAULT_THEATER_RENDER,
@@ -43,6 +43,13 @@ type StorySettingsPageProps = {
   onTagsChange: (foldTags: string, contextExcludedTags: string) => void;
   onOpenCss: () => void;
   onRebuildCache: () => void;
+  /** 当前角色的所有剧情存档。 */
+  sessions: StorySession[];
+  activeSessionId: string;
+  onSessionChange: (sessionId: string) => void;
+  onNewSession: () => void;
+  onDeleteSession: (sessionId: string) => void;
+  onSessionRename: (sessionId: string, title: string) => void;
 };
 
 function normalizeSettings(value: StoryCharacterSettings, repo: StorySchemeRepository): StoryCharacterSettings {
@@ -79,6 +86,13 @@ function ToggleRow({ title, detail, checked, onChange }: { title: string; detail
       <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
     </label>
   );
+}
+
+function formatSaveTime(iso: string): string {
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getMonth() + 1}月${date.getDate()}日 ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function SchemeEditor({
@@ -391,6 +405,41 @@ export function StorySettingsPage(props: StorySettingsPageProps) {
           </div>
         </SettingCard>
 
+        <SettingCard title="剧情存档" hint="每个存档是一段独立剧情；「不进记忆库」仅对当前选中的存档生效">
+          <div className="story-save-list">
+            {props.sessions.map((session) => (
+              <div
+                key={session.id}
+                className="story-save-row"
+                data-active={session.id === props.activeSessionId ? "true" : undefined}
+                onClick={() => props.onSessionChange(session.id)}
+              >
+                <span className="story-save-title">{session.title || "未命名存档"}</span>
+                <span className="story-save-time">{formatSaveTime(session.updatedAt)}</span>
+                <button
+                  type="button"
+                  className="story-save-rename"
+                  onClick={(event) => { event.stopPropagation(); const title = window.prompt("存档名称", session.title || ""); if (title !== null) props.onSessionRename(session.id, title); }}
+                  aria-label="重命名存档"
+                >✎</button>
+                <button
+                  type="button"
+                  className="story-save-delete"
+                  onClick={(event) => { event.stopPropagation(); if (window.confirm("删除这个存档？其剧情内容将一并删除。")) props.onDeleteSession(session.id); }}
+                  aria-label="删除存档"
+                >×</button>
+              </div>
+            ))}
+          </div>
+          <button className="story-save-new" type="button" onClick={props.onNewSession}>＋ 新建存档</button>
+          <ToggleRow
+            title="不进记忆库"
+            detail="开启后这段剧情不写入角色主记忆（不投影短期、不写长期），但仍能读到主记忆"
+            checked={Boolean(normalized.excludeFromMemory)}
+            onChange={(value) => patchSettings({ excludeFromMemory: value })}
+          />
+        </SettingCard>
+
         <SettingCard title="预设绑定" hint="选择当前角色剧情使用的预设；预设内容请在「设置 → 预设」中编辑">
           <label className="story-settings-field">
             <span>剧情预设</span>
@@ -487,6 +536,23 @@ export function StorySettingsPage(props: StorySettingsPageProps) {
         <SettingCard title="悬浮小手机" hint="开启后剧情正文右侧出现手机悬浮球">
           <ToggleRow title="启用悬浮小手机" detail="居中打开窄版小手机，显示与当前角色的线上聊天记录" checked={Boolean(normalized.floatingPhoneEnabled)} onChange={(value) => patchSettings({ floatingPhoneEnabled: value })} />
           <ToggleRow title="聊天记录衔接剧情上下文" detail="生成剧情时带入小手机最近的线上消息" checked={Boolean(normalized.floatingPhoneInContext)} onChange={(value) => patchSettings({ floatingPhoneInContext: value })} />
+        </SettingCard>
+
+        <SettingCard title="剧情配图" hint="开启后 AI 生成正文时顺带输出画面描述，消息下方出现可点开的配图占位">
+          <ToggleRow title="开启剧情配图" detail="为每段剧情生成配图占位，点开后再按需生成" checked={Boolean(normalized.illustrationEnabled)} onChange={(value) => patchSettings({ illustrationEnabled: value })} />
+          {normalized.illustrationEnabled ? (
+            <div className="story-settings-illustration">
+              <label className="story-settings-field">
+                <span>默认画风提示词</span>
+                <textarea
+                  value={normalized.illustrationStylePrompt ?? ""}
+                  onChange={(event) => patchSettings({ illustrationStylePrompt: event.target.value })}
+                  placeholder="例如：唯美插画风、暖色调、柔和光影、高清"
+                />
+              </label>
+              <p className="story-settings-note">这里填你的画风/要求，会与 AI 生成的画面描述拼接；点开配图占位生成时仍可临时修改。</p>
+            </div>
+          ) : null}
         </SettingCard>
 
         <SettingCard title="标签与高级设置">

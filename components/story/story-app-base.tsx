@@ -48,6 +48,10 @@ import CSSSchemeBar from "@/components/ui/css-scheme-picker";
 import { Avatar } from "@/components/ui/primitives";
 import { StoryHtmlRenderer, type StoryVoiceSegment } from "@/components/ui/story-html-renderer";
 import { StorySettingsPage, STORY_DEFAULT_STATUS_RENDER, STORY_DEFAULT_THEATER_RENDER } from "@/components/story/story-settings-page";
+import { MediaPreviewOverlay } from "@/components/chat/media-preview-overlay";
+import { GeneratedImageErrorDialog } from "@/components/chat/generated-image-error-dialog";
+import { hasCharacterReferenceImage } from "@/lib/image-generation-service";
+import { generateStoryIllustration } from "@/lib/story-illustration";
 import { loadCharacters } from "@/lib/character-storage";
 import { maybeRunSummarization } from "@/lib/memory-summarizer";
 import { incrementEventCounter } from "@/lib/memory-storage";
@@ -58,10 +62,12 @@ import {
   rebuildStorySessionRenderCache,
 } from "@/lib/story-engine";
 import {
-  createOrGetStorySession,
+  createStorySession,
+  deleteStorySession,
   hydrateStoryStorage,
   loadStoryMessages,
   loadStorySessions,
+  loadStorySessionsForCharacter,
   loadStorySchemeRepository,
   pushStoryMessage,
   resolveActiveQuickInputScheme,
@@ -105,9 +111,20 @@ const activeStoryGenerationRuns = new Map<string, StoryGenerationRun>();
 const storyVoiceCache = new Map<string, Blob>();
 const STORY_VOICE_CACHE_LIMIT = 24;
 const STORY_ACTIVE_CHARACTER_KEY = "story-last-active-character-id";
+const STORY_ACTIVE_SESSION_KEY = "story-last-active-session-id";
 const DEFAULT_AUTO_READING_SPEED = 36;
 
 registerKvMigration(STORY_ACTIVE_CHARACTER_KEY);
+registerKvMigration(STORY_ACTIVE_SESSION_KEY);
+
+function resolveInitialStorySession(characterId: string): StorySession {
+  const sessions = loadStorySessionsForCharacter(characterId);
+  const rememberedSessionId = kvGet(STORY_ACTIVE_SESSION_KEY) || "";
+  const remembered = sessions.find((session) => session.id === rememberedSessionId);
+  if (remembered) return remembered;
+  if (sessions.length > 0) return sessions[0];
+  return createStorySession(characterId);
+}
 
 function cacheStoryVoice(key: string, blob: Blob) {
   if (storyVoiceCache.has(key)) storyVoiceCache.delete(key);
@@ -507,6 +524,14 @@ export function StoryApp({ onClose }: StoryAppProps) {
   const voiceNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const voiceSequenceIndexRef = useRef(0);
   const miniPhoneScrollRef = useRef<HTMLDivElement | null>(null);
+  // ── 剧情配图 ──
+  const [illustratingMessageId, setIllustratingMessageId] = useState<string | null>(null);
+  const [illustrationEditorMessageId, setIllustrationEditorMessageId] = useState<string | null>(null);
+  const [illustrationPromptDraft, setIllustrationPromptDraft] = useState("");
+  const [illustrationUseReference, setIllustrationUseReference] = useState(true);
+  const [illustrationHasRef, setIllustrationHasRef] = useState(false);
+  const [illustrationPreviewMessageId, setIllustrationPreviewMessageId] = useState<string | null>(null);
+  const [illustrationErrorNotice, setIllustrationErrorNotice] = useState<string | null>(null);
 
   const characters = useMemo(() => loadCharacters(), []);
   const userIdentity = useMemo(
@@ -554,6 +579,43 @@ export function StoryApp({ onClose }: StoryAppProps) {
     saveBindingConfig(setCharacterBinding(config, { ...binding, appOverrides }), true);
     setBindingVersion((value) => value + 1);
   }, [activeCharacterId]);
+
+  // ── 多存档 ──
+  const applyActiveStorySession = useCallback((session: StorySession) => {
+    setActiveSessionId(session.id);
+    activeSessionIdRef.current = session.id;
+    kvSet(STORY_ACTIVE_SESSION_KEY, session.id);
+    setVisibleMessageCount(STORY_INITIAL_LOAD);
+    setMessages(loadStoryMessages(session.id));
+    setCustomCssDraft(session.customCSS || "");
+    setFoldTagsDraft(session.foldTags ?? "think,thinking,story_status,story_theater");
+    setContextExcludedTagsDraft(session.contextExcludedTags ?? "think,thinking,story_theater");
+    setStorageVersion((value) => value + 1);
+  }, []);
+
+  const handleSessionChange = useCallback((sessionId: string) => {
+    if (!sessionId || sessionId === activeSessionId) return;
+    const session = loadStorySessions().find((item) => item.id === sessionId);
+    if (session) applyActiveStorySession(session);
+  }, [activeSessionId, applyActiveStorySession]);
+
+  const handleNewSession = useCallback(() => {
+    if (!activeCharacterId) return;
+    applyActiveStorySession(createStorySession(activeCharacterId));
+  }, [activeCharacterId, applyActiveStorySession]);
+
+  const handleDeleteSession = useCallback((sessionId: string) => {
+    if (!activeCharacterId) return;
+    deleteStorySession(sessionId);
+    const remaining = loadStorySessionsForCharacter(activeCharacterId);
+    applyActiveStorySession(remaining.length > 0 ? remaining[0] : createStorySession(activeCharacterId));
+  }, [activeCharacterId, applyActiveStorySession]);
+
+  const handleSessionRename = useCallback((sessionId: string, title: string) => {
+    updateStorySession(sessionId, { title: title.trim() || undefined });
+    setStorageVersion((value) => value + 1);
+  }, []);
+
   const floatingChatSession = useMemo(() => {
     if (!activeCharacterId) return null;
     return loadChatSessions().find((item) => item.contactId === activeCharacterId && !item.isGroup) || null;
@@ -621,7 +683,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
           ? recentCharacterId
           : availableCharacters[0]?.id || "";
       if (initialChar) {
-        const session = createOrGetStorySession(initialChar);
+        const session = resolveInitialStorySession(initialChar);
         setActiveCharacterId(initialChar);
         setActiveSessionId(session.id);
         activeSessionIdRef.current = session.id; // 同步更新，堵住生成完成回调的守卫空窗
@@ -639,7 +701,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
   useEffect(() => {
     if (!activeCharacterId) return;
     kvSet(STORY_ACTIVE_CHARACTER_KEY, activeCharacterId);
-    const session = createOrGetStorySession(activeCharacterId);
+    const session = resolveInitialStorySession(activeCharacterId);
     setActiveSessionId(session.id);
     activeSessionIdRef.current = session.id; // 同步更新，堵住生成完成回调的守卫空窗
     setVisibleMessageCount(STORY_INITIAL_LOAD);
@@ -1121,6 +1183,38 @@ export function StoryApp({ onClose }: StoryAppProps) {
     void playStoryVoice(segment);
   }, [playStoryVoice]);
 
+  // ── 剧情配图 ──
+  const openIllustrationEditor = useCallback((message: StoryMessage) => {
+    const hasRef = hasCharacterReferenceImage(activeCharacterId);
+    setIllustrationHasRef(hasRef);
+    const style = storySettings.illustrationStylePrompt?.trim() || "";
+    const scene = message.illustrationDescription?.trim() || "";
+    setIllustrationPromptDraft([style, scene].filter(Boolean).join("\n\n"));
+    setIllustrationUseReference(hasRef);
+    setIllustrationEditorMessageId(message.id);
+  }, [activeCharacterId, storySettings.illustrationStylePrompt]);
+
+  const handleGenerateIllustration = useCallback(async () => {
+    const messageId = illustrationEditorMessageId;
+    const description = illustrationPromptDraft.trim();
+    if (!messageId || !description) return;
+    setIllustrationEditorMessageId(null);
+    const target = messages.find((message) => message.id === messageId);
+    if (!target) return;
+    setIllustratingMessageId(messageId);
+    try {
+      await generateStoryIllustration(target, activeCharacterId, description, illustrationUseReference);
+    } catch (error) {
+      setIllustrationErrorNotice(error instanceof Error ? error.message : "配图生成失败，请稍后再试");
+    } finally {
+      setIllustratingMessageId(null);
+      if (activeSessionIdRef.current === activeSessionId) {
+        setMessages(loadStoryMessages(activeSessionId));
+      }
+      setStorageVersion((value) => value + 1);
+    }
+  }, [illustrationEditorMessageId, illustrationPromptDraft, illustrationUseReference, messages, activeCharacterId, activeSessionId]);
+
   const collectStoryVoiceSegments = useCallback((): StoryVoiceSegment[] => {
     const stage = scrollRef.current;
     if (!stage) return [];
@@ -1208,6 +1302,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
         rawContent: result.rawText,
         renderedContent: result.renderedText,
         storySummary: result.storySummary,
+        illustrationDescription: result.illustrationText || undefined,
         regexSignature: result.regexSignature,
         parserVersion: result.parserVersion,
       });
@@ -1217,7 +1312,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
       setStorageVersion((value) => value + 1);
 
       const storyCharacter = characters.find((character) => character.id === characterId);
-      if (storyCharacter) {
+      if (storyCharacter && currentSession?.settings?.excludeFromMemory !== true) {
         void (async () => {
           try {
             incrementEventCounter(characterId);
@@ -1479,7 +1574,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
       const assistantMessage = pushStoryMessage({
         sessionId, role: "assistant",
         rawContent: result.rawText, renderedContent: result.renderedText,
-        storySummary: result.storySummary, regexSignature: result.regexSignature, parserVersion: result.parserVersion,
+        storySummary: result.storySummary, illustrationDescription: result.illustrationText || undefined, regexSignature: result.regexSignature, parserVersion: result.parserVersion,
       });
       if (activeSessionIdRef.current === sessionId) setMessages(loadStoryMessages(sessionId));
       setStorageVersion(v => v + 1);
@@ -1557,6 +1652,12 @@ export function StoryApp({ onClose }: StoryAppProps) {
           presets={allPresets}
           boundPresetId={boundPreset?.id ?? ""}
           onPresetBindingChange={handlePresetBindingChange}
+          sessions={loadStorySessionsForCharacter(activeCharacterId)}
+          activeSessionId={activeSessionId}
+          onSessionChange={handleSessionChange}
+          onNewSession={handleNewSession}
+          onDeleteSession={handleDeleteSession}
+          onSessionRename={handleSessionRename}
           foldTags={foldTagsDraft}
           contextExcludedTags={contextExcludedTagsDraft}
           onClose={() => setSettingsOpen(false)}
@@ -1773,6 +1874,36 @@ export function StoryApp({ onClose }: StoryAppProps) {
                             />
                           )}
                         </div>
+                        {message.role === "assistant" && message.illustrationDescription ? (
+                          <div className="story-illustration">
+                            {message.illustrationUrl ? (
+                              <img
+                                className="story-illustration-img"
+                                src={message.illustrationUrl}
+                                alt="剧情配图"
+                                onClick={(event) => { event.stopPropagation(); setIllustrationPreviewMessageId(message.id); }}
+                              />
+                            ) : (
+                              <button
+                                type="button"
+                                className="story-illustration-placeholder"
+                                onClick={(event) => { event.stopPropagation(); openIllustrationEditor(message); }}
+                                disabled={illustratingMessageId === message.id}
+                              >
+                                {illustratingMessageId === message.id ? "图片生成中…" : "🖼 生成配图"}
+                              </button>
+                            )}
+                            {message.illustrationStatus === "failed" && message.illustrationError ? (
+                              <button
+                                type="button"
+                                className="story-illustration-error"
+                                onClick={(event) => { event.stopPropagation(); openIllustrationEditor(message); }}
+                              >
+                                配图生成失败，点此重试
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : null}
                         {activeMessageId === message.id && (() => {
                           const menu = (
                             <div
@@ -1814,6 +1945,66 @@ export function StoryApp({ onClose }: StoryAppProps) {
 
       {voiceNotice ? (
         <div className="story-voice-notice" role="status">{voiceNotice}</div>
+      ) : null}
+
+      {illustrationPreviewMessageId ? (() => {
+        const previewMessage = messages.find((message) => message.id === illustrationPreviewMessageId);
+        if (!previewMessage?.illustrationUrl) return null;
+        return (
+          <MediaPreviewOverlay
+            imageUrl={previewMessage.illustrationUrl}
+            saveFilename={`story-${previewMessage.id}.png`}
+            onRegenerate={() => { setIllustrationPreviewMessageId(null); openIllustrationEditor(previewMessage); }}
+            onClose={() => setIllustrationPreviewMessageId(null)}
+          />
+        );
+      })() : null}
+
+      {illustrationEditorMessageId ? (
+        <div className="story-illustration-editor-overlay" onClick={() => setIllustrationEditorMessageId(null)}>
+          <div className="story-illustration-editor" onClick={(event) => event.stopPropagation()}>
+            <div className="story-illustration-editor-head">
+              <strong>生成配图</strong>
+              <button type="button" onClick={() => setIllustrationEditorMessageId(null)} aria-label="关闭">×</button>
+            </div>
+            <textarea
+              className="story-illustration-editor-textarea"
+              value={illustrationPromptDraft}
+              onChange={(event) => setIllustrationPromptDraft(event.target.value)}
+              placeholder="输入配图提示词（画面描述 + 画风）"
+            />
+            {illustrationHasRef ? (
+              <label className="story-illustration-editor-check">
+                <input
+                  type="checkbox"
+                  checked={illustrationUseReference}
+                  onChange={(event) => setIllustrationUseReference(event.target.checked)}
+                />
+                <span>使用角色参考图（角色出镜）</span>
+              </label>
+            ) : (
+              <div className="story-illustration-editor-hint">该角色未配置参考图</div>
+            )}
+            <div className="story-illustration-editor-actions">
+              <button type="button" onClick={() => setIllustrationEditorMessageId(null)}>取消</button>
+              <button
+                type="button"
+                className="story-illustration-editor-generate"
+                disabled={!illustrationPromptDraft.trim()}
+                onClick={() => { void handleGenerateIllustration(); }}
+              >
+                生成
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {illustrationErrorNotice ? (
+        <GeneratedImageErrorDialog
+          message={illustrationErrorNotice}
+          onClose={() => setIllustrationErrorNotice("")}
+        />
       ) : null}
 
       <StoryComposer

@@ -316,6 +316,12 @@ export type StoryCharacterSettings = {
   theaterSchemes?: StoryTailScheme[];
   floatingPhoneEnabled?: boolean;
   floatingPhoneInContext?: boolean;
+  /** 剧情配图总开关；开启后 AI 在生成正文时顺带输出 <illustration> 画面描述。 */
+  illustrationEnabled?: boolean;
+  /** 默认画风提示词（要求/画风），生成配图时与画面描述拼接，可临时覆盖。 */
+  illustrationStylePrompt?: string;
+  /** 不进记忆库（只不写：不投影短期、不写长期；仍读主记忆）。用于番外/if线等平行剧情。 */
+  excludeFromMemory?: boolean;
 };
 
 export type StorySession = {
@@ -345,6 +351,14 @@ export type StoryMessage = {
   regexSignature?: string;
   parserVersion?: number;
   createdAt: string;
+  // ── 剧情配图 ──
+  illustrationDescription?: string;  // AI 输出的画面描述（占位文字）
+  illustrationPrompt?: string;       // 实际生图用的完整 prompt（记录用）
+  illustrationUrl?: string;          // 生成图 dataUrl（直接展示）
+  illustrationMediaRef?: string;     // 生成图 mediaRef（备份）
+  illustrationStatus?: "pending" | "generated" | "failed";
+  illustrationError?: string;
+  illustrationUseReference?: boolean;
 };
 
 export type StoryProjectionEntry = {
@@ -597,6 +611,10 @@ export function loadStorySessions(): StorySession[] {
   return [..._sessionsCache].sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
 }
 
+export function loadStorySessionsForCharacter(characterId: string): StorySession[] {
+  return loadStorySessions().filter((session) => session.characterId === characterId);
+}
+
 export function loadStoryMessages(sessionId: string): StoryMessage[] {
   return _messagesCache
     .filter((message) => message.sessionId === sessionId)
@@ -623,6 +641,31 @@ export function createOrGetStorySession(characterId: string): StorySession {
   _sessionsCache.unshift(session);
   storyDb.sessions.put(session).catch(() => undefined);
   return session;
+}
+
+/** 总是新建一个剧情存档（不复用已有会话）。 */
+export function createStorySession(characterId: string): StorySession {
+  const count = loadStorySessionsForCharacter(characterId).length;
+  const session: StorySession = {
+    id: generateId("story_sess"),
+    characterId,
+    title: `剧情 ${count + 1}`,
+    updatedAt: getNow().toISOString(),
+    foldTags: "think,thinking,story_status,story_theater",
+    contextExcludedTags: "think,thinking,story_theater",
+    uiPrefs: {},
+  };
+  _sessionsCache.unshift(session);
+  storyDb.sessions.put(session).catch(() => undefined);
+  return session;
+}
+
+/** 删除存档及其全部消息。 */
+export function deleteStorySession(sessionId: string): void {
+  _sessionsCache = _sessionsCache.filter((session) => session.id !== sessionId);
+  storyDb.sessions.delete(sessionId).catch(() => undefined);
+  _messagesCache = _messagesCache.filter((message) => message.sessionId !== sessionId);
+  storyDb.messages.where("sessionId").equals(sessionId).delete().catch(() => undefined);
 }
 
 export function updateStorySession(sessionId: string, updates: Partial<StorySession>): StorySession | null {
@@ -692,6 +735,16 @@ export function editStoryMessage(messageId: string, newRawContent: string): void
     storyDb.messages.put(_messagesCache[idx]).catch(() => undefined);
 }
 
+/** Merge partial updates into a single story message (e.g. illustration fields). */
+export function updateStoryMessage(messageId: string, updates: Partial<StoryMessage>): StoryMessage | null {
+    const idx = _messagesCache.findIndex(m => m.id === messageId);
+    if (idx === -1) return null;
+    const next = { ..._messagesCache[idx], ...updates };
+    _messagesCache[idx] = next;
+    storyDb.messages.put(next).catch(() => undefined);
+    return next;
+}
+
 export function replaceStoryMessages(sessionId: string, messages: StoryMessage[]): void {
   _messagesCache = _messagesCache.filter((message) => message.sessionId !== sessionId);
   _messagesCache.push(...messages);
@@ -715,27 +768,32 @@ export function loadStoryProjectionEntries(
   characterId: string,
   options?: { afterTimestamp?: string; userName?: string; charName?: string }
 ): StoryProjectionEntry[] {
-  const session = _sessionsCache.find((item) => item.characterId === characterId);
-  if (!session) return [];
-  const messages = loadStoryMessages(session.id);
+  const sessions = _sessionsCache.filter((item) => item.characterId === characterId);
   const projections: StoryProjectionEntry[] = [];
 
-  for (let i = 0; i < messages.length; i++) {
-    const current = messages[i];
-    if (current.role !== "assistant") continue;
-    if (options?.afterTimestamp && current.createdAt <= options.afterTimestamp) continue;
+  for (const session of sessions) {
+    // 「不进记忆库」的存档不投影进短期时间线（也不参与长期总结）
+    if (session.settings?.excludeFromMemory) continue;
+    const messages = loadStoryMessages(session.id);
 
-    if (!current.storySummary) continue;
-    const summaryText = compactProjectionText(current.storySummary, 500);
-    if (!summaryText) continue;
+    for (let i = 0; i < messages.length; i++) {
+      const current = messages[i];
+      if (current.role !== "assistant") continue;
+      if (options?.afterTimestamp && current.createdAt <= options.afterTimestamp) continue;
 
-    const ts = formatChatTimestamp(current.createdAt);
-    projections.push({
-      id: `story_projection_${current.id}`,
-      timestamp: current.createdAt,
-      content: `[事件 ${ts}] ${summaryText}`,
-    });
+      if (!current.storySummary) continue;
+      const summaryText = compactProjectionText(current.storySummary, 500);
+      if (!summaryText) continue;
+
+      const ts = formatChatTimestamp(current.createdAt);
+      projections.push({
+        id: `story_projection_${current.id}`,
+        timestamp: current.createdAt,
+        content: `[事件 ${ts}] ${summaryText}`,
+      });
+    }
   }
 
+  projections.sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
   return projections;
 }

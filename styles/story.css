@@ -1539,3 +1539,187 @@
         }
         .story-inline-edit-btn-save { color: var(--c-story-accent, #7c6844); font-weight: 500; }
         .story-inline-edit-btn:disabled { opacity: 0.4; cursor: default; }
+
+        /* === 剧情配图 === */
+        .story-illustration {
+          margin-top: 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .story-illustration-placeholder {
+          align-self: flex-start;
+          padding: 10px 14px;
+          border: 1px dashed color-mix(in srgb, var(--c-story-heading, #1e293b) 28%, transparent);
+          border-radius: 10px;
+          background: color-mix(in srgb, var(--c-story-bubble-bg, #fff) 60%, transparent);
+          color: var(--c-story-sub, #94a3b8);
+          font-size: calc(12px*var(--app-text-scale,1));
+          cursor: pointer;
+          touch-action: manipulation;
+        }
+        .story-illustration-placeholder:disabled { opacity: 0.6; cursor: default; }
+        .story-illustration-img {
+          max-width: 100%;
+          max-height: 340px;
+          object-fit: contain;
+          border-radius: 12px;
+          cursor: pointer;
+          box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+          display: block;
+        }
+        .story-illustration-error {
+          align-self: flex-start;
+          border: none;
+          background: none;
+          padding: 2px 0;
+          color: var(--c-danger, #e74c3c);
+          font-size: calc(11px*var(--app-text-scale,1));
+          cursor: pointer;
+        }
+
+        .story-settings-illustration { margin-top: 4px; }
+
+        /* 配图提示词弹窗 */
+        .story-illustration-editor-overlay {
+          position: absolute;
+          inset: 0;
+          z-index: 320;
+          background: rgba(15, 23, 42, 0.42);
+          display: flex;
+          align-items: flex-end;
+          justify-content: center;
+        }
+        .story-illustration-editor {
+          width: 100%;
+          max-width: 520px;
+          background: var(--c-story-bg-top, #fdfdfd);
+          border-radius: 18px 18px 0 0;
+          padding: 18px 18px calc(18px + env(safe-area-inset-bottom, 0px));
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          color: var(--c-story-text, #334155);
+        }
+        .story-illustration-editor-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .story-illustration-editor-head strong { font-size: calc(15px*var(--app-text-scale,1)); color: var(--c-story-heading, #1e293b); }
+        .story-illustration-editor-head button {
+          border: none; background: none; cursor: pointer;
+          font-size: 22px; line-height: 1; color: var(--c-story-sub, #94a3b8); padding: 0 4px;
+        }
+        .story-illustration-editor-textarea {
+          width: 100%;
+          min-height: 96px;
+          resize: vertical;
+          border: 1px solid var(--c-story-panel-border, rgba(0,0,0,0.08));
+          border-radius: 10px;
+          padding: 10px 12px;
+          font: inherit;
+          font-size: calc(13px*var(--app-text-scale,1));
+          line-height: 1.6;
+          color: var(--c-story-text, #334155);
+          background: var(--c-story-css-box-bg, rgba(248,250,252,0.6));
+          -webkit-user-select: text;
+          user-select: text;
+        }
+        .story-illustration-editor-check {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: calc(12.5px*var(--app-text-scale,1));
+          color: var(--c-story-text, #334155);
+        }
+        .story-illustration-editor-check input { accent-color: var(--c-story-heading, #1e293b); }
+        .story-illustration-editor-hint {
+          font-size: calc(11.5px*var(--app-text-scale,1));
+          color: var(--c-story-sub, #94a3b8);
+        }
+        .story-illustration-editor-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+        }
+        .story-illustration-editor-actions button {
+          padding: 10px 18px;
+          border-radius: 10px;
+          border: none;
+          cursor: pointer;
+          font-size: calc(13px*var(--app-text-scale,1));
+          background: var(--c-story-btn-bg, rgba(255,255,255,0.5));
+          color: var(--c-story-text, #3a3b3c);
+        }
+        .story-illustration-editor-actions .story-illustration-editor-generate {
+          background: var(--c-story-send-bg-active, #0f172a);
+          color: var(--c-story-send-color-active, #fff);
+          font-weight: 500;
+        }
+        .story-illustration-editor-actions button:disabled { opacity: 0.45; cursor: default; }
+
+        /* === 剧情存档 === */
+        .story-save-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin-top: 6px;
+        }
+        .story-save-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 12px;
+          border-radius: 10px;
+          border: 1px solid var(--c-story-panel-border, rgba(0,0,0,0.08));
+          background: var(--c-story-panel, rgba(255,255,255,0.5));
+          cursor: pointer;
+          transition: background 0.15s ease;
+        }
+        .story-save-row[data-active="true"] {
+          border-color: var(--c-story-heading, #1e293b);
+          background: color-mix(in srgb, var(--c-story-heading, #1e293b) 8%, transparent);
+        }
+        .story-save-title {
+          flex: 1;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-size: calc(12.5px*var(--app-text-scale,1));
+          color: var(--c-story-heading, #1e293b);
+          font-weight: 500;
+        }
+        .story-save-time {
+          flex-shrink: 0;
+          font-size: calc(10.5px*var(--app-text-scale,1));
+          color: var(--c-story-sub, #94a3b8);
+        }
+        .story-save-rename,
+        .story-save-delete {
+          flex-shrink: 0;
+          width: 24px;
+          height: 24px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border: none;
+          background: none;
+          cursor: pointer;
+          font-size: 14px;
+          line-height: 1;
+          color: var(--c-story-sub, #94a3b8);
+        }
+        .story-save-delete { color: var(--c-danger, #e74c3c); }
+        .story-save-new {
+          margin-top: 10px;
+          width: 100%;
+          padding: 10px 0;
+          border: 1px dashed color-mix(in srgb, var(--c-story-heading, #1e293b) 28%, transparent);
+          border-radius: 10px;
+          background: none;
+          cursor: pointer;
+          font-size: calc(12.5px*var(--app-text-scale,1));
+          color: var(--c-story-sub, #64748b);
+        }
