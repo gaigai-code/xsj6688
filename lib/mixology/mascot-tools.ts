@@ -162,7 +162,8 @@ function describeMaterial(material: MixMaterial): string {
             field("清洗规则", material.rules.map((r, i) => `${i + 1}. /${r.find}/ → ${r.replace || "（删除）"}（${r.mode === "display" ? "仅显示" : "进上下文"}）`).join("\n"));
             break;
         case "mechanism":
-            field("钩子逻辑", material.script); field("界面代码", material.panelHtml);
+            if (material.trusted) lines.push("运行方式：信任模式（trusted = true，代码直接在对局页面里执行，用 mix.slot / mix.on 登记坑位与钩子）");
+            field(material.trusted ? "代码" : "钩子逻辑", material.script); field("界面代码", material.panelHtml);
             field("摆放", material.layout ? mixPanelLayoutSummary(material.layout) : undefined);
             if (material.dialogueButton?.icon) field("对白按钮", `${material.dialogueButton.icon}${material.dialogueButton.title ? ` ${material.dialogueButton.title}` : ""}`);
             if (material.connectors?.length) {
@@ -202,7 +203,7 @@ export function mixToolReadCraftSpec(args: Record<string, unknown>): ToolResult 
 type FieldSpec = { key: string; kinds: MixMaterialKind[] };
 /** 各 kind 允许写入的正文字段（元信息 name/hook/tags 全类通用，单独处理） */
 const CONTENT_FIELDS: FieldSpec[] = [
-    { key: "content", kinds: ["persona", "preface", "base", "flavor", "glass", "strength"] },
+    { key: "content", kinds: ["persona", "preface", "base", "flavor", "glass", "strength", "checklist"] },
     // 序言可整套覆写各分段标题（对象 {base:"…",character:"…",…}，留空键用默认）
     { key: "sectionTitles", kinds: ["preface"] },
     { key: "userName", kinds: ["persona"] },
@@ -234,8 +235,10 @@ const CONTENT_FIELDS: FieldSpec[] = [
     { key: "layout", kinds: ["mechanism"] },
     // 界面要用的连接器名字（字符串数组）；mix.call 只放行声明过的
     { key: "connectors", kinds: ["mechanism"] },
-    // 对白按钮：{icon, title}，宿主在每句对白后画图标，点击递进界面 onMixDialogue
+    // 对白按钮（旧写法，仍认）：{icon, title}。新写法是界面代码里 window.mix.dialogueButton({icon,title}) 登记
     { key: "dialogueButton", kinds: ["mechanism"] },
+    // 信任模式：代码直接在页面里跑（不进沙盒）
+    { key: "trusted", kinds: ["mechanism"] },
 ];
 
 function normalizeOpenings(value: unknown): string[] | { err: string } {
@@ -325,6 +328,12 @@ function applyContentFields(target: Record<string, unknown>, kind: MixMaterialKi
                 const normalized = normalizeMixPanelLayout(args[spec.key]);
                 if (!normalized) return 'layout 必须是摆放对象，如 {"slot":"inputbar-left","icon":"🎲","autoHeight":true}。';
                 target.layout = normalized;
+                break;
+            }
+            case "trusted": {
+                const v = args[spec.key];
+                if (v !== true && v !== false) return "trusted 只能是 true（信任模式：代码直接在页面里运行）或 false（沙盒）。";
+                if (v) target.trusted = true; else delete target.trusted;
                 break;
             }
             case "dialogueButton": {
@@ -441,7 +450,7 @@ function validateMaterial(material: Record<string, unknown>, kind: MixMaterialKi
         case "character":
             if (!Array.isArray(material.openings) || material.openings.length === 0) return "角色卡至少要有一条开场白（openings），否则开不了局。";
             return null;
-        case "persona": case "preface": case "base": case "flavor": case "glass": case "strength":
+        case "persona": case "preface": case "base": case "flavor": case "glass": case "strength": case "checklist":
             if (!has("content")) return `${MIX_KIND_LABELS[kind]}缺正文（content）。`;
             return null;
         case "ticket":
@@ -458,6 +467,7 @@ function validateMaterial(material: Record<string, unknown>, kind: MixMaterialKi
             if (!Array.isArray(material.rules) || material.rules.length === 0) return "滤网至少要有一条规则（rules）。";
             return null;
         case "mechanism":
+            if (material.trusted === true && !has("script")) return "信任模式的机括必须有 script（代码在页面里执行，用 mix.slot / mix.on 登记坑位与钩子）。";
             if (!has("script") && !has("panelHtml")) return "机括的钩子逻辑（script）与界面代码（panelHtml）至少要写一样。";
             return null;
     }
