@@ -51,7 +51,7 @@ import { StorySettingsPage, STORY_DEFAULT_STATUS_RENDER, STORY_DEFAULT_THEATER_R
 import { loadCharacters } from "@/lib/character-storage";
 import { maybeRunSummarization } from "@/lib/memory-summarizer";
 import { incrementEventCounter } from "@/lib/memory-storage";
-import { loadBindingConfig, loadPresets, resolveBinding, resolveUserIdentity } from "@/lib/settings-storage";
+import { getCharacterBinding, loadBindingConfig, loadPresets, resolveBinding, resolveUserIdentity, saveBindingConfig, setCharacterBinding } from "@/lib/settings-storage";
 import {
   generateStoryCompletion,
   getStoryRenderSignature,
@@ -453,6 +453,8 @@ export function StoryApp({ onClose }: StoryAppProps) {
   const [, setStorageVersion] = useState(0);
   // 公用方案仓库版本：仓库内容变化（设置页/小卷工具写入）时刷新方案相关 UI
   const [schemeRepoVersion, setSchemeRepoVersion] = useState(0);
+  // 绑定配置版本：剧情设置页切换预设绑定时刷新 boundPreset
+  const [bindingVersion, setBindingVersion] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [floatingPhoneOpen, setFloatingPhoneOpen] = useState(false);
   const [floatingChatDraft, setFloatingChatDraft] = useState("");
@@ -542,6 +544,15 @@ export function StoryApp({ onClose }: StoryAppProps) {
     return (slot.presetId ? loadPresets().find((item) => item.id === slot.presetId) : null)
       || loadPresets().find((item) => item.builtIn)
       || null;
+  }, [activeCharacterId, bindingVersion]);
+  const allPresets = useMemo(() => loadPresets(), [bindingVersion]);
+
+  const handlePresetBindingChange = useCallback((presetId: string) => {
+    const config = loadBindingConfig();
+    const binding = getCharacterBinding(config, activeCharacterId);
+    const appOverrides = { ...binding.appOverrides, story: { ...(binding.appOverrides.story || {}), presetId } };
+    saveBindingConfig(setCharacterBinding(config, { ...binding, appOverrides }), true);
+    setBindingVersion((value) => value + 1);
   }, [activeCharacterId]);
   const floatingChatSession = useMemo(() => {
     if (!activeCharacterId) return null;
@@ -1543,7 +1554,9 @@ export function StoryApp({ onClose }: StoryAppProps) {
           uiPrefs={uiPrefs}
           settings={storySettings}
           schemeRepo={schemeRepo}
-          boundPreset={boundPreset}
+          presets={allPresets}
+          boundPresetId={boundPreset?.id ?? ""}
+          onPresetBindingChange={handlePresetBindingChange}
           foldTags={foldTagsDraft}
           contextExcludedTags={contextExcludedTagsDraft}
           onClose={() => setSettingsOpen(false)}

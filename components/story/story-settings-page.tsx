@@ -9,7 +9,7 @@ import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
 import { downloadFile } from "@/lib/download-utils";
 import type { Character } from "@/lib/character-types";
 import type { PresetConfig } from "@/lib/settings-types";
-import type { StoryCharacterSettings, StoryProseStyleScheme, StoryQuickInputScheme, StorySchemeRepository, StoryTailScheme, StoryUiPrefs } from "@/lib/story-storage";
+import type { StoryCharacterSettings, StoryQuickInputScheme, StorySchemeRepository, StoryTailScheme, StoryUiPrefs } from "@/lib/story-storage";
 import {
   STORY_DEFAULT_STATUS_RENDER,
   STORY_DEFAULT_THEATER_RENDER,
@@ -27,7 +27,11 @@ type StorySettingsPageProps = {
   settings: StoryCharacterSettings;
   /** 公用方案仓库：文风/状态栏/小剧场/快捷输入方案的定义（所有角色共享）。 */
   schemeRepo: StorySchemeRepository;
-  boundPreset: PresetConfig | null;
+  /** 全部预设（供“预设绑定”选择）。 */
+  presets: PresetConfig[];
+  /** 当前角色剧情实际生效的预设 id。 */
+  boundPresetId: string;
+  onPresetBindingChange: (presetId: string) => void;
   foldTags: string;
   contextExcludedTags: string;
   onClose: () => void;
@@ -44,14 +48,7 @@ type StorySettingsPageProps = {
 function normalizeSettings(value: StoryCharacterSettings, repo: StorySchemeRepository): StoryCharacterSettings {
   return {
     ...value,
-    presetName: value.presetName || "默认剧情",
-    minChars: value.minChars ?? 800,
-    maxChars: value.maxChars ?? 1500,
-    userPerspective: value.userPerspective || "second",
-    // 启用选择超出仓库范围时回落：旧 id → 按旧文风名匹配 → 首个方案
-    activeProseStyleSchemeId: repo.proseStyleSchemes.some((item) => item.id === value.activeProseStyleSchemeId)
-      ? value.activeProseStyleSchemeId
-      : repo.proseStyleSchemes.find((item) => item.name === value.proseStyle)?.id || repo.proseStyleSchemes[0].id,
+    // 启用选择超出仓库范围时回落首个方案
     activeStatusSchemeId: repo.statusSchemes.some((item) => item.id === value.activeStatusSchemeId)
       ? value.activeStatusSchemeId
       : repo.statusSchemes[0].id,
@@ -59,65 +56,6 @@ function normalizeSettings(value: StoryCharacterSettings, repo: StorySchemeRepos
       ? value.activeTheaterSchemeId
       : repo.theaterSchemes[0].id,
   };
-}
-
-function ProseStyleEditor({
-  schemes,
-  activeId,
-  onChange,
-}: {
-  schemes: StoryProseStyleScheme[];
-  activeId: string;
-  onChange: (schemes: StoryProseStyleScheme[], activeId: string) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const active = schemes.find((item) => item.id === activeId) || schemes[0];
-  const updateActive = (updates: Partial<StoryProseStyleScheme>) => {
-    onChange(schemes.map((item) => item.id === active.id ? { ...item, ...updates } : item), active.id);
-  };
-
-  return (
-    <div className="story-scheme-editor story-prose-style-editor">
-      <div className="story-settings-label-row"><label>文风方案</label><span>所有角色共用，当前角色选择启用哪一套</span></div>
-      <div className="story-settings-inline story-settings-inline-with-save">
-        <select value={active.id} onChange={(event) => onChange(schemes, event.target.value)}>
-          {schemes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-        </select>
-        <button type="button" aria-label="新增文风方案" onClick={() => {
-          const id = `story-style-${Date.now()}`;
-          const next = [...schemes, { id, name: `文风方案 ${schemes.length + 1}`, prompt: "" }];
-          onChange(next, id);
-        }}><PlusIcon width={15} /></button>
-        <button type="button" aria-label="删除文风方案" disabled={schemes.length <= 1} onClick={() => {
-          if (schemes.length <= 1) return;
-          const next = schemes.filter((item) => item.id !== active.id);
-          onChange(next, next[0].id);
-        }}><TrashIcon width={14} /></button>
-        <button type="button" className="story-scheme-save" onClick={() => onChange(schemes, active.id)}>保存</button>
-      </div>
-      <input value={active.name} onChange={(event) => updateActive({ name: event.target.value })} placeholder="文风方案名称" />
-      <div className="story-prompt-textarea-wrap">
-        <textarea
-          value={active.prompt}
-          onChange={(event) => updateActive({ prompt: event.target.value })}
-          placeholder="填写写给 AI 的文风要求，例如叙述节奏、用词和描写重点"
-        />
-        <button type="button" className="story-prompt-expand" onClick={() => setExpanded(true)} aria-label="放大编辑文风提示词" title="放大编辑">
-          <Maximize2 size={14} />
-        </button>
-      </div>
-      <p className="story-settings-note">文风方案保存在公用仓库，所有角色共享同一套方案；修改会同步影响每个角色。</p>
-      {expanded ? (
-        <TextExpandModal
-          title={`${active.name || "文风方案"} · 文风要求`}
-          value={active.prompt}
-          onChange={(prompt) => updateActive({ prompt })}
-          placeholder="填写写给 AI 的正文文风要求。这里不需要填写状态栏、小剧场或其他尾部输出格式。"
-          onClose={() => setExpanded(false)}
-        />
-      ) : null}
-    </div>
-  );
 }
 
 function SettingCard({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
@@ -402,11 +340,6 @@ export function StorySettingsPage(props: StorySettingsPageProps) {
   };
   const [wallpaperOpen, setWallpaperOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
-  const availablePrompts = useMemo(
-    () => (props.boundPreset?.prompts || []).filter((item) => !item.marker && item.content?.trim()),
-    [props.boundPreset],
-  );
-  const selectedPromptIds = normalized.enabledPresetPromptIds ?? availablePrompts.filter((item) => item.enabled).map((item) => item.identifier);
 
   const patchSettings = (updates: Partial<StoryCharacterSettings>) => {
     props.onSettingsChange({ ...normalized, ...updates });
@@ -458,42 +391,14 @@ export function StorySettingsPage(props: StorySettingsPageProps) {
           </div>
         </SettingCard>
 
-        <SettingCard title="剧情预设设置" hint="建议给剧情 APP 单独制作专属预设，避免影响其他应用">
-          <label className="story-settings-field"><span>当前角色专属预设名称</span><input value={normalized.presetName} onChange={(event) => patchSettings({ presetName: event.target.value })} /></label>
-          <label className="story-settings-field"><span>剧情额外要求</span><textarea value={normalized.extraPrompt || ""} onChange={(event) => patchSettings({ extraPrompt: event.target.value })} placeholder="仅在当前角色的剧情生成中使用" /></label>
-          <div className="story-settings-subhead"><strong>专属预设条目</strong><button className="story-settings-mini-add" type="button" onClick={() => patchSettings({ customPromptEntries: [...(normalized.customPromptEntries || []), { id: `story-entry-${Date.now()}`, name: `新条目 ${(normalized.customPromptEntries?.length || 0) + 1}`, content: "", enabled: true }] })}><PlusIcon width={13} />增加</button></div>
-          <div className="story-custom-entry-list">
-            {(normalized.customPromptEntries || []).map((entry) => (
-              <div key={entry.id}>
-                <label className="story-custom-entry-title"><input type="checkbox" checked={entry.enabled} onChange={(event) => patchSettings({ customPromptEntries: normalized.customPromptEntries!.map((item) => item.id === entry.id ? { ...item, enabled: event.target.checked } : item) })} /><input value={entry.name} onChange={(event) => patchSettings({ customPromptEntries: normalized.customPromptEntries!.map((item) => item.id === entry.id ? { ...item, name: event.target.value } : item) })} /><button type="button" onClick={() => patchSettings({ customPromptEntries: normalized.customPromptEntries!.filter((item) => item.id !== entry.id) })}><TrashIcon width={13} /></button></label>
-                <textarea value={entry.content} onChange={(event) => patchSettings({ customPromptEntries: normalized.customPromptEntries!.map((item) => item.id === entry.id ? { ...item, content: event.target.value } : item) })} placeholder="填写这一条剧情专属提示词" />
-              </div>
-            ))}
-            {!normalized.customPromptEntries?.length ? <p className="story-settings-empty">暂无专属条目，可按需要增加；它们只影响当前角色的剧情。</p> : null}
-          </div>
-          <div className="story-settings-subhead"><strong>操作已绑定大预设条目</strong><small>{props.boundPreset?.name || "未绑定大预设"}</small></div>
-          {availablePrompts.length ? (
-            <div className="story-preset-prompt-list">
-              {availablePrompts.map((prompt) => (
-                <label key={prompt.identifier}>
-                  <input type="checkbox" checked={selectedPromptIds.includes(prompt.identifier)} onChange={(event) => {
-                    const next = event.target.checked ? [...selectedPromptIds, prompt.identifier] : selectedPromptIds.filter((id) => id !== prompt.identifier);
-                    patchSettings({ enabledPresetPromptIds: Array.from(new Set(next)) });
-                  }} />
-                  <span><strong>{prompt.name || prompt.identifier}</strong><small>{prompt.content.slice(0, 70)}</small></span>
-                </label>
-              ))}
-            </div>
-          ) : <p className="story-settings-empty">请先在“配置绑定”中给剧情 APP 绑定大预设。</p>}
-        </SettingCard>
-
-        <SettingCard title="生成设置" hint="检查预设条目与生成设置是否重复">
-          <div className="story-number-grid">
-            <label><span>最少字数</span><input type="number" min={50} max={4000} value={normalized.minChars} onChange={(event) => patchSettings({ minChars: Math.max(50, Math.min(4000, Number(event.target.value) || 50)) })} /></label>
-            <label><span>最多字数</span><input type="number" min={50} max={4000} value={normalized.maxChars} onChange={(event) => patchSettings({ maxChars: Math.max(50, Math.min(4000, Number(event.target.value) || 50)) })} /></label>
-          </div>
-          <label className="story-settings-field"><span>用户人称</span><select value={normalized.userPerspective} onChange={(event) => patchSettings({ userPerspective: event.target.value as StoryCharacterSettings["userPerspective"] })}><option value="second">第二人称“你”</option><option value="third">第三人称“TA”</option><option value="username">使用用户名“{props.userName}”</option></select></label>
-          <ProseStyleEditor schemes={repo.proseStyleSchemes} activeId={normalized.activeProseStyleSchemeId!} onChange={(proseStyleSchemes, activeProseStyleSchemeId) => { patchRepo({ proseStyleSchemes }); patchSettings({ activeProseStyleSchemeId }); }} />
+        <SettingCard title="预设绑定" hint="选择当前角色剧情使用的预设；预设内容请在「设置 → 预设」中编辑">
+          <label className="story-settings-field">
+            <span>剧情预设</span>
+            <select value={props.boundPresetId} onChange={(event) => props.onPresetBindingChange(event.target.value)}>
+              {props.presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
+            </select>
+          </label>
+          <p className="story-settings-note">预设里的提示词（人设、正文格式、字数、文风等）直接用于剧情生成；如需调整，去预设管理里改，这里不再单独维护。</p>
         </SettingCard>
 
         <SettingCard title="语音与播放">

@@ -44,39 +44,16 @@ export type StoryGenerationOptions = {
   signal?: AbortSignal;
 };
 
-function selectStoryPresetPrompts(preset: PresetConfig | null, selectedIds?: string[]): PresetConfig | null {
-  if (!preset || selectedIds === undefined) return preset;
-  const allowed = new Set(selectedIds);
-  return {
-    ...preset,
-    prompts: preset.prompts.map((prompt) => prompt.marker ? prompt : { ...prompt, enabled: prompt.enabled && allowed.has(prompt.identifier) }),
-    prompt_order: preset.prompt_order,
-  };
-}
-
-function buildStorySettingsPrompt(settings: StoryCharacterSettings | undefined, userName: string): string {
+function buildStorySettingsPrompt(settings: StoryCharacterSettings | undefined): string {
   if (!settings) return "";
-  const minChars = Math.max(50, Math.min(4000, settings.minChars ?? 800));
-  const maxChars = Math.max(minChars, Math.min(4000, settings.maxChars ?? 1500));
-  const perspective = settings.userPerspective === "third"
-    ? "使用第三人称“TA”称呼用户"
-    : settings.userPerspective === "username"
-      ? `使用用户名“${userName}”称呼用户`
-      : "使用第二人称“你”称呼用户";
-  // 方案定义统一存于公用仓库，角色设置只带“启用哪一个”的 id
-  const { proseStyle, status, theater } = resolveActiveStorySchemes(settings);
-  return [
-    "# 当前剧情 APP 专属生成设置",
-    `正文长度以 ${minChars}—${maxChars} 字为目标；不得为了凑字数重复内容。`,
-    perspective + "。",
-    // 新建方案 prompt 留空时不注入（避免出现“文风方案【xxx】：”这样的空行）
-    proseStyle?.prompt?.trim() ? `正文文风方案【${proseStyle.name}】（仅约束写作风格，不是尾部输出格式）：${proseStyle.prompt.trim()}` : (settings.proseStyle ? `文风：${settings.proseStyle}。` : ""),
-    proseStyle?.prompt?.trim() ? "" : (settings.proseStylePrompt?.trim() || ""),
-    settings.extraPrompt?.trim() || "",
-    ...(settings.customPromptEntries || []).filter((item) => item.enabled && item.content.trim()).map((item) => `专属条目【${item.name || "未命名"}】：${item.content.trim()}`),
+  // 方案定义统一存于公用仓库，角色设置只带“启用哪一个”的 id；
+  // 字数/人称/文风/专属条目等已在预设里体现，这里只注入状态栏与小剧场尾部输出契约。
+  const { status, theater } = resolveActiveStorySchemes(settings);
+  const parts = [
     status?.prompt?.trim() || "",
     theater?.prompt?.trim() || "",
-  ].filter(Boolean).join("\n");
+  ].filter(Boolean);
+  return parts.length ? ["# 当前剧情 APP 专属生成设置", ...parts].join("\n") : "";
 }
 
 export type StoryGenerationResult = {
@@ -196,8 +173,7 @@ export async function generateStoryCompletion(
     throw new ChatEngineError(`Character not found: ${characterId}`);
   }
 
-  const { apiConfig, preset: resolvedPreset, regexes, worldBooks, regexSignature, summaryTag } = resolveStoryConfigs(characterId);
-  const preset = selectStoryPresetPrompts(resolvedPreset, options?.settings?.enabledPresetPromptIds);
+  const { apiConfig, preset, regexes, worldBooks, regexSignature, summaryTag } = resolveStoryConfigs(characterId);
   const effectiveFoldTags = options?.sessionFoldTags?.trim() || DEFAULT_STORY_FOLD_TAGS;
   const effectiveContextExcludedTags = options?.sessionContextExcludedTags?.trim() || DEFAULT_STORY_CONTEXT_EXCLUDED_TAGS;
   const llmMessages = await buildStoryPromptMessages(characterId, history, preset, regexes, worldBooks, effectiveContextExcludedTags, options?.settings, options?.floatingChatContext);
@@ -273,7 +249,7 @@ async function buildStoryPromptMessages(
     recentBlocks,
     unifiedRecentItems,
   });
-  const settingsPrompt = buildStorySettingsPrompt(settings, userIdentity?.name ?? "用户");
+  const settingsPrompt = buildStorySettingsPrompt(settings);
   if (settingsPrompt) messages.push({ role: "system", content: settingsPrompt });
   if (settings?.floatingPhoneInContext && floatingChatContext?.trim()) {
     messages.push({ role: "system", content: `# 悬浮小手机最近线上聊天\n以下记录用于衔接线上与线下剧情，不要逐字复述：\n${floatingChatContext.trim()}` });
