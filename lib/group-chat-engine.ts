@@ -84,11 +84,6 @@ import { throwIfAborted } from "./abort-utils";
 import { buildCharacterTimeContext, buildGroupTimeContext } from "./character-time";
 import { getNow } from "./virtual-time";
 import { getPromptTimestampOptionsForTimeContext } from "./prompt-time";
-import { buildAffectSummary } from "./affect-context";
-import { ingestUserMessage } from "./affect-store";
-import { classifyAffectLabel } from "./affect-classifier";
-import { syncCalendarAffect } from "./affect-calendar";
-import { mergeAffectIntoStateValues } from "./affect-state-values";
 
 function stripGroupFinancialActionsForMetadataRepair(text: string): string {
     return stripStateAndInnerForPrompt(text)
@@ -373,7 +368,7 @@ async function buildGroupChatPromptMessages(
             currentSchedule,
             coreMemories,
             longTermMemories,
-            currentStateValues: mergeAffectIntoStateValues(charId, getLatestCharacterStateValues(charId)),
+            currentStateValues: getLatestCharacterStateValues(charId),
         };
     });
 
@@ -508,19 +503,6 @@ async function buildGroupChatPromptMessages(
         llmMessages.push({
             role: "system",
             content: "本次自定义 APP AI 任务只输出严格 JSON。不要输出 Markdown 代码块、解释文字或聊天富媒体指令。",
-        });
-    }
-    // 情绪：注入群成员当前内心状态
-    const memberAffectLines = members
-        .map((m) => {
-            const summary = buildAffectSummary(m.character.id);
-            return summary ? `${m.character.name}：${summary}` : "";
-        })
-        .filter((line): line is string => Boolean(line));
-    if (memberAffectLines.length > 0) {
-        llmMessages.push({
-            role: "system",
-            content: `\n[群成员当前情绪]\n${memberAffectLines.join("\n")}\n（各角色发言时自然地体现各自情绪，不要逐条照念。）`,
         });
     }
     appendEmptyGenerateGuardMessage(llmMessages, config, history);
@@ -826,20 +808,6 @@ export async function generateGroupChatCompletion(
     });
     const chars = loadCharacters();
     const participantIds = session.participantIds || [];
-
-    // 情绪：日历同步 + 用户最新消息分类摄入到所有参与者（fire-and-forget）
-    for (const charId of participantIds) {
-        syncCalendarAffect("character", charId);
-    }
-    const lastUserMsg = [...history].reverse().find((m) => m.role === "user" && m.content?.trim());
-    if (lastUserMsg && lastUserMsg.content) {
-        const affectCtx = history.slice(-6).filter((m) => m.content?.trim()).map((m) => `${m.role === "user" ? "用户" : "角色"}: ${m.content!.trim()}`);
-        void classifyAffectLabel(config, lastUserMsg.content.trim(), affectCtx).then(({ label, confidence }) => {
-            for (const charId of participantIds) {
-                ingestUserMessage(charId, label, confidence);
-            }
-        });
-    }
 
     const MAX_TOOL_ROUNDS = 5;
     const meta = { characterName: `群聊:${session.groupName || "群聊"}` };
@@ -1178,17 +1146,6 @@ export async function generateGroupOfflineChatCompletion(
             disableTools: true,
         },
     );
-    // 情绪：群聊离线里用户主动发消息也要分类摄入，写事件日志（与在线群聊一致）
-    const participantIds = session.participantIds || [];
-    const lastUserMsg = [...history].reverse().find((m) => m.role === "user" && m.content?.trim());
-    if (lastUserMsg && lastUserMsg.content) {
-        const affectCtx = history.slice(-6).filter((m) => m.content?.trim()).map((m) => `${m.role === "user" ? "用户" : "角色"}: ${m.content!.trim()}`);
-        void classifyAffectLabel(config, lastUserMsg.content.trim(), affectCtx).then(({ label, confidence }) => {
-            for (const charId of participantIds) {
-                ingestUserMessage(charId, label, confidence);
-            }
-        });
-    }
     const summaryTag = preset?.story_summary_tag?.trim() || "summary";
     const thinkingTag = preset?.thinking_tag?.trim() || "thinking";
     const offlineTagEnabled = preset?.offline_thinking_enabled === true;

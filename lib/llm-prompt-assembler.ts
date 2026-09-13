@@ -369,6 +369,18 @@ function getPromptTags(p: Prompt): string[] | null {
     return legacy.length > 0 ? legacy : null;
 }
 
+// ── Helper: 多组合标签（多选大类+小类），命中任一组合即生效 ──
+function getPromptTagCombos(p: Prompt): string[][] {
+    if (Array.isArray(p.tagCombos) && p.tagCombos.length > 0) {
+        const combos = p.tagCombos
+            .map((combo) => (Array.isArray(combo) ? combo.filter((t) => typeof t === "string" && t) : []))
+            .filter((combo) => combo.length > 0);
+        if (combos.length > 0) return combos;
+    }
+    const single = getPromptTags(p);
+    return single && single.length > 0 ? [single] : [];
+}
+
 // ── Helper: check if prompt is enabled (prompt_order overrides prompt.enabled) ──
 function isPromptEnabled(prompt: Prompt, promptOrder?: PromptOrderEntry[]): boolean {
     if (promptOrder) {
@@ -752,10 +764,10 @@ export function assemblePromptPayload(input: AssemblerInput): LLMMessage[] {
 
             if (!isPromptEnabled(p, preset!.prompt_order)) continue;
 
-            // Tag-based filtering: entry's tags must ALL be present in activeTags
+            // Tag-based filtering: entry matches if ANY of its tag combos is fully present in activeTags
             if (filterEnabled && !p.marker) {
-                const entryTags = getPromptTags(p);
-                if (entryTags && !entryTags.every(t => activeTags.includes(t))) continue;
+                const entryCombos = getPromptTagCombos(p);
+                if (entryCombos.length > 0 && !entryCombos.some(combo => combo.every(t => activeTags.includes(t)))) continue;
             }
 
             if (p.marker) {
@@ -2023,8 +2035,8 @@ export function assembleGroupPromptPayload(input: GroupAssemblerInput): LLMMessa
 
             if (!isPromptEnabled(p, preset!.prompt_order)) continue;
 
-            const gcTags = getPromptTags(p);
-            if (gcTags && !gcTags.every(t => activeTags.includes(t))) continue;
+            const gcCombos = getPromptTagCombos(p);
+            if (gcCombos.length > 0 && !gcCombos.some(combo => combo.every(t => activeTags.includes(t)))) continue;
 
             if (p.marker) {
                 // Skip markers (handled in <member> blocks or at group level)

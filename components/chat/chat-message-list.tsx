@@ -288,7 +288,7 @@ export function ChatMessageList({ onCloseApp, activeSession, onSelectSession, on
                             const regularItems = [...sessions]
                             .filter(s => {
                                 if (!(s.isGroup || contactIds.has(s.contactId))) return false;
-                                if (!hasSessionListContent(s.id)) return false;
+                                if (!s.isGroup && !hasSessionListContent(s.id)) return false;
                                 if (listTab === "private" && s.isGroup) return false;
                                 if (listTab === "group" && !s.isGroup) return false;
                                 if (!keyword) return true;

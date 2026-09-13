@@ -18,8 +18,6 @@ import {
     type MascotToolContext,
 } from "./mascot-tools";
 import { isMascotPanelOpen } from "./mascot-state";
-import { classifyAffectLabel } from "./affect-classifier";
-import { ingestUserMessage, MASCOT_OWNER_ID } from "./affect-store";
 import { resolveAuxiliaryApiConfig } from "./settings-storage";
 
 const MASCOT_DB_NAME = "AiPhoneMascotDB";
@@ -503,12 +501,6 @@ export async function appendMascotMessage({
             : session);
     }
     publishMessages(workingMessages);
-
-    // 情绪：分类用户消息并摄入（fire-and-forget，不阻塞回复）
-    const affectCtx = messages.slice(-6).filter((m) => m.text?.trim()).map((m) => `${m.role === "user" ? "用户" : "小卷"}: ${m.text!.trim()}`);
-    void classifyAffectLabel(resolveAuxiliaryApiConfig("mascotApiConfigId"), trimmed, affectCtx).then(({ label, confidence }) => {
-        ingestUserMessage(MASCOT_OWNER_ID, label, confidence);
-    });
 
     return true;
 }

@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Gift, PackageCheck, Search, UserRound, X } from "lucide-react";
+import { Gift, PackageCheck, Plus, Search, Trash2, UserRound, X } from "lucide-react";
 import type { Character } from "@/lib/character-types";
-import type { ShoppingGiftCandidate } from "@/lib/shopping-gift-utils";
+import { loadAllGiftCandidates, loadCustomGiftItems, saveCustomGiftItems, type ShoppingGiftCandidate } from "@/lib/shopping-gift-utils";
 
 type GiftPickerModalProps = {
     gifts: ShoppingGiftCandidate[];
@@ -21,18 +21,48 @@ export function GiftPickerModal({ gifts, isGroup, recipients = [], onSend, onClo
     const [query, setQuery] = useState("");
     const [selectedGiftId, setSelectedGiftId] = useState(gifts[0]?.id ?? "");
     const [selectedRecipientId, setSelectedRecipientId] = useState(recipients[0]?.id ?? "");
+    const [giftList, setGiftList] = useState<ShoppingGiftCandidate[]>(gifts);
+    const [showCustomForm, setShowCustomForm] = useState(false);
+    const [customName, setCustomName] = useState("");
+    const [customIcon, setCustomIcon] = useState("🎁");
+
+    const isCustomGift = (id: string) => id.startsWith("custom::");
+
+    function addCustomGift() {
+        const name = customName.trim();
+        if (!name) return;
+        const items = loadCustomGiftItems();
+        items.push({
+            id: `custom_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            name,
+            previewIcon: customIcon.trim() || "🎁",
+            createdAt: new Date().toISOString(),
+        });
+        saveCustomGiftItems(items);
+        setCustomName("");
+        setCustomIcon("🎁");
+        setShowCustomForm(false);
+        setGiftList(loadAllGiftCandidates());
+    }
+
+    function deleteCustomGift(giftId: string) {
+        const id = giftId.replace(/^custom::/, "");
+        saveCustomGiftItems(loadCustomGiftItems().filter(item => item.id !== id));
+        setGiftList(loadAllGiftCandidates());
+        if (selectedGiftId === giftId) setSelectedGiftId("");
+    }
 
     const filteredGifts = useMemo(() => {
         const normalized = normalizeSearchText(query);
-        if (!normalized) return gifts;
-        return gifts.filter(gift => [
+        if (!normalized) return giftList;
+        return giftList.filter(gift => [
             gift.productName,
             gift.merchantLabel,
             gift.subtitle,
             gift.detail,
             gift.priceLabel,
         ].some(field => field.toLowerCase().includes(normalized)));
-    }, [gifts, query]);
+    }, [giftList, query]);
 
     const selectedGift = filteredGifts.find(gift => gift.id === selectedGiftId) ?? filteredGifts[0] ?? null;
     const selectedRecipient = recipients.find(recipient => recipient.id === selectedRecipientId);
@@ -58,20 +88,55 @@ export function GiftPickerModal({ gifts, isGroup, recipients = [], onSend, onClo
                         </div>
                         <div className="min-w-0">
                             <div className="ts-16 font-semibold">送出礼物</div>
-                            <div className="ts-11 text-[var(--c-icon)] truncate">来自已到货购物订单</div>
+                            <div className="ts-11 text-[var(--c-icon)] truncate">来自购物订单与自定义</div>
                         </div>
                     </div>
-                    <button
-                        type="button"
-                        aria-label="关闭"
-                        onClick={onClose}
-                        className="w-9 h-9 rounded-full bg-[var(--c-input)] flex items-center justify-center"
-                    >
-                        <X size={16} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            aria-label="添加自定义礼物"
+                            onClick={() => setShowCustomForm(v => !v)}
+                            className="w-9 h-9 rounded-full bg-[var(--c-input)] flex items-center justify-center"
+                        >
+                            <Plus size={16} />
+                        </button>
+                        <button
+                            type="button"
+                            aria-label="关闭"
+                            onClick={onClose}
+                            className="w-9 h-9 rounded-full bg-[var(--c-input)] flex items-center justify-center"
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
                 </div>
 
                 <div className="p-4 flex flex-col gap-3 overflow-hidden">
+                    {showCustomForm && (
+                        <div className="flex gap-2 items-center">
+                            <input
+                                value={customIcon}
+                                onChange={e => setCustomIcon(e.target.value)}
+                                placeholder="🎁"
+                                className="w-12 h-11 rounded-2xl bg-[var(--c-input)] text-center ts-16 outline-none border-none shrink-0"
+                            />
+                            <input
+                                value={customName}
+                                onChange={e => setCustomName(e.target.value)}
+                                placeholder="礼物名称（如：一朵玫瑰）"
+                                className="flex-1 min-w-0 h-11 rounded-2xl bg-[var(--c-input)] px-3 ts-13 outline-none border-none text-[var(--c-text)]"
+                            />
+                            <button
+                                type="button"
+                                onClick={addCustomGift}
+                                disabled={!customName.trim()}
+                                className="h-11 px-4 rounded-2xl ts-13 font-semibold text-white disabled:opacity-45 shrink-0"
+                                style={{ background: "var(--c-success)" }}
+                            >
+                                添加
+                            </button>
+                        </div>
+                    )}
                     {isGroup && (
                         <div className="flex flex-col gap-2">
                             <div className="ts-12 text-[var(--c-icon)]">送给</div>
@@ -152,6 +217,16 @@ export function GiftPickerModal({ gifts, isGroup, recipients = [], onSend, onClo
                                             <span className="text-[var(--c-icon)] truncate">{gift.deliveredTimeLabel || "已到货"}</span>
                                         </div>
                                     </div>
+                                    {isCustomGift(gift.id) ? (
+                                        <span
+                                            role="button"
+                                            aria-label="删除自定义礼物"
+                                            onClick={(e) => { e.stopPropagation(); deleteCustomGift(gift.id); }}
+                                            className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-[var(--c-icon)] hover:bg-[var(--c-input)]"
+                                        >
+                                            <Trash2 size={15} />
+                                        </span>
+                                    ) : null}
                                 </button>
                             );
                         })}

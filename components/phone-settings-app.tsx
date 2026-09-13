@@ -113,6 +113,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
     const [promptViewerEnabled, setPromptViewerEnabled] = useState(false);
     const [quickActionEnabled, setQuickActionEnabled] = useState(false);
     const [floatingDockEnabled, setFloatingDockEnabled] = useState(false);
+    const [virtualTimeFloatEnabled, setVirtualTimeFloatEnabled] = useState(true);
     const [floatingDockSheetOpen, setFloatingDockSheetOpen] = useState(false);
     const [keepAlive, setKeepAlive] = useState(false);
     // 角色电脑：施工中弹窗（返回 / 仍要看看）
@@ -239,6 +240,12 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
         onNotice(next ? "已开启快捷操作" : "已关闭快捷操作");
     }, [onNotice]);
 
+    const handleVirtualTimeFloatChange = useCallback((next: boolean) => {
+        setVirtualTimeFloatEnabled(next);
+        saveChatAppSettings({ ...loadChatAppSettings(), virtualTimeFloatEnabled: next });
+        onNotice(next ? "已开启虚拟时间悬浮球" : "已关闭虚拟时间悬浮球");
+    }, [onNotice]);
+
     const handleFloatingDockChange = useCallback((next: boolean) => {
         setFloatingDockEnabled(next);
         saveChatAppSettings({ ...loadChatAppSettings(), floatingDockEnabled: next });
@@ -354,6 +361,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
         setPromptViewerEnabled(settings.promptViewerEnabled === true);
         setQuickActionEnabled(settings.quickActionEnabled === true);
         setFloatingDockEnabled(settings.floatingDockEnabled === true);
+        setVirtualTimeFloatEnabled(settings.virtualTimeFloatEnabled !== false);
         setKeepAlive(loadKeepAlive());
     }, []);
 
@@ -508,6 +516,18 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                                     </span>
                                     <span className="menu-right settings-tools-menu-toggle">
                                         <Toggle checked={quickActionEnabled} onChange={handleQuickActionChange} className="settings-toggle-control" />
+                                    </span>
+                                </div>
+                                <div className="menu-item settings-tools-menu-item">
+                                    <span className="card-icon card-icon-glass">
+                                        <Clock size={20} strokeWidth={1.8} />
+                                    </span>
+                                    <span className="settings-tools-menu-copy">
+                                        <span className="menu-label appearance-menu-item-label">虚拟时间悬浮球</span>
+                                        <span className="menu-desc settings-tools-menu-desc">在桌面显示虚拟时间悬浮球，可随时调整系统时间</span>
+                                    </span>
+                                    <span className="menu-right settings-tools-menu-toggle">
+                                        <Toggle checked={virtualTimeFloatEnabled} onChange={handleVirtualTimeFloatChange} className="settings-toggle-control" />
                                     </span>
                                 </div>
                             </div>

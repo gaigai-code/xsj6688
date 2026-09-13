@@ -63,6 +63,8 @@ export type Prompt = {
     followUpOnly?: boolean;
     /** Multi-tag filtering. Entry is included only when ALL its tags are present in the active appTags. Empty/undefined = universal. */
     tags?: string[];
+    /** 多组合标签（多选）：每个组合是一组 tags（大类+小类），命中任一组合即生效。有值优先于 tags。 */
+    tagCombos?: string[][];
 };
 
 export type PresetConfig = SettingItemMeta & {

@@ -65,7 +65,7 @@ import { formatChatUiTime } from "@/lib/chat-time";
 import { parseActionTags } from "@/lib/action-parser";
 import { kvGet, kvSet, kvRemove } from "@/lib/kv-db";
 import { creditWalletBalance, payWithWalletBalance } from "@/lib/wallet-storage";
-import { loadDeliveredShoppingGifts, type ShoppingGiftCandidate } from "@/lib/shopping-gift-utils";
+import { loadAllGiftCandidates, type ShoppingGiftCandidate } from "@/lib/shopping-gift-utils";
 import { settleShoppingPaymentRequest } from "@/lib/shopping-payment-request";
 import type { RegexConfig } from "@/lib/settings-types";
 import { MacroEngine } from "@/lib/macro-engine";
@@ -1718,9 +1718,22 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     }, []);
 
     const availableShoppingGifts = useMemo(
-        () => loadDeliveredShoppingGifts(),
+        () => loadAllGiftCandidates(),
         [messages, richModal],
     );
+
+    // 线下后台生成：保存后刷新线下记录并复位生成态（覆盖「退出页面期间生成完成」的场景）
+    useEffect(() => {
+        const onSaved = (e: Event) => {
+            const sid = (e as CustomEvent).detail?.sessionId;
+            if (sid && sid === session.id) {
+                setOfflineTurns(loadChatOfflineTurns(session.id));
+                setIsOfflineGenerating(false);
+            }
+        };
+        window.addEventListener("offline-turn-saved", onSaved);
+        return () => window.removeEventListener("offline-turn-saved", onSaved);
+    }, [session.id]);
 
     useEffect(() => {
         setUserIdentity(resolveUserIdentity(session.contactId, "chat"));
@@ -1738,6 +1751,10 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         setEditingOfflineTarget(null);
         setEditingOfflineContent("");
         setOfflineTurns(loadChatOfflineTurns(session.id));
+        // 线下后台生成恢复：重进页面时若仍在生成，恢复「生成中」状态
+        if (activeOfflineGenerationRuns.has(session.id)) {
+            setIsOfflineGenerating(true);
+        }
 
         // Prewarm sticker cache for all relevant characters, then load messages
         const allMsgs = loadChatMessages(session.id);
@@ -4212,6 +4229,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                     thinkingTag: result.thinkingTag,
                 });
                 setOfflineTurns(prev => [...prev, saved]);
+                window.dispatchEvent(new CustomEvent("offline-turn-saved", { detail: { sessionId: session.id } }));
             } catch (error: any) {
                 if (!isCurrentOfflineRun() || isAbortLikeError(error)) return;
                 offlineTextInputRef.current?.setText(currentText);
@@ -4362,6 +4380,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 thinkingTag: result.thinkingTag,
             });
             setOfflineTurns([...baseTurns, saved]);
+            window.dispatchEvent(new CustomEvent("offline-turn-saved", { detail: { sessionId: session.id } }));
         } catch (error: any) {
             if (!isCurrentOfflineRun() || isAbortLikeError(error)) return;
             offlineTextInputRef.current?.setText(retryInput);

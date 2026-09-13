@@ -1,6 +1,7 @@
 import { loadChatMessages, loadChatSessions } from "./chat-storage";
 import { loadShoppingState } from "./shopping-storage";
 import { getNowMs } from "./virtual-time";
+import { kvGet, kvSet } from "./kv-db";
 import type { ShoppingOrder } from "./shopping-types";
 import type { CheckPhoneShoppingTone } from "./checkphone-config";
 
@@ -106,4 +107,57 @@ export function loadDeliveredShoppingGifts(options: LoadShoppingGiftOptions = {}
     if (timeDiff !== 0) return timeDiff;
     return b.orderId.localeCompare(a.orderId);
   });
+}
+
+// ── 自定义礼物（手动配置来源，可反复送，不消耗） ──
+export type CustomGiftItem = {
+  id: string;
+  name: string;
+  previewIcon: string;
+  priceLabel?: string;
+  createdAt?: string;
+};
+
+const CUSTOM_GIFTS_KEY = "ai_phone_custom_gifts_v1";
+
+export function loadCustomGiftItems(): CustomGiftItem[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = kvGet(CUSTOM_GIFTS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((g): g is CustomGiftItem => Boolean(g && typeof g.name === "string" && g.name.trim()))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomGiftItems(items: CustomGiftItem[]): void {
+  if (typeof window === "undefined") return;
+  kvSet(CUSTOM_GIFTS_KEY, JSON.stringify(items));
+}
+
+export function loadCustomGiftCandidates(): ShoppingGiftCandidate[] {
+  return loadCustomGiftItems().map((item) => ({
+    id: `custom::${item.id}`,
+    orderId: "custom",
+    itemId: item.id,
+    unitIndex: 0,
+    productName: item.name,
+    merchantLabel: "自定义礼物",
+    priceLabel: item.priceLabel || "自定义",
+    quantityLabel: "x 1",
+    subtitle: "",
+    detail: "",
+    previewIcon: item.previewIcon,
+    tone: "ivory" as CheckPhoneShoppingTone,
+    deliveredTimeLabel: "自定义",
+    orderTimeLabel: item.createdAt || "",
+  }));
+}
+
+/** 合并「已到货订单礼物」与「自定义礼物」，供礼物选择器统一展示 */
+export function loadAllGiftCandidates(options: LoadShoppingGiftOptions = {}): ShoppingGiftCandidate[] {
+  return [...loadDeliveredShoppingGifts(options), ...loadCustomGiftCandidates()];
 }

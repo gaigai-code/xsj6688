@@ -513,7 +513,8 @@ function CharListView({
     ?? worldGroups.find(g => g.id === DEFAULT_CHARACTER_WORLD_ID)
     ?? worldGroups[0];
   const memberSet = new Set(currentGroup?.memberIds ?? []);
-  const worldCharacters = characters.filter(c => memberSet.has(c.id));
+  // 角色库里有、但不在任何世界卷宗里的角色（如删除/建角时序脱钩残留）也要兜底显示，否则「存在但列表找不到、也没法再删」
+  const worldCharacters = characters.filter(c => memberSet.has(c.id) || !worldGroups.some(g => g.memberIds.includes(c.id)));
   const worldBgItems = (bgItems || []).filter(item => (item.worldId ?? DEFAULT_CHARACTER_WORLD_ID) === currentWorldId);
   const memberCounts = new Map(worldGroups.map(g => [g.id, g.memberIds.length]));
   const nameById = new Map(characters.map(c => [c.id, c.name || "未命名"]));

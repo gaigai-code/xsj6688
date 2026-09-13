@@ -1,4 +1,4 @@
-import { getNow } from "./virtual-time";
+import { getNow, getNowMs } from "./virtual-time";
 // lib/moments-storage.ts
 // KV-DB persistence for Moments (朋友圈) feature.
 
@@ -400,7 +400,7 @@ export function loadMomentsLastSeen(): number {
 
 export function saveMomentsLastSeen(): void {
     if (typeof window === "undefined") return;
-    kvSet(MOMENTS_LAST_SEEN_KEY, String(Date.now()));
+    kvSet(MOMENTS_LAST_SEEN_KEY, String(getNowMs()));
 }
 
 /** Get all comments/replies targeting the user that are newer than lastSeen. */

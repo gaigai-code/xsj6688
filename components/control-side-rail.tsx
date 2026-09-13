@@ -1,25 +1,32 @@
 "use client";
 
-// 控制浮球：把虚拟时间 / 情绪调试两个面板收进一个低调的玻璃浮球。
-// 浮球可拖动，无文字；点开在浮球上方弹出一个小浮层（参考小卷悬浮球），不占满半屏。
+// 虚拟时间悬浮球：一个低调的玻璃浮球，点开在浮球上方弹出虚拟时间面板。
+// 浮球可拖动，无文字；不占满半屏。
 
-import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
-import { Clock, Heart, SlidersHorizontal, X } from "lucide-react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { Clock, X } from "lucide-react";
 import { VirtualTimePanel } from "./virtual-time-panel";
-import { AffectPanel } from "./affect-panel";
-
-type Tab = "time" | "affect";
+import { CHAT_APP_SETTINGS_UPDATED_EVENT, loadChatAppSettings } from "@/lib/chat-storage";
 
 const BALL_SIZE = 40;
 const DEFAULT_RIGHT = 12;
 const DEFAULT_BOTTOM = 164;
 
 export function ControlSideRail() {
+  const [enabled, setEnabled] = useState(true);
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<Tab>("time");
   const [floatPos, setFloatPos] = useState<{ left: number; top: number } | null>(null);
   const dragState = useRef<{ startX: number; startY: number; startLeft: number; startTop: number; moved: boolean } | null>(null);
   const floatRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    const sync = () => setEnabled(loadChatAppSettings().virtualTimeFloatEnabled !== false);
+    sync();
+    window.addEventListener(CHAT_APP_SETTINGS_UPDATED_EVENT, sync);
+    return () => window.removeEventListener(CHAT_APP_SETTINGS_UPDATED_EVENT, sync);
+  }, []);
+
+  if (!enabled) return null;
 
   function handlePointerDown(e: ReactPointerEvent<HTMLButtonElement>) {
     const el = floatRef.current;
@@ -90,7 +97,7 @@ export function ControlSideRail() {
       <button
         ref={floatRef}
         type="button"
-        aria-label="控制面板"
+        aria-label="虚拟时间"
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -108,7 +115,7 @@ export function ControlSideRail() {
           boxShadow: "0 2px 10px rgba(0,0,0,0.18)",
         }}
       >
-        <SlidersHorizontal size={18} />
+        <Clock size={18} />
       </button>
 
       {/* 玻璃小浮层 */}
@@ -117,7 +124,7 @@ export function ControlSideRail() {
         return (
           <div
             role="dialog"
-            aria-label="控制面板"
+            aria-label="虚拟时间"
             onClick={(e) => e.stopPropagation()}
             style={{
               position: "absolute", pointerEvents: "auto",
@@ -138,17 +145,11 @@ export function ControlSideRail() {
               }
             `}</style>
 
-            {/* tab + 关闭 */}
+            {/* 标题 + 关闭 */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button type="button" onClick={() => setTab("time")} style={tabStyle(tab === "time")}>
-                  <Clock size={15} style={{ marginRight: 4 }} />
-                  时间
-                </button>
-                <button type="button" onClick={() => setTab("affect")} style={tabStyle(tab === "affect")}>
-                  <Heart size={15} style={{ marginRight: 4 }} />
-                  情绪
-                </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#e5e7eb" }}>
+                <Clock size={15} style={{ marginRight: 2 }} />
+                虚拟时间
               </div>
               <button
                 type="button"
@@ -160,23 +161,10 @@ export function ControlSideRail() {
               </button>
             </div>
 
-            {tab === "time" ? <VirtualTimePanel /> : <AffectPanel />}
+            <VirtualTimePanel />
           </div>
         );
       })() : null}
     </div>
   );
 }
-
-const tabStyle = (active: boolean): CSSProperties => ({
-  display: "flex",
-  alignItems: "center",
-  padding: "7px 11px",
-  borderRadius: 10,
-  border: "none",
-  cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 600,
-  background: active ? "rgba(124,58,237,0.55)" : "rgba(255,255,255,0.08)",
-  color: active ? "#fff" : "#cbd5e1",
-});

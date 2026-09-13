@@ -259,13 +259,36 @@ export function resolveContentTagLabel(tag: string): string {
         ?? tag;
 }
 
-export function getPromptTags(prompt: Pick<Prompt, "tags" | "featureTag" | "followUpOnly">): string[] {
+export function getPromptTags(prompt: Pick<Prompt, "tags" | "tagCombos" | "featureTag" | "followUpOnly">): string[] {
     const normalizedTags = normalizePromptScopeTags(prompt.tags);
     if (normalizedTags) return normalizedTags;
+    // 多选条目：tags 为空时回退到第一个组合，供展示与反向匹配使用
+    if (Array.isArray(prompt.tagCombos) && prompt.tagCombos.length > 0) {
+        const first = normalizePromptScopeTags(prompt.tagCombos[0]);
+        if (first) return first;
+    }
     const tags: string[] = [];
     if (prompt.featureTag) tags.push(prompt.featureTag);
     if (prompt.followUpOnly) tags.push("followup");
     return tags;
+}
+
+/** 返回条目的所有「大类+小类」组合（多选）。空数组 = 通用（不限定）。 */
+export function getPromptTagCombos(prompt: Pick<Prompt, "tags" | "tagCombos" | "featureTag" | "followUpOnly">): string[][] {
+    if (Array.isArray(prompt.tagCombos) && prompt.tagCombos.length > 0) {
+        const combos = prompt.tagCombos
+            .map((combo) => normalizePromptScopeTags(combo))
+            .filter((combo): combo is string[] => Boolean(combo));
+        if (combos.length > 0) return combos;
+    }
+    const single = getPromptTags(prompt);
+    return single.length > 0 ? [single] : [];
+}
+
+/** 多组合命中判断：命中任一组合（组合内所有 tag 都要在 activeTags 里）即生效。 */
+export function matchesActiveTagCombos(combos: string[][], activeTags: string[]): boolean {
+    if (combos.length === 0) return true;
+    return combos.some((combo) => combo.every((tag) => activeTags.includes(tag)));
 }
 
 export function getTagProfileId(tags: string[], profiles: TagProfile[] = CONTENT_SCOPE_TAG_PROFILES): string {

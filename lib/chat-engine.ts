@@ -74,11 +74,6 @@ import { buildCalendarScheduleMarker, getCurrentCalendarScheduleForPrompt } from
 import { getWeekStartIso } from "./calendar-utils";
 import { buildCharacterTimeContext } from "./character-time";
 import { getNow } from "./virtual-time";
-import { buildAffectContext } from "./affect-context";
-import { ingestUserMessage } from "./affect-store";
-import { classifyAffectLabel } from "./affect-classifier";
-import { syncCalendarAffect } from "./affect-calendar";
-import { mergeAffectIntoStateValues } from "./affect-state-values";
 import { getPromptTimestampOptionsForTimeContext } from "./prompt-time";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { pushApiLog } from "./api-log-store";
@@ -1781,7 +1776,6 @@ export async function buildChatPromptMessages(
     regexes: RegexConfig[];
     userIdentity: ReturnType<typeof resolveUserIdentity>;
     toolsEnabled: boolean;
-    affectScene: string;
 }> {
     const chars = loadCharacters();
     const character = chars.find(c => c.id === session.contactId);
@@ -1856,20 +1850,6 @@ export async function buildChatPromptMessages(
         excludeOfflineSessionId: options?.excludeOfflineSessionId,
         promptTimestampOptions,
     });
-    // 情绪分类场景：角色性格 + 最近剧情事件，供情绪分类器结合上下文判断（不属于回复 prompt）
-    const personaText = [character.personality, character.persona]
-        .map((s) => (s ? String(s).trim() : ""))
-        .filter(Boolean)
-        .join("；");
-    const plotEvents = unifiedRecentItems
-        .filter((u) => u.kind === "event")
-        .map((u) => (u.kind === "event" ? u.text : ""))
-        .filter(Boolean)
-        .slice(-5);
-    const affectScene = [
-        personaText ? `角色性格：${personaText.slice(0, 200)}` : "",
-        plotEvents.length ? `最近剧情：\n${plotEvents.join("\n")}` : "",
-    ].filter(Boolean).join("\n");
     const promptHistory = applyVisionImagePromptLimit(
         truncatedHistory.map(msg => ({ ...msg })),
         session.visionImagePromptLimit,
@@ -1924,7 +1904,7 @@ export async function buildChatPromptMessages(
         userIdentity,
         appId: resolvedAppId,
         appTags: effectiveAppTags,
-        initialStateValues: mergeAffectIntoStateValues(character.id, getLatestCharacterStateValues(character.id)),
+        initialStateValues: getLatestCharacterStateValues(character.id),
         followUpCount: options?.followUpCount,
         followUpDelay: options?.followUpDelay,
         timedWakeElapsedMinutes: options?.timedWakeElapsedMinutes,
@@ -1971,7 +1951,7 @@ export async function buildChatPromptMessages(
     }
     appendEmptyGenerateGuardMessage(llmMessages, config, historyForPrompt);
 
-    return { llmMessages, character, config, preset, regexes, userIdentity, toolsEnabled, affectScene };
+    return { llmMessages, character, config, preset, regexes, userIdentity, toolsEnabled };
 }
 
 export type ChatCompletionCallbacks = {
@@ -2025,7 +2005,7 @@ export async function generateOfflineChatCompletion(
     history: ChatMessage[],
     options?: { signal?: AbortSignal; onStreamDelta?: (delta: string) => void },
 ): Promise<OfflineChatCompletionResult> {
-    const { llmMessages, character, config, preset, regexes, userIdentity, affectScene } = await buildChatPromptMessages(
+    const { llmMessages, character, config, preset, regexes, userIdentity } = await buildChatPromptMessages(
         session,
         history,
         {
@@ -2033,14 +2013,6 @@ export async function generateOfflineChatCompletion(
             excludeOfflineSessionId: session.id,
         },
     );
-    // 情绪：离线聊天里用户主动发消息也要分类摄入，写事件日志（与在线聊天一致）
-    const lastUserMsg = [...history].reverse().find((m) => m.role === "user" && m.content?.trim());
-    if (lastUserMsg && lastUserMsg.content) {
-        const affectCtx = history.slice(-6).filter((m) => m.content?.trim()).map((m) => `${m.role === "user" ? "用户" : "角色"}: ${m.content!.trim()}`);
-        void classifyAffectLabel(config, lastUserMsg.content.trim(), affectCtx, affectScene).then(({ label, confidence }) => {
-            ingestUserMessage(character.id, label, confidence);
-        });
-    }
     const summaryTag = preset?.story_summary_tag?.trim() || "summary";
     const thinkingTag = preset?.thinking_tag?.trim() || "thinking";
     const offlineTagEnabled = preset?.offline_thinking_enabled === true;
@@ -2544,20 +2516,8 @@ async function generateChatCompletionCore(
     callbacks: ChatCompletionCallbacks | undefined,
     bailoutRef: ReplyBailoutRef,
 ): Promise<ChatCompletionResult> {
-    const { llmMessages, character, config, preset, regexes, userIdentity, toolsEnabled, affectScene } = await buildChatPromptMessages(session, history, options);
+    const { llmMessages, character, config, preset, regexes, userIdentity, toolsEnabled } = await buildChatPromptMessages(session, history, options);
     const requestAppTags = mergeAppTags(options?.appTags, options?.promptProfile?.appTags, options?.appId ?? "chat");
-
-    // 情绪：注入 [内心状态] + 分类用户最新消息并摄入（fire-and-forget，不阻塞回复）
-    const affectContext = buildAffectContext(character.id);
-    if (affectContext) llmMessages.push({ role: "system", content: affectContext });
-    syncCalendarAffect("character", character.id);
-    const lastUserMsg = [...history].reverse().find((m) => m.role === "user" && m.content?.trim());
-    if (lastUserMsg && lastUserMsg.content) {
-        const affectCtx = history.slice(-6).filter((m) => m.content?.trim()).map((m) => `${m.role === "user" ? "用户" : "角色"}: ${m.content!.trim()}`);
-        void classifyAffectLabel(config, lastUserMsg.content.trim(), affectCtx, affectScene).then(({ label, confidence }) => {
-            ingestUserMessage(character.id, label, confidence);
-        });
-    }
 
     // 追问有自己的排期时兜底（followup:key），这里只为普通回复生成挂单。
     // 不 await：挂单失败或慢都不拖累本地生成；生成先结束则通过 closed 标记补撤销。

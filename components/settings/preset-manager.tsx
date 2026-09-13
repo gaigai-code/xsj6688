@@ -40,11 +40,11 @@ function getPromptTags(p: Prompt): string[] {
 /** 条目是否命中选中的 App 大类集合（多选；空集合视为未筛选，全部命中）。 */
 function matchesSelectedAppTags(p: Prompt, tags: Set<string>): boolean {
     if (!tags || tags.size === 0) return true;
-    const pt = getPromptTags(p);
-    if (tags.has("__universal__") && pt.length === 0) return true;
+    const flat = new Set(getPromptCombos(p).flat());
+    if (tags.has("__universal__") && flat.size === 0) return true;
     for (const t of tags) {
         if (t === "__universal__") continue;
-        if (pt.includes(t)) return true;
+        if (flat.has(t)) return true;
     }
     return false;
 }
@@ -60,17 +60,41 @@ function getPromptTagMinor(p: Prompt, group = getPromptTagGroup(p)) {
 }
 
 function getPromptTagsLabel(p: Prompt, tagProfiles = flattenTagGroups(CONTENT_SCOPE_TAG_GROUPS)): string {
-    return getTagsLabel(getPromptTags(p), tagProfiles);
+    const combos = getPromptCombos(p);
+    if (combos.length === 0) return "通用";
+    return combos.map(combo => getTagsLabel(combo, tagProfiles)).join(" + ");
 }
 
 function getPromptTagsInlineLabel(p: Prompt): string {
-    const tags = getPromptTags(p);
-    return tags.length > 0 ? tags.map(resolveContentTagLabel).join(" · ") : "通用";
+    const combos = getPromptCombos(p);
+    if (combos.length === 0) return "通用";
+    return combos.map(combo => combo.map(resolveContentTagLabel).join("·")).join(" + ");
 }
 
 function setPromptTags(tags: string[]): Partial<Prompt> {
     return {
         tags: tags.length > 0 ? tags : undefined,
+        featureTag: undefined,
+        followUpOnly: undefined,
+    };
+}
+
+/** 返回条目的所有「大类+小类」组合（多选）。空数组 = 通用。 */
+function getPromptCombos(p: Prompt): string[][] {
+    if (Array.isArray(p.tagCombos) && p.tagCombos.length > 0) {
+        const combos = p.tagCombos.map(c => (Array.isArray(c) ? c : [])).filter(c => c.length > 0);
+        if (combos.length > 0) return combos;
+    }
+    const tags = getPromptTags(p);
+    return tags.length > 0 ? [tags] : [];
+}
+
+/** 写入多组合标签（优先 tagCombos，兼容旧 tags 字段）。 */
+function setPromptCombos(combos: string[][]): Partial<Prompt> {
+    const next = combos.filter(c => c.length > 0);
+    return {
+        tagCombos: next.length > 0 ? next : undefined,
+        tags: undefined,
         featureTag: undefined,
         followUpOnly: undefined,
     };
@@ -1538,12 +1562,6 @@ export function PresetManager({ isActive = true }: { isActive?: boolean } = {}) 
                                             const effectiveEnabled = preset.prompt_order
                                                 ? (preset.prompt_order.find(e => e.identifier === prompt.identifier)?.enabled ?? prompt.enabled)
                                                 : prompt.enabled;
-                                            const promptTags = getPromptTags(prompt);
-                                            const matchedTagGroup = findTagGroupForTags(tagGroups, promptTags);
-                                            const isCustomPromptTags = promptTags.length > 0 && !matchedTagGroup;
-                                            const selectedTagGroup = matchedTagGroup ?? tagGroups[0];
-                                            const selectedTagMinor = matchedTagGroup ? getPromptTagMinor(prompt, selectedTagGroup) : selectedTagGroup.minors[0];
-
                                             return (
                                                 <SwipeActionRow
                                                     key={prompt.identifier}
@@ -1841,50 +1859,75 @@ export function PresetManager({ isActive = true }: { isActive?: boolean } = {}) 
                                                                         </select>
                                                                     </div>
                                                                     <div className="flex flex-col gap-[2px] min-w-0">
-                                                                        <label className="menu-desc ts-11 ml-[2px]">适用范围</label>
-                                                                        <div className="grid grid-cols-2 gap-2">
-                                                                            <select
-                                                                                value={isCustomPromptTags ? "__custom__" : selectedTagGroup.id}
-                                                                                onChange={(e) => {
-                                                                                    const group = tagGroups.find(item => item.id === e.target.value);
-                                                                                    const firstMinor = group?.minors[0];
-                                                                                    if (!firstMinor) return;
-                                                                                    updatePrompt(
-                                                                                        preset,
-                                                                                        prompt.identifier,
-                                                                                        current => ({ ...current, ...setPromptTags(firstMinor.tags) }),
-                                                                                    );
-                                                                                }}
-                                                                                className="ui-select ts-13 px-2 py-[6px] rounded-[6px]"
-                                                                            >
-                                                                                {isCustomPromptTags ? (
-                                                                                    <option value="__custom__">自定义</option>
-                                                                                ) : null}
-                                                                                {tagGroups.map((group) => (
-                                                                                    <option key={group.id} value={group.id}>{group.label}</option>
-                                                                                ))}
-                                                                            </select>
-                                                                            <select
-                                                                                value={isCustomPromptTags ? "__custom__" : selectedTagMinor.id}
-                                                                                onChange={(e) => {
-                                                                                    const minor = selectedTagGroup.minors.find(item => item.id === e.target.value);
-                                                                                    if (!minor) return;
-                                                                                    updatePrompt(
-                                                                                        preset,
-                                                                                        prompt.identifier,
-                                                                                        current => ({ ...current, ...setPromptTags(minor.tags) }),
-                                                                                    );
-                                                                                }}
-                                                                                className="ui-select ts-13 px-2 py-[6px] rounded-[6px]"
-                                                                            >
-                                                                                {isCustomPromptTags ? (
-                                                                                    <option value="__custom__">自定义</option>
-                                                                                ) : null}
-                                                                                {selectedTagGroup.minors.map((minor) => (
-                                                                                    <option key={minor.id} value={minor.id}>{minor.label}</option>
-                                                                                ))}
-                                                                            </select>
-                                                                        </div>
+                                                                        <label className="menu-desc ts-11 ml-[2px]">适用范围（可添加多行，命中任一即生效）</label>
+                                                                        {(() => {
+                                                                            const combos = getPromptCombos(prompt);
+                                                                            const addableGroups = tagGroups.filter(g => g.tags.length > 0);
+                                                                            const addRow = () => {
+                                                                                const g = addableGroups[0];
+                                                                                const firstMinor = g?.minors[0];
+                                                                                if (!firstMinor) return;
+                                                                                updatePrompt(preset, prompt.identifier, current => ({ ...current, ...setPromptCombos([...combos, firstMinor.tags]) }));
+                                                                            };
+                                                                            if (combos.length === 0) {
+                                                                                return (
+                                                                                    <button type="button" onClick={addRow} className="ts-12 text-left opacity-70 hover:opacity-100 mt-1">
+                                                                                        ＋ 添加适用范围（当前为通用，所有功能生效）
+                                                                                    </button>
+                                                                                );
+                                                                            }
+                                                                            return (
+                                                                                <div className="flex flex-col gap-1">
+                                                                                    {combos.map((combo, ci) => {
+                                                                                        const group = findTagGroupForTags(tagGroups, combo) ?? addableGroups[0];
+                                                                                        const minor = group.minors.find(m => areTagsEqual(m.tags, combo)) ?? group.minors[0];
+                                                                                        return (
+                                                                                            <div key={combo.join("|")} className="grid grid-cols-[1fr_1fr_auto] gap-1 items-center">
+                                                                                                <select
+                                                                                                    value={group.id}
+                                                                                                    onChange={(e) => {
+                                                                                                        const g = tagGroups.find(item => item.id === e.target.value);
+                                                                                                        const firstMinor = g?.minors[0];
+                                                                                                        if (!firstMinor) return;
+                                                                                                        const next = combos.map((c, i) => (i === ci ? firstMinor.tags : c));
+                                                                                                        updatePrompt(preset, prompt.identifier, current => ({ ...current, ...setPromptCombos(next) }));
+                                                                                                    }}
+                                                                                                    className="ui-select ts-13 px-2 py-[6px] rounded-[6px]"
+                                                                                                >
+                                                                                                    {addableGroups.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
+                                                                                                </select>
+                                                                                                <select
+                                                                                                    value={minor.id}
+                                                                                                    onChange={(e) => {
+                                                                                                        const m = group.minors.find(item => item.id === e.target.value);
+                                                                                                        if (!m) return;
+                                                                                                        const next = combos.map((c, i) => (i === ci ? m.tags : c));
+                                                                                                        updatePrompt(preset, prompt.identifier, current => ({ ...current, ...setPromptCombos(next) }));
+                                                                                                    }}
+                                                                                                    className="ui-select ts-13 px-2 py-[6px] rounded-[6px]"
+                                                                                                >
+                                                                                                    {group.minors.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+                                                                                                </select>
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    aria-label="移除适用范围"
+                                                                                                    onClick={() => {
+                                                                                                        const next = combos.filter((_, i) => i !== ci);
+                                                                                                        updatePrompt(preset, prompt.identifier, current => ({ ...current, ...setPromptCombos(next) }));
+                                                                                                    }}
+                                                                                                    className="opacity-60 hover:opacity-100"
+                                                                                                >
+                                                                                                    ×
+                                                                                                </button>
+                                                                                            </div>
+                                                                                        );
+                                                                                    })}
+                                                                                    <button type="button" onClick={addRow} className="ts-12 text-left opacity-70 hover:opacity-100 mt-1">
+                                                                                        ＋ 添加适用范围
+                                                                                    </button>
+                                                                                </div>
+                                                                            );
+                                                                        })()}
                                                                     </div>
                                                                 </div>
                                                             </div>
