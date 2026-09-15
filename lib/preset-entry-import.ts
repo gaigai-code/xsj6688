@@ -1,4 +1,5 @@
 import type { Prompt, PresetConfig } from "./settings-types";
+import { applyImportedPromptTags } from "./content-tag-utils";
 
 /**
  * 预设「单条目」的解析与落位。
@@ -51,9 +52,7 @@ export function sanitizePromptEntry(raw: unknown, fallbackIdentifier: string): P
         system_prompt: !!obj.system_prompt,
         forbid_overrides: !!obj.forbid_overrides,
     };
-    if (Array.isArray(obj.tags)) prompt.tags = obj.tags.filter((t): t is string => typeof t === "string");
-    if (typeof obj.featureTag === "string") prompt.featureTag = obj.featureTag;
-    if (typeof obj.followUpOnly === "boolean") prompt.followUpOnly = obj.followUpOnly;
+    applyImportedPromptTags(prompt, obj);
     return prompt;
 }
 

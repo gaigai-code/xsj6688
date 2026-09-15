@@ -285,6 +285,38 @@ export function getPromptTagCombos(prompt: Pick<Prompt, "tags" | "tagCombos" | "
     return single.length > 0 ? [single] : [];
 }
 
+/** 条目「多标签」的组合归一：接受 string[][]，逐组合去重、丢掉空组合。 */
+export function normalizePromptTagCombos(value: unknown): string[][] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const combos = value
+        .map((combo) => normalizePromptScopeTags(combo))
+        .filter((combo): combo is string[] => Boolean(combo));
+    return combos.length > 0 ? combos : undefined;
+}
+
+/**
+ * 从导入的原始 JSON 里还原条目标签。
+ *
+ * 界面写入端（preset-manager 的 setPromptCombos）只写 `tagCombos`，并把 `tags`/`featureTag`
+ * 显式清空；导出是整个对象序列化，所以 JSON 里也只有 `tagCombos`。导入若只读 `tags`，
+ * 多标签条目会一律退化成「通用」——这里是唯一的还原入口，三处导入路径共用。
+ *
+ * `tagCombos` 与 `tags` 互斥：有 tagCombos 就不再回填 tags，保持与写入端一致。
+ */
+export function applyImportedPromptTags(prompt: Prompt, raw: Record<string, unknown>): void {
+    const combos = normalizePromptTagCombos(raw.tagCombos);
+    if (combos) {
+        prompt.tagCombos = combos;
+        return;
+    }
+    if (Array.isArray(raw.tags)) {
+        const tags = normalizePromptScopeTags(raw.tags);
+        if (tags) prompt.tags = tags;
+    }
+    if (typeof raw.featureTag === "string" && raw.featureTag) prompt.featureTag = raw.featureTag;
+    if (typeof raw.followUpOnly === "boolean") prompt.followUpOnly = raw.followUpOnly;
+}
+
 /** 多组合命中判断：命中任一组合（组合内所有 tag 都要在 activeTags 里）即生效。 */
 export function matchesActiveTagCombos(combos: string[][], activeTags: string[]): boolean {
     if (combos.length === 0) return true;

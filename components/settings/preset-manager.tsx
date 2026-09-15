@@ -17,6 +17,7 @@ import {
 } from "@/lib/generation-parameters";
 import {
     areTagsEqual,
+    applyImportedPromptTags,
     CONTENT_SCOPE_TAG_GROUPS,
     getPromptTags as getScopedPromptTags,
     getTagsLabel,
@@ -938,9 +939,7 @@ export function PresetManager({ isActive = true }: { isActive?: boolean } = {}) 
             system_prompt: !!obj.system_prompt,
             forbid_overrides: !!obj.forbid_overrides,
         };
-        if (Array.isArray(obj.tags)) prompt.tags = obj.tags.filter((t): t is string => typeof t === "string");
-        if (typeof obj.featureTag === "string") prompt.featureTag = obj.featureTag;
-        if (typeof obj.followUpOnly === "boolean") prompt.followUpOnly = obj.followUpOnly;
+        applyImportedPromptTags(prompt, obj);
         return prompt;
     };
 

@@ -32,7 +32,7 @@ import {
     normalizeNovelAiScale,
     normalizeNovelAiSteps,
 } from "./novelai-image-config";
-import { areTagsEqual, normalizePromptScopeTags, normalizeTags } from "./content-tag-utils";
+import { areTagsEqual, normalizePromptScopeTags, normalizePromptTagCombos, normalizeTags } from "./content-tag-utils";
 import {
     readPresetsCache, writePresetsCache,
     writePresetsCacheAsync,
@@ -377,6 +377,8 @@ export function parsePresetFromJson(text: string, fallbackName: string = "导入
                 featureTag: p.featureTag || undefined,
                 followUpOnly: p.followUpOnly === true ? true : undefined,
                 tags: Array.isArray(p.tags) && p.tags.length > 0 ? p.tags.map(String) : undefined,
+                // 多标签条目只导出 tagCombos（写入端会把 tags 清空），漏读就会退化成「通用」。
+                tagCombos: normalizePromptTagCombos(p.tagCombos),
             }));
         }
 
