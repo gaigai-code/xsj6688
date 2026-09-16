@@ -1,10 +1,10 @@
 // lib/mascot-tools.ts
-// 小卷工具系统：11 个套件 + 67 个细粒度工具，支持文本协议和原生协议双轨。
+// 小卷工具系统：11 个套件 + 68 个细粒度工具，支持文本协议和原生协议双轨。
 //
 // 套件设计（默认只暴露 loader，按需展开）：
 //   - 角色卡套件 (character_pack)     — 3 个子工具
 //   - 世界书套件 (worldbook_pack)     — 5 个子工具
-//   - 预设套件 (preset_pack)          — 9 个子工具
+//   - 预设套件 (preset_pack)          — 10 个子工具
 //   - 正则套件 (regex_pack)           — 5 个子工具
 //   - CSS套件 (css_pack)              — 3 个子工具
 //   - 图像处理套件 (image_pack)       — 10 个子工具
@@ -28,6 +28,7 @@ import {
 import type { ToolCall, ToolResult } from "./tool-executor";
 import type { MascotPageContext } from "./mascot-context";
 import type { Prompt } from "./settings-types";
+import { getPromptTagCombos, normalizePromptTagCombos } from "./content-tag-utils";
 import type { StoryCharacterSettings, StoryTailScheme } from "./story-storage";
 import { CHARACTER_CARD_PROMPT, CHARACTER_WORLD_PROMPT, WORLDBOOK_PROMPT, PRESET_PROMPT, GENERAL_PRESET_PROMPT, REGEX_PROMPT, CSS_PROMPT, WIDGET_PROMPT, MIXOLOGY_PROMPT } from "./mascot-prompts";
 import {
@@ -494,6 +495,24 @@ const UPDATE_PRESET_PROMPT_SCHEMA = {
     additionalProperties: false,
 };
 
+const UPDATE_PRESET_TAGS_SCHEMA = {
+    type: "object",
+    properties: {
+        presetId: { type: "string", description: "预设 id（从「列出预设」/「读取预设」获取）" },
+        promptIndex: { type: "number", description: "Prompt 在数组中的索引（从 0 开始）" },
+        tagCombos: {
+            type: "array",
+            description: "适用标签组合（多选）。每个组合是一组 tags（大类+小类），命中任一组合即生效。例：[['chat','text'],['chat','voice']]。传 [] 表示清空成「通用」（所有场景生效）。标签名用「读取预设」里显示的原始值，不要臆造。",
+            items: {
+                type: "array",
+                items: { type: "string" },
+            },
+        },
+    },
+    required: ["presetId", "promptIndex", "tagCombos"],
+    additionalProperties: false,
+};
+
 const ADD_PRESET_PROMPT_SCHEMA = {
     type: "object",
     properties: {
@@ -504,9 +523,17 @@ const ADD_PRESET_PROMPT_SCHEMA = {
         identifier: { type: "string", description: "可选 identifier；不传则自动生成且避开重复" },
         insertAfterIndex: { type: "number", description: "可选：插到该 promptIndex 后；不传则追加到末尾" },
         enabled: { type: "boolean", description: "是否启用，默认 true" },
+        tagCombos: {
+            type: "array",
+            description: "可选：适用标签组合（多选，命中任一组合即生效）。例：[['chat','text'],['chat','voice']]。不传且不传 tags 则为通用（所有场景）。标签名用「读取预设」里显示的原始值，不要臆造。",
+            items: {
+                type: "array",
+                items: { type: "string" },
+            },
+        },
         tags: {
             type: "array",
-            description: "可选：通用预设的适用标签数组；不确定不要传",
+            description: "可选（旧单组合兼容）：只写一个组合的标签数组，等价于 tagCombos=[该数组]。与 tagCombos 同时传时 tagCombos 优先。",
             items: { type: "string" },
         },
     },
@@ -1135,6 +1162,7 @@ export const MASCOT_TOOL_PACKAGES: MascotToolPackage[] = [
             { name: "复制预设", description: "深拷贝用户已有的某个预设做副本（保留所有条目+顺序+tag）。适合「基于现有 XX 预设做个变体」场景，剧情/通用预设都能复制。", parameterSchema: DUPLICATE_PRESET_SCHEMA },
             { name: "添加预设条目", description: "向已有预设追加或插入一条 prompt，并同步 prompt_order。", parameterSchema: ADD_PRESET_PROMPT_SCHEMA },
             { name: "更新预设条目", description: "修改预设中某条 prompt 的单个字段。", parameterSchema: UPDATE_PRESET_PROMPT_SCHEMA },
+            { name: "更新预设标签", description: "修改预设中某条 prompt 的适用标签（多选，命中任一组合即生效；传空数组=通用/所有场景）。", parameterSchema: UPDATE_PRESET_TAGS_SCHEMA },
             { name: "更新预设信息", description: "修改预设的 name 或 description。", parameterSchema: UPDATE_PRESET_INFO_SCHEMA },
         ],
         usageGuide: `${PRESET_PROMPT}\n\n=== 通用型预设（type=general）补充规则 ===\n${GENERAL_PRESET_PROMPT}`,
@@ -1379,6 +1407,7 @@ const MASCOT_NATIVE_TOOL_NAMES: Record<string, string> = {
     "复制预设": "mascot_duplicate_preset",
     "添加预设条目": "mascot_add_preset_prompt",
     "更新预设条目": "mascot_update_preset_prompt",
+    "更新预设标签": "mascot_update_preset_tags",
     "更新预设信息": "mascot_update_preset_info",
     "列出正则组": "mascot_list_regex_groups",
     "读取正则组": "mascot_read_regex_group",
@@ -1555,6 +1584,7 @@ export async function executeMascotToolCall(call: ToolCall, ctx: MascotToolConte
             case "复制预设": return await handleDuplicatePreset(call.args);
             case "添加预设条目": return await handleAddPresetPrompt(call.args);
             case "更新预设条目": return await handleUpdatePresetPrompt(call.args);
+            case "更新预设标签": return await handleUpdatePresetTags(call.args);
             case "更新预设信息": return await handleUpdatePresetInfo(call.args);
 
             // ─── 正则 ───
@@ -2698,6 +2728,12 @@ function rebuildPresetPromptOrder(prompts: Prompt[], previousOrder: Array<{ iden
         }));
 }
 
+function formatPromptTagsForDisplay(prompt: Prompt): string {
+    const combos = getPromptTagCombos(prompt);
+    if (combos.length === 0) return "";
+    return combos.map((c) => `[${c.join(",")}]`).join(" ");
+}
+
 async function handleListPresets(): Promise<ToolResult> {
     const { loadPresets } = await loadPresetStorage();
     const presets = loadPresets();
@@ -2723,13 +2759,8 @@ async function handleReadPreset(args: Record<string, unknown>): Promise<ToolResu
     (preset.prompts || []).forEach((p, i) => {
         const segs: string[] = [`[${i}] ${p.name || p.identifier || "(无名)"}`];
         if (p.marker) segs.push("(marker)");
-        const tags = (p as Record<string, unknown>).tags;
-        const legacyTag = (p as Record<string, unknown>).featureTag;
-        if (Array.isArray(tags) && tags.length > 0) {
-            segs.push(`tags=[${tags.join(",")}]`);
-        } else if (legacyTag) {
-            segs.push(`tag=${legacyTag}`);
-        }
+        const tagStr = formatPromptTagsForDisplay(p);
+        if (tagStr) segs.push(`tags=${tagStr}`);
         if (p.role && p.role !== "system") segs.push(`role=${p.role}`);
         // 摘要：仅前 100 字
         if (p.content) {
@@ -2757,13 +2788,8 @@ async function handleReadPresetPrompt(args: Record<string, unknown>): Promise<To
     parts.push(`name: ${p.name || ""}`);
     parts.push(`role: ${p.role || "system"}`);
     parts.push(`marker: ${p.marker || false}`);
-    const tags = (p as Record<string, unknown>).tags;
-    const legacyTag = (p as Record<string, unknown>).featureTag;
-    if (Array.isArray(tags) && tags.length > 0) {
-        parts.push(`tags: [${tags.join(", ")}]`);
-    } else if (legacyTag) {
-        parts.push(`featureTag: ${legacyTag}（旧字段）`);
-    }
+    const tagStr = formatPromptTagsForDisplay(p);
+    parts.push(tagStr ? `tags: ${tagStr}` : "tags: （通用，所有场景）");
     parts.push(`content:\n${p.content || "(空)"}`);
     return { name: "读取预设条目", success: true, data: parts.join("\n") };
 }
@@ -2878,10 +2904,13 @@ async function handleAddPresetPrompt(args: Record<string, unknown>): Promise<Too
         forbid_overrides: false,
     };
 
-    if (Array.isArray(args.tags)) {
-        const tags = args.tags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0).map((tag) => tag.trim());
-        if (tags.length > 0) prompt.tags = tags;
-    }
+    // 标签：优先 tagCombos（多选），回退旧 tags（单组合），统一写成 tagCombos，与界面写入端 setPromptCombos 口径一致
+    const combos = Array.isArray(args.tagCombos)
+        ? normalizePromptTagCombos(args.tagCombos)
+        : Array.isArray(args.tags)
+            ? normalizePromptTagCombos([args.tags])
+            : undefined;
+    if (combos) prompt.tagCombos = combos;
 
     const insertAfterIndex = typeof args.insertAfterIndex === "number" && Number.isFinite(args.insertAfterIndex)
         ? Math.trunc(args.insertAfterIndex)
@@ -2922,6 +2951,35 @@ async function handleUpdatePresetPrompt(args: Record<string, unknown>): Promise<
     presets[idx] = preset;
     await savePresetsAsync(presets);
     return { name: "更新预设条目", success: true, data: `已更新 prompt[${promptIdx}] 的 ${field}` };
+}
+
+async function handleUpdatePresetTags(args: Record<string, unknown>): Promise<ToolResult> {
+    const { loadPresets, savePresetsAsync } = await loadPresetStorage();
+    const presets = loadPresets();
+    const idx = presets.findIndex((p) => p.id === args.presetId);
+    if (idx < 0) return { name: "更新预设标签", success: false, error: `找不到预设 id：${args.presetId}` };
+    const preset = { ...presets[idx], prompts: [...presets[idx].prompts] };
+    const promptIdx = args.promptIndex as number;
+    if (promptIdx < 0 || promptIdx >= preset.prompts.length) return { name: "更新预设标签", success: false, error: `promptIndex 越界（共 ${preset.prompts.length} 条）` };
+    const prompt = { ...preset.prompts[promptIdx] };
+
+    // 与界面写入端 setPromptCombos 保持一致：只写 tagCombos，清空 tags/featureTag/followUpOnly。
+    // 传 [] 会被 normalize 成 undefined → 通用（所有场景生效）。
+    const combos = normalizePromptTagCombos(args.tagCombos);
+    prompt.tagCombos = combos;
+    delete prompt.tags;
+    delete prompt.featureTag;
+    delete prompt.followUpOnly;
+
+    preset.prompts[promptIdx] = prompt;
+    preset.updatedAt = Date.now();
+    presets[idx] = preset;
+    await savePresetsAsync(presets);
+
+    const label = combos && combos.length > 0
+        ? combos.map((c) => `[${c.join(",")}]`).join(" ")
+        : "通用（清空，所有场景生效）";
+    return { name: "更新预设标签", success: true, data: `已更新 prompt[${promptIdx}] 的标签为：${label}` };
 }
 
 async function handleUpdatePresetInfo(args: Record<string, unknown>): Promise<ToolResult> {

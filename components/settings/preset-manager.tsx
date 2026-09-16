@@ -279,6 +279,7 @@ const MASCOT_PRESET_STORAGE_TOOL_NAMES = new Set([
     "复制预设",
     "添加预设条目",
     "更新预设条目",
+    "更新预设标签",
     "更新预设信息",
 ]);
 
