@@ -1,8 +1,8 @@
 import type { ImageGenerationSettings, NovelAiPreset } from "./settings-types";
-import { loadBindingConfig, loadImageGenerationSettings, resolveBinding, DEFAULT_NOVELAI_PRESET } from "./settings-storage";
+import { loadBindingConfig, loadImageGenerationSettings, saveImageGenerationSettings, resolveBinding, DEFAULT_NOVELAI_PRESET } from "./settings-storage";
 import { applyImageGenerationBinding } from "./image-generation-binding";
 import JSZip from "jszip";
-import { getChatImageFromIndexedDB } from "./chat-asset-storage";
+import { deleteChatImageFromIndexedDB, getChatImageFromIndexedDB } from "./chat-asset-storage";
 import { storeMediaBlob } from "./media-cache-storage";
 import { throwIfAborted } from "./abort-utils";
 import {
@@ -752,6 +752,8 @@ export async function generateImageFromConfiguredApi(params: {
   useReferenceImage?: boolean;
   /** 直接指定参考图 dataURL（上传图或拼接图），优先级高于 characterId 参考图查找 */
   referenceImageDataUrl?: string;
+  /** 覆盖生图尺寸/比例（如 "1024x1024" / "1024x1536" / "1536x1024"），仅 OpenAI 兼容模式生效 */
+  size?: string;
   settings?: ImageGenerationSettings;
   signal?: AbortSignal;
 }): Promise<ImageGenerationResult | null> {
@@ -812,6 +814,8 @@ export async function generateImageFromConfiguredApi(params: {
   const openaiPreset = settings.openaiPresets?.find(preset => preset.id === settings.activeOpenAiPresetId)
     || settings.openaiPresets?.[0];
   const openaiSettings = openaiPreset ? { ...settings, ...openaiPreset } : settings;
+  const effectiveSize = params.size?.trim();
+  if (effectiveSize) openaiSettings.size = effectiveSize;
   if (!openaiSettings.apiKey.trim() || !openaiSettings.baseUrl.trim() || !openaiSettings.model.trim()) return null;
 
   const reference = params.characterId ? settings.characterReferences?.[params.characterId] : undefined;
@@ -871,4 +875,26 @@ export function hasCharacterReferenceImage(characterId?: string): boolean {
   const settings = loadImageGenerationSettings();
   const ref = settings.characterReferences?.[characterId];
   return Boolean(ref?.assetId);
+}
+
+/** 删除角色卡时清理其参考图：移除 characterReferences 条目并删除底层图片资产。 */
+export async function removeCharacterImageReferences(characterId: string): Promise<void> {
+  if (!characterId) return;
+  const settings = loadImageGenerationSettings();
+  const reference = settings.characterReferences?.[characterId];
+  if (!reference) return;
+
+  if (reference.assetId) {
+    try {
+      await deleteChatImageFromIndexedDB(reference.assetId);
+    } catch {
+      // 资产删除失败不阻断角色删除流程，仅遗留一条 IndexedDB 记录。
+    }
+  }
+
+  if (settings.characterReferences && characterId in settings.characterReferences) {
+    const next = { ...settings.characterReferences };
+    delete next[characterId];
+    saveImageGenerationSettings({ ...settings, characterReferences: next });
+  }
 }

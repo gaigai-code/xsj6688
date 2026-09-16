@@ -470,7 +470,9 @@ html, body { min-height: 100%; }
       showNotification: function(payload){ return request('ui.showNotification', payload || {}); },
       showSmsThread: function(payload){ return request('ui.showSmsThread', payload || {}); },
       showCallScreen: function(payload){ return request('ui.showCallScreen', payload || {}); },
-      confirm: function(payload){ return request('ui.confirm', payload || {}); }
+      confirm: function(payload){ return request('ui.confirm', payload || {}); },
+      openSettings: function(page){ return request('ui.openSettings', { page: page || 'imageGeneration' }); },
+      download: function(payload){ return request('ui.download', payload || {}); }
     },
     notifications: {
       create: function(payload){ return request('notifications.create', payload || {}); },
@@ -1757,6 +1759,26 @@ export function CustomAppRunner({
     if (action === "ui.confirm") {
       const message = String(record.message ?? record.title ?? "确认操作？");
       return window.confirm(message);
+    }
+
+    if (action === "ui.openSettings") {
+      const page = String(record.page ?? "imageGeneration").trim() || "imageGeneration";
+      // 复用宿主「小卷导航」事件：打开设置 APP 并跳到对应子页（如 imageGeneration）。
+      window.dispatchEvent(new CustomEvent("mascot-navigate", { detail: { app: "settings", mode: page } }));
+      return true;
+    }
+
+    if (action === "ui.download") {
+      const dataUrl = String(record.dataUrl ?? "").trim();
+      if (!dataUrl.startsWith("data:")) throw new Error("ui.download 需要 dataUrl。");
+      const filename = String(record.filename ?? "download.png").replace(/[\\/:*?"<>|]/g, "_") || "download.png";
+      const anchor = document.createElement("a");
+      anchor.href = dataUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      return { ok: true, filename };
     }
 
     if (action === "memory.readCore") {

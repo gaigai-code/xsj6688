@@ -55,6 +55,7 @@ import { notifyMascotPageContext } from "@/lib/mascot-events";
 import { kvGet, kvSet } from "@/lib/kv-db";
 import { normalizeTimeZone } from "@/lib/character-time";
 import { removeCharacterChatReferences } from "@/lib/character-chat-cleanup";
+import { removeCharacterImageReferences } from "@/lib/image-generation-service";
 
 type ViewType = "list" | "detail";
 
@@ -349,6 +350,7 @@ export function PhoneCharacterApp({ onClose, onNotice }: PhoneCharacterAppProps)
               const characterId = view.id;
               if (characterId) {
                 await removeCharacterChatReferences(characterId);
+                await removeCharacterImageReferences(characterId);
                 clearCharacterVersions(characterId);
                 updateChars(characters.filter((c) => c.id !== characterId));
               }
@@ -1393,6 +1395,7 @@ function CharListView({
                 try {
                   if (target.type === 'char') {
                     await removeCharacterChatReferences(target.id);
+                    await removeCharacterImageReferences(target.id);
                     clearCharacterVersions(target.id);
                     onUpdateChars(characters.filter(c => c.id !== target.id));
                     onNotice?.("已销毁调查档案");

@@ -1377,6 +1377,7 @@ export async function generateCustomAppImage(app: InstalledCustomApp, record: Re
   // 允许 APP 直接传入参考图 dataURL（自行上传或拼接多角色参考图），
   // 仅在 data:image/ 且不超过体积上限时采纳，避免把任意字符串塞进生图请求。
   const referenceImageDataUrl = cleanReferenceImageDataUrl(record.referenceImageDataUrl);
+  const size = cleanImageSize(record.size);
   const timeoutMs = optionalCustomAppTimeoutMs(record.timeoutMs);
   const result = await withOptionalCustomAppTimeout(timeoutMs, "ai.generateImage", signal => (
     generateImageFromConfiguredApi({
@@ -1385,6 +1386,7 @@ export async function generateCustomAppImage(app: InstalledCustomApp, record: Re
       appId: `custom_app:${app.id}`,
       useReferenceImage,
       referenceImageDataUrl,
+      size,
       signal,
     })
   ));
@@ -1410,6 +1412,15 @@ function cleanReferenceImageDataUrl(value: unknown): string | undefined {
   return text;
 }
 
+/** 生图尺寸白名单；APP 传入的 size 只有命中才生效，其余交给预设/默认。 */
+const CUSTOM_APP_IMAGE_SIZE_OPTIONS = new Set(["auto", "1024x1024", "1024x1536", "1536x1024"]);
+
+/** 校验并返回 APP 传入的生图尺寸；非法时返回 undefined（走预设/默认）。 */
+function cleanImageSize(value: unknown): string | undefined {
+  const text = typeof value === "string" ? value.trim() : "";
+  return text && CUSTOM_APP_IMAGE_SIZE_OPTIONS.has(text) ? text : undefined;
+}
+
 /** 返回已配置参考图的角色列表（含参考图 dataURL），供参考图生图类 APP 做多角色选择。 */
 export async function readCustomAppCharacterReferenceImages(): Promise<Record<string, unknown>> {
   const settings = loadImageGenerationSettings();
@@ -1419,12 +1430,11 @@ export async function readCustomAppCharacterReferenceImages(): Promise<Record<st
   const items: Array<{ characterId: string; name: string; dataUrl: string | null }> = [];
   for (const [characterId, reference] of Object.entries(references)) {
     if (!reference?.assetId) continue;
+    const name = nameById.get(characterId);
+    // 角色卡已删除的孤儿参考图不再展示（正常路径会在删除角色时一并清理）。
+    if (!name) continue;
     const dataUrl = await getChatImageFromIndexedDB(reference.assetId);
-    items.push({
-      characterId,
-      name: nameById.get(characterId) ?? characterId,
-      dataUrl,
-    });
+    items.push({ characterId, name, dataUrl });
   }
   return { characters: items };
 }
