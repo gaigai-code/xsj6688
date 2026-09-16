@@ -390,32 +390,15 @@ function generateId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function parseTime(value: string | undefined): number {
-  if (!value) return 0;
-  const parsed = new Date(value).getTime();
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function getStorySessionActivityTime(session: StorySession): number {
-  const lastMessageTime = _messagesCache
-    .filter((message) => message.sessionId === session.id)
-    .reduce((latest, message) => Math.max(latest, parseTime(message.createdAt)), 0);
-  return Math.max(lastMessageTime, parseTime(session.updatedAt));
-}
-
-function isPreferredStorySession(candidate: StorySession, current: StorySession): boolean {
-  const candidateTime = getStorySessionActivityTime(candidate);
-  const currentTime = getStorySessionActivityTime(current);
-  if (candidateTime !== currentTime) return candidateTime > currentTime;
-  const candidateUpdated = parseTime(candidate.updatedAt);
-  const currentUpdated = parseTime(current.updatedAt);
-  if (candidateUpdated !== currentUpdated) return candidateUpdated > currentUpdated;
-  return candidate.id.localeCompare(current.id) > 0;
-}
-
+/**
+ * 规范化剧情存档列表：清理 id/characterId 缺失的脏数据，并统一裁剪首尾空白。
+ *
+ * 多存档功能上线后，同一角色允许并存多个存档（每个存档是一段独立剧情），
+ * 因此这里不再按 characterId 去重——旧版「一个角色只有一个会话」的合并逻辑
+ * 会在新建存档时把上一个存档挤掉，导致列表里只剩最新一个。
+ */
 function normalizeStorySessions(sessions: StorySession[]): { items: StorySession[]; changed: boolean } {
   const normalized: StorySession[] = [];
-  const indexByCharacter = new Map<string, number>();
   let changed = false;
 
   for (const session of sessions) {
@@ -428,18 +411,8 @@ function normalizeStorySessions(sessions: StorySession[]): { items: StorySession
     const item = id === session.id && characterId === session.characterId
       ? session
       : { ...session, id, characterId };
-    const existingIndex = indexByCharacter.get(characterId);
-    if (existingIndex === undefined) {
-      indexByCharacter.set(characterId, normalized.length);
-      normalized.push(item);
-      if (item !== session) changed = true;
-      continue;
-    }
-
-    changed = true;
-    if (isPreferredStorySession(item, normalized[existingIndex])) {
-      normalized[existingIndex] = item;
-    }
+    normalized.push(item);
+    if (item !== session) changed = true;
   }
 
   return { items: normalized, changed };
