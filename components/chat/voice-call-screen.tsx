@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { ChatSession, ChatMessage, loadChatMessages, pushChatMessage, getLatestCharacterStateValues } from "@/lib/chat-storage";
 import { getStatusRegionConfig, isCustomStatusRegionActive } from "@/lib/chat-status-region";
 import type { StateValue } from "@/lib/chat-storage";
@@ -635,7 +636,7 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
     // ── Render ──────────────────────────────────────
 
     if (minimized) {
-        return (
+        const miniWindow = (
             <button
                 type="button"
                 className="call-mini-window"
@@ -648,6 +649,12 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
                 <span className="call-mini-window-name">{character.name}</span>
             </button>
         );
+        // 悬浮窗挂到手机屏幕容器（而非聊天室内部）：退出聊天框后聊天层被
+        // display:none 隐藏时，悬浮窗仍常驻屏幕，点击可回到通话。
+        const host = typeof document !== "undefined"
+            ? document.querySelector<HTMLElement>("[data-ui='phone-screen']")
+            : null;
+        return host ? createPortal(miniWindow, host) : miniWindow;
     }
 
     return (

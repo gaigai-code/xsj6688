@@ -21,6 +21,7 @@ import { getStatusRegionConfig, isCustomStatusRegionActive, STATUS_REGION_UPDATE
 import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
 import { sendBrowserNotification } from "@/lib/browser-notification";
 import { dispatchChatMessageNotice } from "@/lib/chat-notification-events";
+import { startCall } from "@/lib/call-store";
 import { shouldSendChatInputOnEnter } from "@/lib/chat-input-keyboard";
 import { useChatBottomReserve } from "./use-chat-bottom-reserve";
 import ReactMarkdown from "react-markdown";
@@ -37,9 +38,6 @@ import { CustomAppRunner } from "@/components/app-market/custom-app-runner";
 import { CustomAppForegroundBoundary } from "@/components/app-market/custom-app-failure";
 
 import { ChatSettingsPanel } from "./chat-settings-panel";
-import { VoiceCallScreen } from "./voice-call-screen";
-import { VideoCallScreen } from "./video-call-screen";
-import { GroupCallScreen } from "./group-call-screen";
 import { TransferTargetModal } from "./transfer-target-modal";
 import { GiftPickerModal } from "./gift-picker-modal";
 import { ConfirmDialog } from "@/components/ui/modal";
@@ -1123,11 +1121,6 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     const [customPlusActions, setCustomPlusActions] = useState<RegisteredCustomAppChatPlusAction[]>(() => loadCustomAppChatPlusActions());
     const [activeCustomChatPlus, setActiveCustomChatPlus] = useState<ActiveCustomChatPlus | null>(null);
     const [showSettings, setShowSettings] = useState(false);
-    const [showVoiceCall, setShowVoiceCall] = useState(false);
-    const [showVideoCall, setShowVideoCall] = useState(false);
-    const [callMinimized, setCallMinimized] = useState(false);
-    const [callInitiator, setCallInitiator] = useState<"user" | "character">("user");
-    const [callInitiatorName, setCallInitiatorName] = useState<string>("");
     const [userIdentity, setUserIdentity] = useState<UserIdentity | null>(null);
     const [enterToSendEnabled, setEnterToSendEnabled] = useState(() => loadChatAppSettings().enterToSendEnabled === true);
     const [chatAppSettingsRevision, setChatAppSettingsRevision] = useState(0);
@@ -2134,24 +2127,6 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         return () => { setDebugChatState(null); };
     }, [session, messages]);
 
-    // Listen for AI-initiated call triggers from follow-up service
-    useEffect(() => {
-        const handler = (e: Event) => {
-            const detail = (e as CustomEvent).detail;
-            if (detail?.sessionId === session.id) {
-                // Only handle call if this ChatRoom is currently visible
-                if (!isChatRoomElementVisible(wrapperRef.current)) return;
-                setCallInitiator("character");
-                if (detail.type === "voice") setShowVoiceCall(true);
-                else if (detail.type === "video") setShowVideoCall(true);
-                // Dismiss the global incoming-call bar (if showing)
-                window.dispatchEvent(new CustomEvent("incoming-call-dismiss"));
-            }
-        };
-        window.addEventListener("ai-call-trigger", handler);
-        return () => window.removeEventListener("ai-call-trigger", handler);
-    }, [session.id]);
-
     // Helper: handle AI accepting/declining user's red packet or transfer
     const buildAssistantActionEditMeta = (rawResponseText: string) => ({
         responseBatchId: createResponseBatchId(),
@@ -2493,10 +2468,13 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                             detail: { sessionId: session.id, type: callType, characterName: r.characterName },
                         }));
                     } else {
-                        setCallInitiator("character");
-                        setCallInitiatorName(r.characterName);
-                        if (callType === "voice") setShowVoiceCall(true);
-                        else setShowVideoCall(true);
+                        startCall({
+                            type: callType,
+                            sessionId: session.id,
+                            isGroup: true,
+                            initiator: "character",
+                            initiatorName: r.characterName,
+                        });
                     }
                     continue;
                 }
@@ -3069,9 +3047,12 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     // Helper: handle AI-triggered call from splitAndSaveAIMessages result
     const handleCallTrigger = (triggerCall?: "voice" | "video") => {
         if (!triggerCall) return;
-        setCallInitiator("character");
-        if (triggerCall === "voice") setShowVoiceCall(true);
-        else setShowVideoCall(true);
+        startCall({
+            type: triggerCall,
+            sessionId: session.id,
+            isGroup: false,
+            initiator: "character",
+        });
     };
 
     const persistHiddenToolResult = (content?: string, toolExecutionId?: string) => {
@@ -5422,47 +5403,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         setMessages(nextMessages);
     }, [session.id, stopLoadMoreAnchorTracking]);
 
-    // Shared handler: reload messages + re-trigger scroll-to-bottom after call ends
-    const returnFromCall = (hide: () => void) => {
-        hide();
-        setCallMinimized(false);
-        needsInitialScrollRef.current = true;
-        prevMsgCountRef.current = 0;
-        syncMessagesFromStorage();
-        triggerReply();
-    };
-
     const editingMessage = editingMessageId ? messages.find(m => m.id === editingMessageId) : null;
     const editingSystemInstruction = editingMessage ? isSystemInstructionMessage(editingMessage) : false;
-
-    // 群聊通话没有缩小悬浮窗，维持原有的整屏早退渲染
-    if (showVoiceCall && session.isGroup && groupCharacters.length > 0) {
-        return (
-            <GroupCallScreen
-                type="voice"
-                session={session}
-                characters={groupCharacters}
-                initiator={callInitiator}
-                initiatorName={callInitiatorName}
-                onEnd={() => returnFromCall(() => setShowVoiceCall(false))}
-            />
-        );
-    }
-
-    if (showVideoCall && session.isGroup && groupCharacters.length > 0) {
-        return (
-            <GroupCallScreen
-                type="video"
-                session={session}
-                characters={groupCharacters}
-                initiator={callInitiator}
-                initiatorName={callInitiatorName}
-                onEnd={() => returnFromCall(() => setShowVideoCall(false))}
-            />
-        );
-    }
-    // 单聊语音/视频通话改为在下方主返回内联渲染（而非提前 return），
-    // 这样缩小为悬浮窗时聊天页与通话组件可以同时挂载，通话状态（计时/字幕）不会丢失。
 
     const chatRoomBackgroundStyle = bgImageResolved ? {
         backgroundColor: "#fff",
@@ -6316,8 +6258,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
 	                onCloseTheaterMode={closeTheaterMode}
 	                onOpenRichModal={(modal) => { setShowPlusMenu(false); setRichModal(modal); }}
                 onOpenCustomPlusAction={handleOpenCustomPlusAction}
-                onStartVideoCall={() => { cancelFollowUp(session.id); setShowPlusMenu(false); setCallInitiator("user"); setShowVideoCall(true); }}
-                onStartVoiceCall={() => { cancelFollowUp(session.id); setShowPlusMenu(false); setCallInitiator("user"); setShowVoiceCall(true); }}
+                onStartVideoCall={() => { cancelFollowUp(session.id); setShowPlusMenu(false); startCall({ type: "video", sessionId: session.id, isGroup: false, initiator: "user" }); }}
+                onStartVoiceCall={() => { cancelFollowUp(session.id); setShowPlusMenu(false); startCall({ type: "voice", sessionId: session.id, isGroup: false, initiator: "user" }); }}
                 onSendText={handleSendText}
                 onStopGeneration={clearStuckGeneration}
                 onTriggerAIResponse={triggerAIResponse}
@@ -6792,32 +6734,6 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                         ) : chatToast}
                     </div>
                 </div>
-            )}
-
-            {/* 单聊语音/视频通话：内联挂载（而非提前 return），使缩小为悬浮窗时通话组件
-                不被卸载，计时/字幕等状态得以保留；组件内部依据 minimized 决定渲染
-                全屏界面还是左侧悬浮窗 */}
-            {showVoiceCall && character && (
-                <VoiceCallScreen
-                    session={session}
-                    character={character}
-                    initiator={callInitiator}
-                    minimized={callMinimized}
-                    onMinimize={() => setCallMinimized(true)}
-                    onRestore={() => setCallMinimized(false)}
-                    onEnd={() => returnFromCall(() => setShowVoiceCall(false))}
-                />
-            )}
-            {showVideoCall && character && (
-                <VideoCallScreen
-                    session={session}
-                    character={character}
-                    initiator={callInitiator}
-                    minimized={callMinimized}
-                    onMinimize={() => setCallMinimized(true)}
-                    onRestore={() => setCallMinimized(false)}
-                    onEnd={() => returnFromCall(() => setShowVideoCall(false))}
-                />
             )}
 
         </div >

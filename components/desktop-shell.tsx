@@ -136,6 +136,8 @@ import { loadCharacters } from "@/lib/character-storage";
 import { generateChatCompletion, flattenCompletionResult } from "@/lib/chat-engine";
 import { parseAIResponse } from "@/lib/rich-message-parser";
 import { requestBackgroundChatReply, scheduleFollowUp } from "@/lib/follow-up-service";
+import { startCall } from "@/lib/call-store";
+import { GlobalCallOverlay } from "@/components/chat/global-call-overlay";
 import { CHAT_MESSAGE_NOTICE_EVENT, CHAT_OPEN_SESSION_EVENT, type ChatMessageNoticeDetail } from "@/lib/chat-notification-events";
 import { startIncomingCallVibration } from "@/lib/call-vibration";
 import { installChatSoundListener, playChatSoundOnce, setMiniChatSoundSessionId, startChatSoundLoop } from "@/lib/chat-sound";
@@ -1959,14 +1961,16 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
       if (!sessionId) return;
       if (callTs > 0 && Date.now() - callTs > CALL_VALID_MS) return;
       if (answered) {
-        // 壳上已经按过接听：跳过横幅，直接开聊天进通话屏（同横幅接听键的路径）
+        // 壳上已经按过接听：跳过横幅，直接开全局通话（挂断后回落到聊天界面）
         setActiveApp("chat" as IconId);
         setChatInitSessionId(sessionId);
-        window.setTimeout(() => {
-          window.dispatchEvent(new CustomEvent("ai-call-trigger", {
-            detail: { sessionId, type: "voice", __fromBar: true },
-          }));
-        }, 600);
+        const sess = loadChatSessions().find(s => s.id === sessionId);
+        startCall({
+          type: "voice",
+          sessionId,
+          isGroup: !!sess?.isGroup,
+          initiator: "character",
+        });
         return;
       }
       window.dispatchEvent(new CustomEvent("ai-call-trigger", { detail: { sessionId, type: "voice" } }));
@@ -4425,13 +4429,14 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                         setIncomingCall(null);
                         setActiveApp("chat" as IconId);
                         setChatInitSessionId(call.sessionId);
-                        // Wait for chat-room to mount, then trigger the call screen
-                        // __fromBar prevents desktop-shell handler from re-showing the bar
-                        setTimeout(() => {
-                          window.dispatchEvent(new CustomEvent("ai-call-trigger", {
-                            detail: { sessionId: call.sessionId, type: call.type, __fromBar: true },
-                          }));
-                        }, 600);
+                        // 直接开全局通话（挂断后回落到聊天界面），不再依赖 ChatRoom 挂载后监听 ai-call-trigger
+                        startCall({
+                          type: call.type,
+                          sessionId: call.sessionId,
+                          isGroup: !!call.isGroup,
+                          initiator: "character",
+                          initiatorName: call.isGroup ? call.charName : undefined,
+                        });
                       }}
                     >
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -4484,6 +4489,9 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                 activeApp={activeApp}
                 onControllerChange={handleMusicOverlayControllerChange}
               />
+
+              {/* 全局通话 overlay：语音/视频/群聊通话挂在这里，退出聊天 App 后仍常驻 */}
+              <GlobalCallOverlay />
 
               {/* Mini chat window — persists across music pages */}
               <MiniAppWindow
