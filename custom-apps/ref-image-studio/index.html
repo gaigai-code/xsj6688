@@ -95,10 +95,9 @@
     <div class="result"><img id="resultImg" alt="生成结果" /></div>
     <p class="hint" id="resultMeta" style="margin-top:6px"></p>
     <div class="row">
-      <button class="btn green" id="btnDownload" style="flex:1">下载到设备</button>
-      <button class="btn" id="btnSave" style="flex:1">保存到媒体库</button>
+      <button class="btn green" id="btnDownload" style="flex:1">下载图片</button>
     </div>
-    <p class="hint" style="margin-top:8px">「下载到设备」会存到浏览器下载目录；「保存到媒体库」供其他 APP 通过 media.get 读取。</p>
+    <p class="hint" style="margin-top:8px">下载后可在浏览器「下载」目录里找到这张图片。</p>
   </section>
 </div>
 
@@ -286,32 +285,33 @@
     }
   };
 
-  // ── 下载到设备 ──
+  // ── 下载图片 ──
+  function downloadImage(dataUrl, filename) {
+    // 优先走宿主下载（顶层页，最可靠）；宿主 SDK 未更新时退回 iframe 内 <a download>（沙盒已 allow-downloads）
+    if (api.ui && typeof api.ui.download === "function") {
+      try { api.ui.download({ dataUrl: dataUrl, filename: filename }); return; } catch (e) { /* 退回 iframe 下载 */ }
+    }
+    var a = document.createElement("a");
+    a.href = dataUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
   $("btnDownload").onclick = function () {
     if (!resultDataUrl) return;
-    try {
-      api.ui.download({ dataUrl: resultDataUrl, filename: "ref-image-" + Date.now() + ".png" });
-      toast("已触发下载，请查看浏览器下载目录");
-    } catch (e) {
-      err(e);
-    }
-  };
-
-  // ── 保存到媒体库 ──
-  $("btnSave").onclick = async function () {
-    if (!resultDataUrl) return;
-    try {
-      var saved = await api.media.put({ dataUrl: resultDataUrl });
-      toast(saved && saved.ref ? "已保存到媒体库" : "保存失败");
-    } catch (e) {
-      err(e);
-    }
+    downloadImage(resultDataUrl, "ref-image-" + Date.now() + ".png");
+    toast("已开始下载，请查看浏览器下载目录");
   };
 
   // ── 去配置生图 API ──
   $("btnOpenSettings").onclick = function (e) {
     if (e && e.preventDefault) e.preventDefault();
-    try { api.ui.openSettings("imageGeneration"); } catch (err2) { err(err2); }
+    if (api.ui && typeof api.ui.openSettings === "function") {
+      try { api.ui.openSettings("imageGeneration"); return; } catch (err2) { /* 退回提示 */ }
+    }
+    toast("请到 小手机「设置」→「图像生成 API」里配置生图接口");
   };
 
   // ── 初始化 ──
