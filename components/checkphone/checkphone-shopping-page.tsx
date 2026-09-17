@@ -29,6 +29,7 @@ type CheckPhoneShoppingPageProps = {
 type ShoppingTabId = "home" | "saved" | "cart" | "orders" | "account";
 
 type ShoppingProductDetail = {
+  id: string;
   title: string;
   merchantLabel: string;
   priceLabel: string;
@@ -74,6 +75,7 @@ function toProductDetail(
   defaults?: { tagLabel?: string; quantityLabel?: string; detailLabel?: string },
 ): ShoppingProductDetail {
   return {
+    id: item.id,
     title: item.title,
     merchantLabel: item.merchantLabel,
     priceLabel: item.priceLabel,
@@ -251,27 +253,60 @@ export function CheckPhoneShoppingPage({ character, onBack }: CheckPhoneShopping
     void commitShopping(nextPayload, `{{user}}从{{char}}的购物车里删掉了「${target.title}」`);
   }
 
-  function checkoutCart() {
-    if (!payload || payload.cartItems.length === 0) return;
+  function addToCart(product: CheckPhoneShoppingProduct) {
+    if (!payload) return;
+    const existing = payload.cartItems.find((item) => item.id === product.id);
+    const nextCart = existing
+      ? payload.cartItems.map((item) =>
+          item.id === product.id
+            ? { ...item, quantityLabel: `x${parseShoppingQuantity(item.quantityLabel) + 1}` }
+            : item,
+        )
+      : [
+          ...payload.cartItems,
+          {
+            id: product.id,
+            title: product.title,
+            merchantLabel: product.merchantLabel,
+            priceLabel: product.priceLabel,
+            tagLabel: product.tagLabel,
+            subtitle: product.subtitle,
+            detail: product.detail,
+            previewIcon: product.previewIcon,
+            tone: product.tone,
+            quantityLabel: "x1",
+          },
+        ];
     void commitShopping(
-      payload,
-      `{{user}}冒充{{char}}结算了购物车，共 ${formatShoppingAmount(cartTotals.totalPayment)}`,
+      { ...payload, cartItems: nextCart },
+      `{{user}}把「${product.title}」加入了{{char}}的购物车`,
     );
   }
 
-  function payActiveOrder() {
-    if (!payload || !activeOrder) return;
-    const nextPayload: CheckPhoneShoppingPayload = {
-      ...payload,
-      orders: payload.orders.map((order) =>
-        order.id === activeOrder.id
-          ? { ...order, paymentStatus: "paid_by_user", paidAt: getNow().toISOString() }
-          : order,
-      ),
-    };
+  function toggleSave(product: CheckPhoneShoppingProduct) {
+    if (!payload) return;
+    const isSaved = payload.savedItems.some((item) => item.id === product.id);
+    const nextSaved = isSaved
+      ? payload.savedItems.filter((item) => item.id !== product.id)
+      : [
+          ...payload.savedItems,
+          {
+            id: product.id,
+            title: product.title,
+            merchantLabel: product.merchantLabel,
+            priceLabel: product.priceLabel,
+            tagLabel: product.tagLabel,
+            subtitle: product.subtitle,
+            detail: product.detail,
+            previewIcon: product.previewIcon,
+            tone: product.tone,
+          },
+        ];
     void commitShopping(
-      nextPayload,
-      `{{user}}冒充{{char}}给「${activeOrder.merchantLabel}」付了款 ${activeOrder.totalLabel}`,
+      { ...payload, savedItems: nextSaved },
+      isSaved
+        ? `{{user}}取消了{{char}}对「${product.title}」的收藏`
+        : `{{user}}把「${product.title}」加入了{{char}}的收藏`,
     );
   }
 
@@ -433,6 +468,15 @@ export function CheckPhoneShoppingPage({ character, onBack }: CheckPhoneShopping
                           }}
                           style={{ minWidth: 0, maxWidth: "100%", boxSizing: "border-box", background: "#fff", borderRadius: "16px", padding: "12px", display: "flex", flexDirection: "column", textAlign: "left", border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.03)", position: "relative" }}
                         >
+                          <span
+                            role="button"
+                            aria-label="收藏"
+                            title="冒充 TA 收藏/取消收藏"
+                            onClick={(event) => { event.stopPropagation(); toggleSave(item); }}
+                            style={{ position: "absolute", top: "12px", right: "12px", zIndex: 2, background: "#fff", borderRadius: "50%", padding: "4px", color: payload.savedItems.some((s) => s.id === item.id) ? "#ff2d55" : "#bbb", boxShadow: "0 2px 8px rgba(0,0,0,0.08)", cursor: "pointer" }}
+                          >
+                            <Heart size={16} fill={payload.savedItems.some((s) => s.id === item.id) ? "#ff2d55" : "none"} />
+                          </span>
                           <div style={{ width: "100%", height: "120px", background: "#f5f5f5", borderRadius: "12px", marginBottom: "12px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "calc(34px*var(--app-text-scale,1))" }}>
                             {item.previewIcon}
                           </div>
@@ -440,9 +484,15 @@ export function CheckPhoneShoppingPage({ character, onBack }: CheckPhoneShopping
                           <div style={{ fontSize: "calc(11px*var(--app-text-scale,1))", color: "#888", marginBottom: "8px" }}>{item.merchantLabel}</div>
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "auto" }}>
                             <span style={{ fontSize: "calc(14px*var(--app-text-scale,1))", color: "#222", fontWeight: "bold" }}>{item.priceLabel}</span>
-                            <div style={{ background: "#f46200", color: "#fff", width: "24px", height: "24px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <span
+                              role="button"
+                              aria-label="加入购物车"
+                              title="冒充 TA 加入购物车"
+                              onClick={(event) => { event.stopPropagation(); addToCart(item); }}
+                              style={{ background: "#f46200", color: "#fff", width: "24px", height: "24px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+                            >
                               <Plus size={16} />
-                            </div>
+                            </span>
                           </div>
                         </button>
                       ))}
@@ -511,11 +561,10 @@ export function CheckPhoneShoppingPage({ character, onBack }: CheckPhoneShopping
                          <span>Discount</span>
                          <span style={{ color: "#222", fontWeight: 500 }}>{cartTotals.discount > 0 ? `-${formatShoppingAmount(cartTotals.discount)}` : formatShoppingAmount(0)}</span>
                        </div>
-                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: "calc(14px*var(--app-text-scale,1))", color: "#222", fontWeight: "bold", borderTop: "1px dashed #eee", paddingTop: "16px", marginBottom: "24px" }}>
+                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: "calc(14px*var(--app-text-scale,1))", color: "#222", fontWeight: "bold", borderTop: "1px dashed #eee", paddingTop: "16px" }}>
                          <span>Total Payment</span>
                          <span>{formatShoppingAmount(cartTotals.totalPayment)}</span>
                        </div>
-                       <button onClick={checkoutCart} style={{ width: "100%", background: "#ff6b00", color: "#fff", borderRadius: "24px", padding: "14px 0", fontSize: "calc(14px*var(--app-text-scale,1))", fontWeight: "bold", border: "none" }}>Checkout（冒充 TA 付款）</button>
                      </div>
                   )}
                 </section>
@@ -574,9 +623,15 @@ export function CheckPhoneShoppingPage({ character, onBack }: CheckPhoneShopping
                         }}
                         style={{ minWidth: 0, maxWidth: "100%", boxSizing: "border-box", background: "#fff", borderRadius: "16px", padding: "12px", display: "flex", flexDirection: "column", textAlign: "left", border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.03)", position: "relative" }}
                       >
-                        <div style={{ position: "absolute", top: "12px", right: "12px", zIndex: 2, background: "#ff6b00", borderRadius: "50%", padding: "4px", color: "#fff", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
+                        <span
+                          role="button"
+                          aria-label="取消收藏"
+                          title="冒充 TA 取消收藏"
+                          onClick={(event) => { event.stopPropagation(); toggleSave(item); }}
+                          style={{ position: "absolute", top: "12px", right: "12px", zIndex: 2, background: "#ff6b00", borderRadius: "50%", padding: "4px", color: "#fff", boxShadow: "0 2px 8px rgba(0,0,0,0.05)", cursor: "pointer" }}
+                        >
                           <Heart size={16} fill="white" />
-                        </div>
+                        </span>
                         <div style={{ width: "100%", height: "120px", background: "#f5f5f5", borderRadius: "12px", marginBottom: "12px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "calc(34px*var(--app-text-scale,1))" }}>
                           {item.previewIcon}
                         </div>
@@ -584,6 +639,15 @@ export function CheckPhoneShoppingPage({ character, onBack }: CheckPhoneShopping
                         <div style={{ fontSize: "calc(11px*var(--app-text-scale,1))", color: "#888", marginBottom: "8px" }}>{item.merchantLabel}</div>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "auto" }}>
                           <span style={{ fontSize: "calc(14px*var(--app-text-scale,1))", color: "#222", fontWeight: "bold" }}>{item.priceLabel}</span>
+                          <span
+                            role="button"
+                            aria-label="加入购物车"
+                            title="冒充 TA 加入购物车"
+                            onClick={(event) => { event.stopPropagation(); addToCart(item); }}
+                            style={{ background: "#f46200", color: "#fff", width: "26px", height: "26px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+                          >
+                            <ShoppingCart size={15} />
+                          </span>
                         </div>
                       </button>
                     ))}
@@ -633,8 +697,14 @@ export function CheckPhoneShoppingPage({ character, onBack }: CheckPhoneShopping
                 <ChevronLeft size={20} />
               </button>
               <strong style={{ position: "absolute", left: "50%", bottom: "20px", transform: "translateX(-50%)", fontSize: "calc(16px*var(--app-text-scale,1))", color: "#222", fontWeight: 600 }}>Product Details</strong>
-              <button type="button" style={{ background: "#fff", width: "34px", height: "34px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: "#333", border: "1px solid #eee", boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
-                <Heart size={17} />
+              <button
+                type="button"
+                onClick={() => toggleSave(selectedProduct)}
+                aria-label={payload?.savedItems.some((item) => item.id === selectedProduct.id) ? "取消收藏" : "收藏"}
+                title="冒充 TA 收藏/取消收藏"
+                style={{ background: "#fff", width: "34px", height: "34px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: "#333", border: "1px solid #eee", boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}
+              >
+                <Heart size={17} fill={payload?.savedItems.some((item) => item.id === selectedProduct.id) ? "#ff2d55" : "none"} color={payload?.savedItems.some((item) => item.id === selectedProduct.id) ? "#ff2d55" : "#333"} />
               </button>
             </header>
             <div style={{ position: "relative", width: "100%", height: "220px", background: "#f8f9fa", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "calc(72px*var(--app-text-scale,1))" }}>
@@ -665,9 +735,13 @@ export function CheckPhoneShoppingPage({ character, onBack }: CheckPhoneShopping
                     <span style={{ fontSize: "calc(11px*var(--app-text-scale,1))", color: "#999" }}>Price</span>
                     <strong style={{ fontSize: "calc(18px*var(--app-text-scale,1))", color: "#222" }}>{selectedProduct.priceLabel}</strong>
                   </div>
-                  <button style={{ background: "#222", color: "#fff", border: "none", borderRadius: "24px", padding: "12px 28px", fontSize: "calc(13px*var(--app-text-scale,1))", fontWeight: "bold", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <button
+                    type="button"
+                    onClick={() => addToCart(selectedProduct)}
+                    style={{ background: "#222", color: "#fff", border: "none", borderRadius: "24px", padding: "12px 28px", fontSize: "calc(13px*var(--app-text-scale,1))", fontWeight: "bold", display: "flex", alignItems: "center", gap: "8px" }}
+                  >
                     <ShoppingCart size={16} />
-                    Add to Cart
+                    冒充 TA 加入购物车
                   </button>
                </div>
             </div>
@@ -745,15 +819,6 @@ export function CheckPhoneShoppingPage({ character, onBack }: CheckPhoneShopping
                     <span>Amount Paid</span>
                     <span style={{ color: "#ff6b00" }}>{activeOrder.totalLabel}</span>
                   </div>
-                  {activeOrder.paymentStatus === "paid_by_user" ? (
-                    <div style={{ marginTop: "16px", textAlign: "center", fontSize: "calc(12px*var(--app-text-scale,1))", color: "#10b981", fontWeight: 600 }}>
-                      已由你替 TA 付款
-                    </div>
-                  ) : (
-                    <button onClick={payActiveOrder} style={{ marginTop: "16px", width: "100%", background: "#ff6b00", color: "#fff", borderRadius: "24px", padding: "13px 0", fontSize: "calc(14px*var(--app-text-scale,1))", fontWeight: "bold", border: "none" }}>
-                      冒充 TA 付款
-                    </button>
-                  )}
                </div>
             </div>
           </div>

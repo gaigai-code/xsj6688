@@ -465,7 +465,7 @@ export function formatSnapshotSummary(payload: unknown): string {
       .slice(0, 8)
       .join("\n");
   }
-  if (Array.isArray(record.orders)) {
+  if (Array.isArray(record.orders) && record.orders.some((item) => item && typeof item === "object" && "shopName" in (item as Record<string, unknown>))) {
     return record.orders
       .map((item) => {
         if (!item || typeof item !== "object") return "";
@@ -478,7 +478,7 @@ export function formatSnapshotSummary(payload: unknown): string {
       .slice(0, 8)
       .join("\n");
   }
-  if (Array.isArray(record.threads)) {
+  if (Array.isArray(record.threads) && record.threads.some((item) => item && typeof item === "object" && "sender" in (item as Record<string, unknown>))) {
     return record.threads
       .map((item) => {
         if (!item || typeof item !== "object") return "";
@@ -615,7 +615,7 @@ export function formatSnapshotSummary(payload: unknown): string {
       .slice(0, 3);
     return [...groupSummary, ...topicSummary].filter(Boolean).join("\n");
   }
-  if (Array.isArray(record.threads)) {
+  if (Array.isArray(record.threads) && record.threads.some((item) => item && typeof item === "object" && "sender" in (item as Record<string, unknown>))) {
     return record.threads
       .map((item) => {
         if (!item || typeof item !== "object") return "";
@@ -899,6 +899,36 @@ export function formatSnapshotSummary(payload: unknown): string {
       .filter(Boolean)
       .slice(0, 3);
     return [profileBits, ...bookSummary, ...noteSummary].filter(Boolean).join("\n");
+  }
+  if (record.profile && Array.isArray(record.homePosts) && Array.isArray(record.myPosts)) {
+    const profile = record.profile && typeof record.profile === "object" ? record.profile as Record<string, unknown> : null;
+    const name = profile && typeof profile.name === "string" ? profile.name.trim() : "";
+    const postSummary = record.homePosts
+      .map((item) => {
+        if (!item || typeof item !== "object") return "";
+        const post = item as Record<string, unknown>;
+        const authorName = typeof post.authorName === "string" ? post.authorName.trim() : "";
+        const body = typeof post.body === "string" ? post.body.trim() : "";
+        return [authorName, body].filter(Boolean).join("：");
+      })
+      .filter(Boolean)
+      .slice(0, 4);
+    return [name, ...postSummary].filter(Boolean).join("\n");
+  }
+  if (record.profile && Array.isArray(record.recentTracks) && Array.isArray(record.playlists)) {
+    const profile = record.profile && typeof record.profile === "object" ? record.profile as Record<string, unknown> : null;
+    const name = profile && typeof profile.nickname === "string" ? profile.nickname.trim() : "";
+    const trackSummary = record.recentTracks
+      .map((item) => {
+        if (!item || typeof item !== "object") return "";
+        const track = item as Record<string, unknown>;
+        const title = typeof track.title === "string" ? track.title.trim() : "";
+        const artist = typeof track.artist === "string" ? track.artist.trim() : "";
+        return [title, artist].filter(Boolean).join(" - ");
+      })
+      .filter(Boolean)
+      .slice(0, 4);
+    return [name, ...trackSummary].filter(Boolean).join("\n");
   }
   return "";
 }
