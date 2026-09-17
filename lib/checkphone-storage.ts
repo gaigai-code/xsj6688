@@ -121,16 +121,52 @@ function recordCheckPhoneSnapshotEvent(snapshot: CheckPhoneSnapshot): void {
   const timestamp = snapshot.updatedAt || snapshot.generatedAt || getNow().toISOString();
   const formattedTime = formatPromptTimestamp(timestamp);
   const label = cleanEventText(spec.shortLabel || spec.label, 40) || snapshot.appId;
+  const prefix = formattedTime ? `[查手机 ${formattedTime}]` : "[查手机]";
+  // 把页面内容摘要一并注入短期记忆，角色才知道用户在 TA 手机里具体看到了什么，
+  // 否则聊天里提到手机内容会脱节、乱回。
+  const summary = cleanEventText(snapshot.summary, 600);
   const entry: CheckPhoneProjectionEntry = {
     id: `checkphone_${snapshot.appId}_${Date.parse(timestamp) || Date.now()}`,
     appId: snapshot.appId,
     timestamp,
-    content: `${formattedTime ? `[查手机 ${formattedTime}]` : "[查手机]"} {{user}}偷窥了{{char}}的手机的${label}APP。`,
+    content: summary
+      ? `${prefix} {{user}}偷窥了{{char}}的手机的${label}APP，看到了：${summary}`
+      : `${prefix} {{user}}偷窥了{{char}}的手机的${label}APP。`,
   };
 
   const key = projectionStorageKey(characterId);
   const current = loadProjectionEventsByKey(key);
   saveProjectionEventsByKey(key, [entry, ...current.filter(item => item.id !== entry.id)]);
+}
+
+/** 记录一条「用户冒充角色捣乱」的短期记忆投影（发消息/转账/写备忘录/改购物车等）。 */
+export function recordCheckPhoneUserAction(
+  characterId: string,
+  appId: CheckPhoneAppId,
+  content: string,
+): void {
+  if (typeof window === "undefined") return;
+  const cleanId = cleanEventText(characterId, 160);
+  if (!cleanId) return;
+  const spec = CHECKPHONE_APP_SPECS[appId];
+  if (!spec) return;
+
+  const timestamp = getNow().toISOString();
+  const formattedTime = formatPromptTimestamp(timestamp);
+  const label = cleanEventText(spec.shortLabel || spec.label, 40) || appId;
+  const text = cleanEventText(content, 400);
+  if (!text) return;
+
+  const entry: CheckPhoneProjectionEntry = {
+    id: `checkphone_action_${appId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    appId,
+    timestamp,
+    content: `${formattedTime ? `[查手机 ${formattedTime}]` : "[查手机]"} ${text}`,
+  };
+
+  const key = projectionStorageKey(cleanId);
+  const current = loadProjectionEventsByKey(key);
+  saveProjectionEventsByKey(key, [entry, ...current]);
 }
 
 export async function hydrateCheckPhoneStorage(): Promise<void> {
@@ -219,14 +255,20 @@ export async function loadPhoneSnapshot<AppPayload = unknown>(
   return null;
 }
 
-export async function savePhoneSnapshot<AppPayload = unknown>(snapshot: CheckPhoneSnapshot<AppPayload>): Promise<void> {
+export async function savePhoneSnapshot<AppPayload = unknown>(
+  snapshot: CheckPhoneSnapshot<AppPayload>,
+  options?: { recordPeek?: boolean },
+): Promise<void> {
   snapshotCache.set(snapshot.id, snapshot as CheckPhoneSnapshot);
   try {
     await db.snapshots.put(snapshot as CheckPhoneSnapshot);
   } catch (error) {
     console.warn("[CheckPhoneStorage] save snapshot error:", error);
   }
-  recordCheckPhoneSnapshotEvent(snapshot as CheckPhoneSnapshot);
+  // 捣乱（冒充角色操作）时传入 recordPeek:false，避免误记一条「偷窥」投影。
+  if (options?.recordPeek !== false) {
+    recordCheckPhoneSnapshotEvent(snapshot as CheckPhoneSnapshot);
+  }
 }
 
 export async function clearPhoneSnapshot(characterId: string, appId: CheckPhoneAppId): Promise<void> {

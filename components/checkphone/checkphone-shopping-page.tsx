@@ -17,8 +17,8 @@ import type {
   CheckPhoneShoppingTone,
   CheckPhoneSnapshot,
 } from "@/lib/checkphone-config";
-import { generateCheckPhoneShopping } from "@/lib/checkphone-engine";
-import { clearPhoneSnapshot, loadPhoneSnapshot, savePhoneSnapshot } from "@/lib/checkphone-storage";
+import { formatSnapshotSummary, generateCheckPhoneShopping } from "@/lib/checkphone-engine";
+import { clearPhoneSnapshot, loadPhoneSnapshot, recordCheckPhoneUserAction, savePhoneSnapshot } from "@/lib/checkphone-storage";
 import { splitBilingualText } from "@/lib/bilingual-text";
 
 type CheckPhoneShoppingPageProps = {
@@ -207,6 +207,72 @@ export function CheckPhoneShoppingPage({ character, onBack }: CheckPhoneShopping
     setDebugRawOutput(null);
     setLoaded(true);
     setConfirmClearOpen(false);
+  }
+
+  async function commitShopping(nextPayload: CheckPhoneShoppingPayload, recordText: string) {
+    if (!snapshot) return;
+    const now = getNow();
+    const nextSnapshot: CheckPhoneSnapshot<CheckPhoneShoppingPayload> = {
+      ...snapshot,
+      updatedAt: now.toISOString(),
+      summary: formatSnapshotSummary(nextPayload),
+      payload: nextPayload,
+    };
+    await savePhoneSnapshot(nextSnapshot, { recordPeek: false });
+    recordCheckPhoneUserAction(character.id, "shopping", recordText);
+    setSnapshot(nextSnapshot);
+  }
+
+  function adjustCartQuantity(itemId: string, delta: number) {
+    if (!payload) return;
+    const target = payload.cartItems.find((item) => item.id === itemId);
+    if (!target) return;
+    const nextQuantity = Math.max(1, Math.min(99, parseShoppingQuantity(target.quantityLabel) + delta));
+    const nextPayload: CheckPhoneShoppingPayload = {
+      ...payload,
+      cartItems: payload.cartItems.map((item) =>
+        item.id === itemId ? { ...item, quantityLabel: `x${nextQuantity}` } : item,
+      ),
+    };
+    void commitShopping(
+      nextPayload,
+      `{{user}}在{{char}}的购物车里${delta > 0 ? "加购" : "减少"}了「${target.title}」`,
+    );
+  }
+
+  function removeCartItem(itemId: string) {
+    if (!payload) return;
+    const target = payload.cartItems.find((item) => item.id === itemId);
+    if (!target) return;
+    const nextPayload: CheckPhoneShoppingPayload = {
+      ...payload,
+      cartItems: payload.cartItems.filter((item) => item.id !== itemId),
+    };
+    void commitShopping(nextPayload, `{{user}}从{{char}}的购物车里删掉了「${target.title}」`);
+  }
+
+  function checkoutCart() {
+    if (!payload || payload.cartItems.length === 0) return;
+    void commitShopping(
+      payload,
+      `{{user}}冒充{{char}}结算了购物车，共 ${formatShoppingAmount(cartTotals.totalPayment)}`,
+    );
+  }
+
+  function payActiveOrder() {
+    if (!payload || !activeOrder) return;
+    const nextPayload: CheckPhoneShoppingPayload = {
+      ...payload,
+      orders: payload.orders.map((order) =>
+        order.id === activeOrder.id
+          ? { ...order, paymentStatus: "paid_by_user", paidAt: getNow().toISOString() }
+          : order,
+      ),
+    };
+    void commitShopping(
+      nextPayload,
+      `{{user}}冒充{{char}}给「${activeOrder.merchantLabel}」付了款 ${activeOrder.totalLabel}`,
+    );
   }
 
   const payload = snapshot?.payload ?? null;
@@ -403,15 +469,33 @@ export function CheckPhoneShoppingPage({ character, onBack }: CheckPhoneShopping
                       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", minWidth: 0, gap: "8px" }}>
                           <strong style={{ flex: "1 1 0", fontSize: "calc(13px*var(--app-text-scale,1))", color: "#222", fontWeight: 600, display: "block", minWidth: 0 }}>{renderShoppingCardText(item.title)}</strong>
-                          <Trash2 size={16} color="#ff6b00" style={{ opacity: 0.8 }} />
+                          <span
+                            role="button"
+                            aria-label="从购物车移除"
+                            title="冒充 TA 移除"
+                            onClick={(event) => { event.stopPropagation(); removeCartItem(item.id); }}
+                            style={{ cursor: "pointer", display: "inline-flex", flexShrink: 0 }}
+                          >
+                            <Trash2 size={16} color="#ff6b00" style={{ opacity: 0.8 }} />
+                          </span>
                         </div>
                         <span style={{ fontSize: "calc(11px*var(--app-text-scale,1))", color: "#888", marginTop: "4px" }}>{item.merchantLabel}</span>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "12px" }}>
                           <span style={{ fontSize: "calc(14px*var(--app-text-scale,1))", color: "#222", fontWeight: "bold" }}>{item.priceLabel}</span>
                           <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "#f9f9f9", borderRadius: "14px", padding: "4px 8px" }}>
-                            <span style={{ color: "#666", fontSize: "calc(12px*var(--app-text-scale,1))" }}>-</span>
+                            <span
+                              role="button"
+                              aria-label="减少数量"
+                              onClick={(event) => { event.stopPropagation(); adjustCartQuantity(item.id, -1); }}
+                              style={{ color: "#666", fontSize: "calc(12px*var(--app-text-scale,1))", cursor: "pointer", padding: "0 2px" }}
+                            >-</span>
                             <span style={{ fontSize: "calc(12px*var(--app-text-scale,1))", fontWeight: 500 }}>{item.quantityLabel?.replace(/[^0-9]/g, "") || "1"}</span>
-                            <span style={{ color: "#333", fontSize: "calc(12px*var(--app-text-scale,1))" }}>+</span>
+                            <span
+                              role="button"
+                              aria-label="增加数量"
+                              onClick={(event) => { event.stopPropagation(); adjustCartQuantity(item.id, 1); }}
+                              style={{ color: "#333", fontSize: "calc(12px*var(--app-text-scale,1))", cursor: "pointer", padding: "0 2px" }}
+                            >+</span>
                           </div>
                         </div>
                       </div>
@@ -431,7 +515,7 @@ export function CheckPhoneShoppingPage({ character, onBack }: CheckPhoneShopping
                          <span>Total Payment</span>
                          <span>{formatShoppingAmount(cartTotals.totalPayment)}</span>
                        </div>
-                       <button style={{ width: "100%", background: "#ff6b00", color: "#fff", borderRadius: "24px", padding: "14px 0", fontSize: "calc(14px*var(--app-text-scale,1))", fontWeight: "bold", border: "none" }}>Checkout</button>
+                       <button onClick={checkoutCart} style={{ width: "100%", background: "#ff6b00", color: "#fff", borderRadius: "24px", padding: "14px 0", fontSize: "calc(14px*var(--app-text-scale,1))", fontWeight: "bold", border: "none" }}>Checkout（冒充 TA 付款）</button>
                      </div>
                   )}
                 </section>
@@ -661,6 +745,15 @@ export function CheckPhoneShoppingPage({ character, onBack }: CheckPhoneShopping
                     <span>Amount Paid</span>
                     <span style={{ color: "#ff6b00" }}>{activeOrder.totalLabel}</span>
                   </div>
+                  {activeOrder.paymentStatus === "paid_by_user" ? (
+                    <div style={{ marginTop: "16px", textAlign: "center", fontSize: "calc(12px*var(--app-text-scale,1))", color: "#10b981", fontWeight: 600 }}>
+                      已由你替 TA 付款
+                    </div>
+                  ) : (
+                    <button onClick={payActiveOrder} style={{ marginTop: "16px", width: "100%", background: "#ff6b00", color: "#fff", borderRadius: "24px", padding: "13px 0", fontSize: "calc(14px*var(--app-text-scale,1))", fontWeight: "bold", border: "none" }}>
+                      冒充 TA 付款
+                    </button>
+                  )}
                </div>
             </div>
           </div>

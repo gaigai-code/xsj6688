@@ -39,6 +39,7 @@ import {
   Languages,
   History,
   LayoutGrid,
+  Minimize2,
 } from "lucide-react";
 import { PageShell } from "@/components/ui/page-shell";
 import { ConfirmDialog, Toggle } from "@/components/ui";
@@ -101,6 +102,12 @@ import { DEFAULT_CHECKPHONE_BILINGUAL_PROMPT } from "@/lib/bilingual-prompt-defa
 
 type CheckPhoneAppProps = {
   onClose: () => void;
+  /** 悬浮窗模式：直接打开指定角色，跳过名单页，并在悬浮控制区显示「缩小」按钮 */
+  floating?: boolean;
+  /** 悬浮窗模式下要直接打开的角色 id */
+  initialCharacterId?: string;
+  /** 悬浮窗模式下点击「缩小」的回调 */
+  onMinimize?: () => void;
 };
 
 type ManifestState = {
@@ -290,9 +297,16 @@ function getAppIconClass(appId: CheckPhoneAppId, isDock = false) {
   return baseClass;
 }
 
-export function CheckPhoneApp({ onClose }: CheckPhoneAppProps) {
-  const [characters, setCharacters] = useState<Character[]>([]);
-  const [activeCharId, setActiveCharId] = useState<string | null>(null);
+export function CheckPhoneApp({ onClose, floating = false, initialCharacterId, onMinimize }: CheckPhoneAppProps) {
+  const [characters, setCharacters] = useState<Character[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      return loadCharacters();
+    } catch {
+      return [];
+    }
+  });
+  const [activeCharId, setActiveCharId] = useState<string | null>(initialCharacterId ?? null);
   const [states, setStates] = useState<Record<string, ManifestState>>({});
   const [manifestsCacheMap, setManifestsCacheMap] = useState<Record<string, CheckPhoneManifest>>({});
   
@@ -721,6 +735,16 @@ export function CheckPhoneApp({ onClose }: CheckPhoneAppProps) {
               </div>
 
               <div className="cp-floating-actions">
+                {floating && onMinimize && (
+                  <button
+                    className="cp-float-refresh"
+                    onClick={onMinimize}
+                    aria-label="缩小查手机"
+                    title="缩小为悬浮球"
+                  >
+                    <Minimize2 size={18} strokeWidth={2.25} />
+                  </button>
+                )}
                 {manifest && (
                   <button
                     className="cp-float-refresh"

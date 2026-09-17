@@ -14,8 +14,8 @@ import type {
   CheckPhonePhotosPayload,
   CheckPhoneSnapshot,
 } from "@/lib/checkphone-config";
-import { generateCheckPhonePhotos } from "@/lib/checkphone-engine";
-import { clearPhoneSnapshot, loadPhoneSnapshot, savePhoneSnapshot } from "@/lib/checkphone-storage";
+import { formatSnapshotSummary, generateCheckPhonePhotos } from "@/lib/checkphone-engine";
+import { clearPhoneSnapshot, loadPhoneSnapshot, recordCheckPhoneUserAction, savePhoneSnapshot } from "@/lib/checkphone-storage";
 
 type CheckPhonePhotosPageProps = {
   character: Character;
@@ -114,6 +114,28 @@ export function CheckPhonePhotosPage({ character, onBack }: CheckPhonePhotosPage
     setDebugRawOutput(null);
     setLoaded(true);
     setConfirmClearOpen(false);
+  }
+
+  async function deletePhoto() {
+    if (!snapshot || !selectedPhoto) return;
+    const now = getNow();
+    const nextPayload: CheckPhonePhotosPayload = {
+      ...snapshot.payload,
+      photos: snapshot.payload.photos.filter((photo) => photo.id !== selectedPhoto.id),
+      albums: snapshot.payload.albums.map((album) =>
+        album.id === selectedPhoto.albumId ? { ...album, count: Math.max(0, album.count - 1) } : album,
+      ),
+    };
+    const nextSnapshot: CheckPhoneSnapshot<CheckPhonePhotosPayload> = {
+      ...snapshot,
+      updatedAt: now.toISOString(),
+      summary: formatSnapshotSummary(nextPayload),
+      payload: nextPayload,
+    };
+    await savePhoneSnapshot(nextSnapshot, { recordPeek: false });
+    recordCheckPhoneUserAction(character.id, "photos", `{{user}}删掉了{{char}}相册里的「${selectedPhoto.title}」`);
+    setSnapshot(nextSnapshot);
+    setSelectedPhotoId(null);
   }
 
   const payload = snapshot?.payload ?? null;
@@ -363,6 +385,10 @@ export function CheckPhonePhotosPage({ character, onBack }: CheckPhonePhotosPage
                 </div>
                 <p><CheckPhoneBilingualText text={selectedPhoto.description} tone="photos" /></p>
               </div>
+              <button type="button" className="cp-photo-delete-btn" onClick={() => void deletePhoto()}>
+                <Trash2 size={16} strokeWidth={2} />
+                删掉这张照片（捣乱）
+              </button>
             </article>
           </div>
         )}

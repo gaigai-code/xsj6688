@@ -31,10 +31,11 @@ import type {
   CheckPhoneWeiboTone,
   CheckPhoneWeiboTopic,
 } from "@/lib/checkphone-config";
-import { generateCheckPhoneWeibo } from "@/lib/checkphone-engine";
+import { formatSnapshotSummary, generateCheckPhoneWeibo } from "@/lib/checkphone-engine";
 import {
   clearPhoneSnapshot,
   loadPhoneSnapshot,
+  recordCheckPhoneUserAction,
   savePhoneSnapshot,
 } from "@/lib/checkphone-storage";
 import {
@@ -369,6 +370,8 @@ export function CheckPhoneWeiboPage({
     null,
   );
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [postBody, setPostBody] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -480,6 +483,39 @@ export function CheckPhoneWeiboPage({
     setDebugNormalizeError(null);
     setLoaded(true);
     setConfirmClearOpen(false);
+  }
+
+  async function publishPost() {
+    const text = postBody.trim();
+    if (!snapshot || !text) return;
+    const now = getNow();
+    const newPost: CheckPhoneWeiboPost = {
+      id: `wb_${Date.now()}`,
+      authorName: character.name,
+      authorBadge: "",
+      body: text,
+      mediaIcon: "📝",
+      tone: "ivory",
+      repostCount: 0,
+      commentCount: 0,
+      likeCount: 0,
+      comments: [],
+    };
+    const nextPayload: CheckPhoneWeiboPayload = {
+      ...snapshot.payload,
+      homePosts: [newPost, ...(snapshot.payload.homePosts ?? [])],
+    };
+    const nextSnapshot: CheckPhoneSnapshot<CheckPhoneWeiboPayload> = {
+      ...snapshot,
+      updatedAt: now.toISOString(),
+      summary: formatSnapshotSummary(nextPayload),
+      payload: nextPayload,
+    };
+    await savePhoneSnapshot(nextSnapshot, { recordPeek: false });
+    recordCheckPhoneUserAction(character.id, "weibo", `{{user}}冒充{{char}}发了一条微博：${text}`);
+    setSnapshot(nextSnapshot);
+    setPostBody("");
+    setComposerOpen(false);
   }
 
   const payload = snapshot?.payload ?? null;
@@ -871,6 +907,29 @@ export function CheckPhoneWeiboPage({
             >
               {selectedTab === "home" && (
                 <section className="cp-weibo-feed">
+                  <button type="button" className="cp-weibo-publish-btn" onClick={() => setComposerOpen((open) => !open)}>
+                    <Plus size={16} strokeWidth={2.4} />
+                    冒充 TA 发微博
+                  </button>
+                  {composerOpen && (
+                    <div className="cp-weibo-publish-form">
+                      <textarea
+                        value={postBody}
+                        onChange={(event) => setPostBody(event.target.value)}
+                        placeholder="以 TA 的口吻发点什么……"
+                        rows={3}
+                        className="cp-weibo-publish-textarea"
+                      />
+                      <button
+                        type="button"
+                        className="cp-weibo-publish-submit"
+                        onClick={() => void publishPost()}
+                        disabled={!postBody.trim()}
+                      >
+                        发布
+                      </button>
+                    </div>
+                  )}
                   {payload.homePosts.map((post) => (
                     <WeiboPostCard
                       key={post.id}

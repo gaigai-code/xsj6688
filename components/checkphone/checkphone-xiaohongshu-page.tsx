@@ -15,8 +15,8 @@ import type {
   CheckPhoneXiaohongshuThread,
   CheckPhoneXiaohongshuTone,
 } from "@/lib/checkphone-config";
-import { generateCheckPhoneXiaohongshu } from "@/lib/checkphone-engine";
-import { clearPhoneSnapshot, loadPhoneSnapshot, savePhoneSnapshot } from "@/lib/checkphone-storage";
+import { formatSnapshotSummary, generateCheckPhoneXiaohongshu } from "@/lib/checkphone-engine";
+import { clearPhoneSnapshot, loadPhoneSnapshot, recordCheckPhoneUserAction, savePhoneSnapshot } from "@/lib/checkphone-storage";
 import { normalizeBilingualTextInput, splitBilingualText } from "@/lib/bilingual-text";
 import { kvGet, kvSet } from "@/lib/kv-db";
 
@@ -383,6 +383,9 @@ export function CheckPhoneXiaohongshuPage({ character, onBack }: CheckPhoneXiaoh
   const [videoCaptionCanExpand, setVideoCaptionCanExpand] = useState(false);
   const [collapsedVideoCaption, setCollapsedVideoCaption] = useState("");
   const videoCaptionMeasureRef = useRef<HTMLDivElement | null>(null);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [noteTitle, setNoteTitle] = useState("");
+  const [noteBody, setNoteBody] = useState("");
 
   useEffect(() => {
     setProfileTopbarVisible(false);
@@ -499,6 +502,40 @@ export function CheckPhoneXiaohongshuPage({ character, onBack }: CheckPhoneXiaoh
     setDebugNormalizeError(null);
     setLoaded(true);
     setConfirmClearOpen(false);
+  }
+
+  async function publishNote() {
+    if (!snapshot || !noteTitle.trim() && !noteBody.trim()) return;
+    const now = getNow();
+    const newNote: CheckPhoneXiaohongshuNote = {
+      id: `xhs_${Date.now()}`,
+      authorName: character.name,
+      title: noteTitle.trim() || "无标题",
+      body: noteBody.trim(),
+      coverIcon: "📒",
+      tone: "blush",
+      likeCount: 0,
+      commentCount: 0,
+      saveCount: 0,
+      tags: [],
+      comments: [],
+    };
+    const nextPayload: CheckPhoneXiaohongshuPayload = {
+      ...snapshot.payload,
+      homeNotes: [newNote, ...(snapshot.payload.homeNotes ?? [])],
+    };
+    const nextSnapshot: CheckPhoneSnapshot<CheckPhoneXiaohongshuPayload> = {
+      ...snapshot,
+      updatedAt: now.toISOString(),
+      summary: formatSnapshotSummary(nextPayload),
+      payload: nextPayload,
+    };
+    await savePhoneSnapshot(nextSnapshot, { recordPeek: false });
+    recordCheckPhoneUserAction(character.id, "xiaohongshu", `{{user}}冒充{{char}}发了一篇小红书笔记：${newNote.title}`);
+    setSnapshot(nextSnapshot);
+    setNoteTitle("");
+    setNoteBody("");
+    setComposerOpen(false);
   }
 
   const payload = snapshot?.payload ?? null;
@@ -909,6 +946,40 @@ export function CheckPhoneXiaohongshuPage({ character, onBack }: CheckPhoneXiaoh
         {payload && !activeNote && !activeThread && (
           <>
             <div className={`cp-xhs-scroll ${selectedTab === "profile" ? "cp-xhs-scroll--profile" : ""}`} onScroll={handleMainScroll}>
+              {selectedTab === "home" && (
+                <div className="cp-xhs-publish-strip">
+                  <button type="button" className="cp-xhs-publish-btn" onClick={() => setComposerOpen((open) => !open)}>
+                    <Plus size={16} strokeWidth={2.4} />
+                    冒充 TA 发笔记
+                  </button>
+                  {composerOpen && (
+                    <div className="cp-xhs-publish-form">
+                      <input
+                        type="text"
+                        value={noteTitle}
+                        onChange={(event) => setNoteTitle(event.target.value)}
+                        placeholder="标题（可选）"
+                        className="cp-xhs-publish-input"
+                      />
+                      <textarea
+                        value={noteBody}
+                        onChange={(event) => setNoteBody(event.target.value)}
+                        placeholder="以 TA 的口吻写点内容……"
+                        rows={3}
+                        className="cp-xhs-publish-textarea"
+                      />
+                      <button
+                        type="button"
+                        className="cp-xhs-publish-submit"
+                        onClick={() => void publishNote()}
+                        disabled={!noteTitle.trim() && !noteBody.trim()}
+                      >
+                        发布
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
               {selectedTab === "home" && (
                 <div className="cp-xhs-decor-bar" aria-hidden="true">
                   {XHS_DECOR_CATEGORIES.map((item, idx) => (

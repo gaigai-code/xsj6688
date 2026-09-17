@@ -18,6 +18,7 @@ import {
   Plus,
   Smile,
   Mic,
+  Send,
   type LucideIcon,
 } from "lucide-react";
 import { CheckPhoneBilingualText, normalizeCheckPhoneText } from "@/components/checkphone/checkphone-bilingual-text";
@@ -32,7 +33,7 @@ import type {
   CheckPhoneChatPayload,
   CheckPhoneSnapshot,
 } from "@/lib/checkphone-config";
-import { generateCheckPhoneChat } from "@/lib/checkphone-engine";
+import { formatSnapshotSummary, generateCheckPhoneChat } from "@/lib/checkphone-engine";
 import {
   findCustomStickerByName,
   resolveCustomStickerUrl,
@@ -42,6 +43,7 @@ import { findStickerByName } from "@/lib/sticker-data";
 import {
   clearPhoneSnapshot,
   loadPhoneSnapshot,
+  recordCheckPhoneUserAction,
   savePhoneSnapshot,
 } from "@/lib/checkphone-storage";
 import { splitBilingualText } from "@/lib/bilingual-text";
@@ -625,7 +627,15 @@ function CheckPhoneBubbleAvatar({
   );
 }
 
-function CheckPhoneChatComposer() {
+function CheckPhoneChatComposer({
+  value,
+  onChange,
+  onSend,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onSend: () => void;
+}) {
   const iconStyle = {
     width: "32px",
     height: "32px",
@@ -639,6 +649,7 @@ function CheckPhoneChatComposer() {
     border: "1px solid rgba(255, 255, 255, 0.76)",
     boxShadow: "0 6px 14px rgba(70, 76, 112, 0.025)",
   };
+  const canSend = value.trim().length > 0;
 
   return (
     <div
@@ -670,25 +681,47 @@ function CheckPhoneChatComposer() {
           alignItems: "center",
           justifyContent: "space-between",
           gap: "10px",
-          color: "rgba(62, 67, 95, 0.42)",
-          fontSize: "calc(12px*var(--app-text-scale,1))",
           border: "1px solid rgba(155, 132, 235, 0.08)",
         }}
       >
-        <span
-          style={{
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              if (canSend) onSend();
+            }
           }}
-        >
-          Type a message...
-        </span>
+          placeholder="冒充 TA 发消息..."
+          style={{
+            flex: 1,
+            minWidth: 0,
+            background: "transparent",
+            border: "none",
+            outline: "none",
+            color: "rgba(62, 67, 95, 0.85)",
+            fontSize: "calc(12px*var(--app-text-scale,1))",
+          }}
+        />
         <Smile size={17} strokeWidth={2} style={{ flexShrink: 0 }} />
       </div>
-      <div style={iconStyle} aria-hidden="true">
-        <Mic size={17} strokeWidth={2.2} />
-      </div>
+      <button
+        type="button"
+        onClick={onSend}
+        disabled={!canSend}
+        aria-label="发送"
+        style={{
+          ...iconStyle,
+          background: canSend ? "#20243a" : "rgba(255, 255, 255, 0.86)",
+          color: canSend ? "#fff" : "rgba(62, 67, 95, 0.56)",
+          cursor: canSend ? "pointer" : "default",
+          opacity: canSend ? 1 : 0.6,
+          border: "none",
+        }}
+      >
+        <Send size={17} strokeWidth={2.2} />
+      </button>
       <div style={iconStyle} aria-hidden="true">
         <MoreHorizontal size={18} strokeWidth={2.2} />
       </div>
@@ -712,6 +745,9 @@ export function CheckPhoneChatPage({
   const [error, setError] = useState<string | null>(null);
   const [debugRawOutput, setDebugRawOutput] = useState<string | null>(null);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  const [composerText, setComposerText] = useState("");
+  const [momentComposerOpen, setMomentComposerOpen] = useState(false);
+  const [momentText, setMomentText] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -784,6 +820,87 @@ export function CheckPhoneChatPage({
     setDebugRawOutput(null);
     setLoaded(true);
     setConfirmClearOpen(false);
+  }
+
+  function commitChat(nextPayload: CheckPhoneChatPayload, recordText: string) {
+    if (!snapshot) return;
+    const now = getNow();
+    const nextSnapshot: CheckPhoneSnapshot<CheckPhoneChatPayload> = {
+      ...snapshot,
+      updatedAt: now.toISOString(),
+      summary: formatSnapshotSummary(nextPayload),
+      payload: nextPayload,
+    };
+    void savePhoneSnapshot(nextSnapshot, { recordPeek: false });
+    recordCheckPhoneUserAction(character.id, "chat", recordText);
+    setSnapshot(nextSnapshot);
+  }
+
+  function sendToConversation() {
+    const text = composerText.trim();
+    if (!text || !payload || !activeConversation) return;
+    const newBubble: CheckPhoneChatBubble = {
+      id: `msg_${Date.now()}`,
+      text,
+      timeLabel: "刚刚",
+      direction: "outgoing",
+    };
+    const nextPayload: CheckPhoneChatPayload = {
+      ...payload,
+      conversations: payload.conversations.map((item) =>
+        item.id === activeConversation.id
+          ? { ...item, messages: [...item.messages, newBubble] }
+          : item,
+      ),
+    };
+    const displayName = getConversationDisplayName(activeConversation);
+    commitChat(nextPayload, `{{user}}冒充{{char}}给「${displayName}」发了一条消息：${text}`);
+    setComposerText("");
+  }
+
+  function sendToGroup() {
+    const text = composerText.trim();
+    if (!text || !payload || !activeGroup) return;
+    const newBubble: CheckPhoneChatBubble = {
+      id: `msg_${Date.now()}`,
+      text,
+      timeLabel: "刚刚",
+      direction: "outgoing",
+      authorLabel: character.name,
+    };
+    const nextPayload: CheckPhoneChatPayload = {
+      ...payload,
+      groups: payload.groups.map((item) =>
+        item.id === activeGroup.id
+          ? { ...item, messages: [...item.messages, newBubble] }
+          : item,
+      ),
+    };
+    commitChat(nextPayload, `{{user}}冒充{{char}}在群「${activeGroup.name}」里发了一条消息：${text}`);
+    setComposerText("");
+  }
+
+  function postMoment() {
+    const text = momentText.trim();
+    if (!text || !payload) return;
+    const newMoment: CheckPhoneChatMomentItem = {
+      id: `moment_${Date.now()}`,
+      authorLabel: character.name,
+      authorAccent: "#8b68ff",
+      timeLabel: "刚刚",
+      body: text,
+      mediaLabel: "",
+      likeCountLabel: "0",
+      commentCountLabel: "0",
+      comments: [],
+    };
+    const nextPayload: CheckPhoneChatPayload = {
+      ...payload,
+      momentsFeed: [newMoment, ...(payload.momentsFeed ?? [])],
+    };
+    commitChat(nextPayload, `{{user}}冒充{{char}}发了一条朋友圈：${text}`);
+    setMomentText("");
+    setMomentComposerOpen(false);
   }
 
   const payload = snapshot?.payload ?? null;
@@ -1466,6 +1583,58 @@ export function CheckPhoneChatPage({
                       padding: "16px 18px",
                     }}
                   >
+                  <button
+                    type="button"
+                    onClick={() => setMomentComposerOpen((open) => !open)}
+                    style={{
+                      alignSelf: "flex-end",
+                      background: momentComposerOpen ? "#20243a" : "rgba(255,255,255,0.9)",
+                      color: momentComposerOpen ? "#fff" : "#20243a",
+                      border: "1px solid rgba(155, 132, 235, 0.2)",
+                      borderRadius: "18px",
+                      padding: "8px 16px",
+                      fontSize: "calc(12px*var(--app-text-scale,1))",
+                      fontWeight: 600,
+                    }}
+                  >
+                    冒充 TA 发朋友圈
+                  </button>
+                  {momentComposerOpen && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      <textarea
+                        value={momentText}
+                        onChange={(event) => setMomentText(event.target.value)}
+                        placeholder="以 TA 的口吻写点内容……"
+                        rows={3}
+                        style={{
+                          border: "1px solid rgba(155, 132, 235, 0.2)",
+                          borderRadius: "12px",
+                          padding: "10px 12px",
+                          fontSize: "calc(13px*var(--app-text-scale,1))",
+                          outline: "none",
+                          resize: "vertical",
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={postMoment}
+                        disabled={!momentText.trim()}
+                        style={{
+                          alignSelf: "flex-end",
+                          background: "#20243a",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: "18px",
+                          padding: "8px 18px",
+                          fontSize: "calc(12px*var(--app-text-scale,1))",
+                          fontWeight: 600,
+                          opacity: momentText.trim() ? 1 : 0.4,
+                        }}
+                      >
+                        发布
+                      </button>
+                    </div>
+                  )}
                   {sortedMomentsFeed.map((item) => (
                     <article
                       key={item.id}
@@ -2027,7 +2196,7 @@ export function CheckPhoneChatPage({
                 })}
               </div>
             </div>
-            <CheckPhoneChatComposer />
+            <CheckPhoneChatComposer value={composerText} onChange={setComposerText} onSend={sendToConversation} />
           </div>
         )}
 
@@ -2178,7 +2347,7 @@ export function CheckPhoneChatPage({
                 })}
               </div>
             </div>
-            <CheckPhoneChatComposer />
+            <CheckPhoneChatComposer value={composerText} onChange={setComposerText} onSend={sendToGroup} />
           </div>
         )}
       </div>

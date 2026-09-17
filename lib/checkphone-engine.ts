@@ -435,7 +435,7 @@ export function formatCheckPhoneManifestSummary(manifest: CheckPhoneManifest): s
 
 export const CHECKPHONE_MANIFEST_OPTIONAL_POOL_TEXT = formatCheckPhoneOptionalPoolText();
 
-function formatSnapshotSummary(payload: unknown): string {
+export function formatSnapshotSummary(payload: unknown): string {
   if (!payload || typeof payload !== "object") return "";
   const record = payload as Record<string, unknown>;
   if (Array.isArray(record.notes)) {

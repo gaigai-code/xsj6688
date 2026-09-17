@@ -3,17 +3,18 @@ import { getNow } from "@/lib/virtual-time";
 
 import { useEffect, useMemo, useState } from "react";
 import { useCheckPhoneRefresh } from "@/lib/checkphone-refresh-tracker";
-import { ChevronLeft, ChevronRight, RefreshCw, Search, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Search, Send, Trash2 } from "lucide-react";
 import { CheckPhoneBilingualText } from "@/components/checkphone/checkphone-bilingual-text";
 import { ConfirmDialog } from "@/components/ui";
 import type { Character } from "@/lib/character-types";
 import type {
+  CheckPhoneMessageBubble,
   CheckPhoneMessagesPayload,
   CheckPhoneMessageThread,
   CheckPhoneSnapshot,
 } from "@/lib/checkphone-config";
-import { generateCheckPhoneMessages } from "@/lib/checkphone-engine";
-import { clearPhoneSnapshot, loadPhoneSnapshot, savePhoneSnapshot } from "@/lib/checkphone-storage";
+import { formatSnapshotSummary, generateCheckPhoneMessages } from "@/lib/checkphone-engine";
+import { clearPhoneSnapshot, loadPhoneSnapshot, recordCheckPhoneUserAction, savePhoneSnapshot } from "@/lib/checkphone-storage";
 import { formatChatUiTime } from "@/lib/chat-time";
 import { CheckPhoneDebugErrorCard } from "./checkphone-debug-error-card";
 import { normalizeBilingualTextInput, splitBilingualText } from "@/lib/bilingual-text";
@@ -138,6 +139,37 @@ export function CheckPhoneMessagesPage({ character, onBack }: CheckPhoneMessages
   }
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [composeText, setComposeText] = useState("");
+
+  async function sendToThread() {
+    const text = composeText.trim();
+    if (!text || !snapshot || !selectedThread) return;
+    const now = getNow();
+    const newBubble: CheckPhoneMessageBubble = {
+      id: `sms_${Date.now()}`,
+      text,
+      timeLabel: now.toISOString(),
+      direction: "outgoing",
+    };
+    const nextPayload: CheckPhoneMessagesPayload = {
+      ...snapshot.payload,
+      threads: snapshot.payload.threads.map((thread) =>
+        thread.id === selectedThread.id
+          ? { ...thread, messages: [...thread.messages, newBubble], preview: text }
+          : thread,
+      ),
+    };
+    const nextSnapshot: CheckPhoneSnapshot<CheckPhoneMessagesPayload> = {
+      ...snapshot,
+      updatedAt: now.toISOString(),
+      summary: formatSnapshotSummary(nextPayload),
+      payload: nextPayload,
+    };
+    await savePhoneSnapshot(nextSnapshot, { recordPeek: false });
+    recordCheckPhoneUserAction(character.id, "messages", `{{user}}冒充{{char}}给「${selectedThread.sender}」发了一条短信：${text}`);
+    setSnapshot(nextSnapshot);
+    setComposeText("");
+  }
 
   const payload = snapshot?.payload ?? null;
   const allThreads = payload?.threads ?? [];
@@ -308,6 +340,30 @@ export function CheckPhoneMessagesPage({ character, onBack }: CheckPhoneMessages
                   </span>
                 </div>
               ))}
+            </div>
+            <div className="cp-message-composer">
+              <input
+                type="text"
+                value={composeText}
+                onChange={(event) => setComposeText(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    if (composeText.trim()) void sendToThread();
+                  }
+                }}
+                placeholder="冒充 TA 发短信..."
+                className="cp-message-composer-input"
+              />
+              <button
+                type="button"
+                onClick={() => void sendToThread()}
+                disabled={!composeText.trim()}
+                className="cp-message-composer-send"
+                aria-label="发送"
+              >
+                <Send size={16} strokeWidth={2.2} />
+              </button>
             </div>
           </div>
         )}

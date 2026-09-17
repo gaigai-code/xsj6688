@@ -646,6 +646,270 @@
   container-name: cp-screen;
 }
 
+/* ── 查手机缩小后的悬浮球（左侧，仅背景+名字） ── */
+.cp-mini-window {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 90;
+  width: 84px;
+  height: 112px;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-radius: 14px;
+  overflow: hidden;
+  background-color: #1a1a2e;
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: flex-end;
+  cursor: pointer;
+}
+.cp-mini-window-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.68), rgba(0, 0, 0, 0) 55%);
+}
+.cp-mini-window-name {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  padding: 6px 6px;
+  color: #fff;
+  font-size: calc(11.7px * var(--app-text-scale, 1));
+  font-weight: 600;
+  text-align: center;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 查手机捣乱交互（冒充角色操作）通用样式 ── */
+
+/* 资产页 · 转账给自己 */
+.cp-assets-transfer-panel {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.cp-assets-transfer-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #e6e0d0;
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: calc(13px * var(--app-text-scale, 1));
+  outline: none;
+  background: #fff;
+  color: #222;
+}
+.cp-assets-transfer-btn {
+  flex-shrink: 0;
+  background: #111;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 9px 14px;
+  font-size: calc(12px * var(--app-text-scale, 1));
+  font-weight: 600;
+}
+.cp-assets-transfer-btn:disabled { opacity: 0.4; }
+
+/* 信息页 · 发短信 */
+.cp-message-composer {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.6);
+}
+.cp-message-composer-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 18px;
+  padding: 8px 14px;
+  font-size: calc(13px * var(--app-text-scale, 1));
+  outline: none;
+  background: #fff;
+}
+.cp-message-composer-send {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: #20243a;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cp-message-composer-send:disabled { opacity: 0.4; }
+
+/* 邮箱页 · 写邮件 */
+.cp-email-composer {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 76px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 30;
+}
+.cp-email-composer-input {
+  border: 1px solid #e0e0e0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: calc(13px * var(--app-text-scale, 1));
+  outline: none;
+}
+.cp-email-composer-body {
+  border: 1px solid #e0e0e0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: calc(13px * var(--app-text-scale, 1));
+  outline: none;
+  resize: vertical;
+  font-family: inherit;
+}
+.cp-email-composer-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.cp-email-composer-cancel,
+.cp-email-composer-send {
+  border: none;
+  border-radius: 16px;
+  padding: 8px 16px;
+  font-size: calc(13px * var(--app-text-scale, 1));
+  font-weight: 600;
+}
+.cp-email-composer-cancel { background: #f1f3f4; color: #444; }
+.cp-email-composer-send { background: #0b57d0; color: #fff; }
+.cp-email-composer-send:disabled { opacity: 0.4; }
+
+/* 相册页 · 删照片 */
+.cp-photo-delete-btn {
+  margin-top: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #ffd7d7;
+  background: #fff5f5;
+  color: #d93025;
+  border-radius: 12px;
+  padding: 8px 14px;
+  font-size: calc(12px * var(--app-text-scale, 1));
+  font-weight: 600;
+}
+
+/* 小红书 · 发笔记 */
+.cp-xhs-publish-strip {
+  padding: 10px 14px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cp-xhs-publish-btn {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #ff2442;
+  color: #fff;
+  border: none;
+  border-radius: 18px;
+  padding: 8px 16px;
+  font-size: calc(12px * var(--app-text-scale, 1));
+  font-weight: 600;
+}
+.cp-xhs-publish-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #fff;
+  border-radius: 12px;
+  padding: 12px;
+}
+.cp-xhs-publish-input,
+.cp-xhs-publish-textarea {
+  border: 1px solid #f0e8e8;
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: calc(13px * var(--app-text-scale, 1));
+  outline: none;
+  font-family: inherit;
+  resize: vertical;
+}
+.cp-xhs-publish-submit {
+  align-self: flex-end;
+  background: #ff2442;
+  color: #fff;
+  border: none;
+  border-radius: 16px;
+  padding: 7px 16px;
+  font-size: calc(12px * var(--app-text-scale, 1));
+  font-weight: 600;
+}
+.cp-xhs-publish-submit:disabled { opacity: 0.4; }
+
+/* 微博 · 发微博 */
+.cp-weibo-publish-btn {
+  margin: 4px 12px 8px;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #ff8200;
+  color: #fff;
+  border: none;
+  border-radius: 18px;
+  padding: 8px 16px;
+  font-size: calc(12px * var(--app-text-scale, 1));
+  font-weight: 600;
+}
+.cp-weibo-publish-form {
+  margin: 0 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid #f0f0f0;
+  border-radius: 12px;
+  padding: 12px;
+}
+.cp-weibo-publish-textarea {
+  border: 1px solid #f0f0f0;
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: calc(13px * var(--app-text-scale, 1));
+  outline: none;
+  font-family: inherit;
+  resize: vertical;
+}
+.cp-weibo-publish-submit {
+  align-self: flex-end;
+  background: #ff8200;
+  color: #fff;
+  border: none;
+  border-radius: 16px;
+  padding: 7px 16px;
+  font-size: calc(12px * var(--app-text-scale, 1));
+  font-weight: 600;
+}
+.cp-weibo-publish-submit:disabled { opacity: 0.4; }
+
 /* Floating Controls */
 .cp-floating-controls {
   position: absolute;

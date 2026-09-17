@@ -13,8 +13,8 @@ import type {
   CheckPhoneEmailPayload,
   CheckPhoneSnapshot,
 } from "@/lib/checkphone-config";
-import { generateCheckPhoneEmail } from "@/lib/checkphone-engine";
-import { clearPhoneSnapshot, loadPhoneSnapshot, savePhoneSnapshot } from "@/lib/checkphone-storage";
+import { formatSnapshotSummary, generateCheckPhoneEmail } from "@/lib/checkphone-engine";
+import { clearPhoneSnapshot, loadPhoneSnapshot, recordCheckPhoneUserAction, savePhoneSnapshot } from "@/lib/checkphone-storage";
 import { normalizeBilingualTextInput, splitBilingualText } from "@/lib/bilingual-text";
 
 type CheckPhoneEmailPageProps = {
@@ -68,6 +68,10 @@ export function CheckPhoneEmailPage({ character, onBack }: CheckPhoneEmailPagePr
   const [error, setError] = useState<string | null>(null);
   const [debugRawOutput, setDebugRawOutput] = useState<string | null>(null);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [emailRecipient, setEmailRecipient] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -132,6 +136,40 @@ export function CheckPhoneEmailPage({ character, onBack }: CheckPhoneEmailPagePr
     setDebugRawOutput(null);
     setLoaded(true);
     setConfirmClearOpen(false);
+  }
+
+  async function sendEmail() {
+    if (!snapshot || !emailSubject.trim() && !emailBody.trim()) return;
+    const now = getNow();
+    const timeLabel = `${now.getMonth() + 1}月${now.getDate()}日 ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const newEmail: CheckPhoneEmailItem = {
+      id: `mail_${Date.now()}`,
+      senderName: character.name,
+      senderAddress: "me@localhost",
+      subject: emailSubject.trim() || "无主题",
+      preview: emailBody.trim().slice(0, 60) || "",
+      timeLabel,
+      body: emailBody.trim(),
+      recipientLabel: emailRecipient.trim() || "某联系人",
+      unread: false,
+    };
+    const nextPayload: CheckPhoneEmailPayload = {
+      ...snapshot.payload,
+      emails: [newEmail, ...(snapshot.payload.emails ?? [])],
+    };
+    const nextSnapshot: CheckPhoneSnapshot<CheckPhoneEmailPayload> = {
+      ...snapshot,
+      updatedAt: now.toISOString(),
+      summary: formatSnapshotSummary(nextPayload),
+      payload: nextPayload,
+    };
+    await savePhoneSnapshot(nextSnapshot, { recordPeek: false });
+    recordCheckPhoneUserAction(character.id, "email", `{{user}}冒充{{char}}给「${newEmail.recipientLabel}」发了封邮件：${newEmail.subject}`);
+    setSnapshot(nextSnapshot);
+    setEmailRecipient("");
+    setEmailSubject("");
+    setEmailBody("");
+    setComposerOpen(false);
   }
 
   const payload = snapshot?.payload ?? null;
@@ -263,10 +301,49 @@ export function CheckPhoneEmailPage({ character, onBack }: CheckPhoneEmailPagePr
             )}
           </div>
 
-          <button className="cp-email-fab" type="button">
+          <button className="cp-email-fab" type="button" onClick={() => setComposerOpen((open) => !open)}>
             <Edit2 size={20} strokeWidth={2.5} color="#001d35" />
             <span style={{ color: "#001d35", fontWeight: 500 }}>写邮件</span>
           </button>
+
+          {composerOpen && (
+            <div className="cp-email-composer">
+              <input
+                type="text"
+                value={emailRecipient}
+                onChange={(event) => setEmailRecipient(event.target.value)}
+                placeholder="收件人（冒充 TA 发给谁）"
+                className="cp-email-composer-input"
+              />
+              <input
+                type="text"
+                value={emailSubject}
+                onChange={(event) => setEmailSubject(event.target.value)}
+                placeholder="主题"
+                className="cp-email-composer-input"
+              />
+              <textarea
+                value={emailBody}
+                onChange={(event) => setEmailBody(event.target.value)}
+                placeholder="正文……"
+                rows={4}
+                className="cp-email-composer-body"
+              />
+              <div className="cp-email-composer-actions">
+                <button type="button" className="cp-email-composer-cancel" onClick={() => { setComposerOpen(false); setEmailRecipient(""); setEmailSubject(""); setEmailBody(""); }}>
+                  取消
+                </button>
+                <button
+                  type="button"
+                  className="cp-email-composer-send"
+                  onClick={() => void sendEmail()}
+                  disabled={!emailSubject.trim() && !emailBody.trim()}
+                >
+                  冒充 TA 发送
+                </button>
+              </div>
+            </div>
+          )}
 
           <nav className="cp-email-bottom-nav">
             <div className="cp-email-nav-item is-active">

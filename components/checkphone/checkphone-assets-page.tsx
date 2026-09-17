@@ -15,8 +15,8 @@ import type {
   CheckPhoneSnapshot,
 } from "@/lib/checkphone-config";
 import { formatChatUiTime } from "@/lib/chat-time";
-import { generateCheckPhoneAssets } from "@/lib/checkphone-engine";
-import { clearPhoneSnapshot, loadPhoneSnapshot, savePhoneSnapshot } from "@/lib/checkphone-storage";
+import { formatSnapshotSummary, generateCheckPhoneAssets } from "@/lib/checkphone-engine";
+import { clearPhoneSnapshot, loadPhoneSnapshot, recordCheckPhoneUserAction, savePhoneSnapshot } from "@/lib/checkphone-storage";
 
 type CheckPhoneAssetsPageProps = {
   character: Character;
@@ -141,6 +141,8 @@ export function CheckPhoneAssetsPage({ character, onBack }: CheckPhoneAssetsPage
   const [error, setError] = useState<string | null>(null);
   const [debugRawOutput, setDebugRawOutput] = useState<string | null>(null);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferAmount, setTransferAmount] = useState("");
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const cardStackRef = useRef<HTMLDivElement | null>(null);
   const listScrollTopRef = useRef(0);
@@ -214,6 +216,37 @@ export function CheckPhoneAssetsPage({ character, onBack }: CheckPhoneAssetsPage
     setDebugRawOutput(null);
     setLoaded(true);
     setConfirmClearOpen(false);
+  }
+
+  async function handleTransferToSelf() {
+    const amount = Number.parseFloat(transferAmount);
+    if (!snapshot || !activeAccount || !Number.isFinite(amount) || amount <= 0) return;
+    const now = getNow();
+    const amountText = String(amount);
+    const newActivity: CheckPhoneAssetActivity = {
+      id: `act_${Date.now()}`,
+      title: "转账",
+      amount: `-¥${amountText}`,
+      category: "转账",
+      createdAt: now.toISOString(),
+      accountId: activeAccount.id,
+      detail: `转给「你」（用户冒充操作）`,
+    };
+    const nextPayload: CheckPhoneAssetsPayload = {
+      ...snapshot.payload,
+      activities: [newActivity, ...(snapshot.payload.activities ?? [])],
+    };
+    const nextSnapshot: CheckPhoneSnapshot<CheckPhoneAssetsPayload> = {
+      ...snapshot,
+      updatedAt: now.toISOString(),
+      summary: formatSnapshotSummary(nextPayload),
+      payload: nextPayload,
+    };
+    await savePhoneSnapshot(nextSnapshot, { recordPeek: false });
+    recordCheckPhoneUserAction(character.id, "assets", `{{user}}冒充{{char}}从${activeAccount.title}给自己转了 ¥${amountText}`);
+    setSnapshot(nextSnapshot);
+    setTransferAmount("");
+    setTransferOpen(false);
   }
 
   const payload = snapshot?.payload ?? null;
@@ -482,7 +515,7 @@ export function CheckPhoneAssetsPage({ character, onBack }: CheckPhoneAssetsPage
                 </div>
                 
                 <div className="cp-ledger-quick-actions">
-                  <button className="cp-ledger-btn">
+                  <button className="cp-ledger-btn" onClick={() => setTransferOpen((open) => !open)}>
                     <div className="cp-ledger-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M7 7h.01"/><path d="M17 7h.01"/><path d="M7 17h.01"/><path d="M17 17h.01"/><path d="M7 12h10"/><path d="M12 7v10"/></svg></div>
                     <span>收付款</span>
                   </button>
@@ -499,6 +532,26 @@ export function CheckPhoneAssetsPage({ character, onBack }: CheckPhoneAssetsPage
                     <span>管理</span>
                   </button>
                 </div>
+                {transferOpen && (
+                  <div className="cp-assets-transfer-panel">
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      value={transferAmount}
+                      onChange={(event) => setTransferAmount(event.target.value)}
+                      placeholder="转账金额"
+                      className="cp-assets-transfer-input"
+                    />
+                    <button
+                      type="button"
+                      className="cp-assets-transfer-btn"
+                      onClick={handleTransferToSelf}
+                      disabled={!Number.isFinite(Number.parseFloat(transferAmount)) || Number.parseFloat(transferAmount) <= 0}
+                    >
+                      冒充 TA 转给自己
+                    </button>
+                  </div>
+                )}
               </section>
             )}
 

@@ -138,6 +138,7 @@ import { parseAIResponse } from "@/lib/rich-message-parser";
 import { requestBackgroundChatReply, scheduleFollowUp } from "@/lib/follow-up-service";
 import { startCall } from "@/lib/call-store";
 import { GlobalCallOverlay } from "@/components/chat/global-call-overlay";
+import { GlobalCheckPhoneOverlay } from "@/components/checkphone/global-checkphone-overlay";
 import { CHAT_MESSAGE_NOTICE_EVENT, CHAT_OPEN_SESSION_EVENT, type ChatMessageNoticeDetail } from "@/lib/chat-notification-events";
 import { startIncomingCallVibration } from "@/lib/call-vibration";
 import { installChatSoundListener, playChatSoundOnce, setMiniChatSoundSessionId, startChatSoundLoop } from "@/lib/chat-sound";
@@ -4492,6 +4493,9 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
 
               {/* 全局通话 overlay：语音/视频/群聊通话挂在这里，退出聊天 App 后仍常驻 */}
               <GlobalCallOverlay />
+
+              {/* 全局查手机 overlay：查手机悬浮窗挂在这里，聊天中可缩小为悬浮球常驻 */}
+              <GlobalCheckPhoneOverlay />
 
               {/* Mini chat window — persists across music pages */}
               <MiniAppWindow

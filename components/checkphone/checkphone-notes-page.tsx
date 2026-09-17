@@ -3,19 +3,21 @@ import { getNow } from "@/lib/virtual-time";
 
 import { useEffect, useMemo, useState } from "react";
 import { useCheckPhoneRefresh } from "@/lib/checkphone-refresh-tracker";
-import { ChevronLeft, RefreshCw, Trash2 } from "lucide-react";
+import { ChevronLeft, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { CheckPhoneBilingualText } from "@/components/checkphone/checkphone-bilingual-text";
 import { CheckPhoneDebugErrorCard } from "@/components/checkphone/checkphone-debug-error-card";
 import { ConfirmDialog } from "@/components/ui";
 import type { Character } from "@/lib/character-types";
 import type {
+  CheckPhoneNoteCard,
   CheckPhoneNotesPayload,
   CheckPhoneSnapshot,
 } from "@/lib/checkphone-config";
-import { generateCheckPhoneNotes } from "@/lib/checkphone-engine";
+import { formatSnapshotSummary, generateCheckPhoneNotes } from "@/lib/checkphone-engine";
 import {
   clearPhoneSnapshot,
   loadPhoneSnapshot,
+  recordCheckPhoneUserAction,
   savePhoneSnapshot,
 } from "@/lib/checkphone-storage";
 
@@ -35,6 +37,9 @@ export function CheckPhoneNotesPage({
   const [error, setError] = useState<string | null>(null);
   const [debugRawOutput, setDebugRawOutput] = useState<string | null>(null);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [noteTitle, setNoteTitle] = useState("");
+  const [noteBody, setNoteBody] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -101,6 +106,34 @@ export function CheckPhoneNotesPage({
     setConfirmClearOpen(false);
   }
 
+  async function handleAddNote() {
+    if (!snapshot || (!noteTitle.trim() && !noteBody.trim())) return;
+    const now = getNow();
+    const newNote: CheckPhoneNoteCard = {
+      id: `note_${Date.now()}`,
+      title: noteTitle.trim() || "无标题",
+      preview: noteBody.trim().slice(0, 60) || "",
+      body: noteBody.trim(),
+      updatedLabel: "刚刚",
+    };
+    const nextPayload: CheckPhoneNotesPayload = {
+      ...snapshot.payload,
+      notes: [newNote, ...(snapshot.payload.notes ?? [])],
+    };
+    const nextSnapshot: CheckPhoneSnapshot<CheckPhoneNotesPayload> = {
+      ...snapshot,
+      updatedAt: now.toISOString(),
+      summary: formatSnapshotSummary(nextPayload),
+      payload: nextPayload,
+    };
+    await savePhoneSnapshot(nextSnapshot, { recordPeek: false });
+    recordCheckPhoneUserAction(character.id, "notes", `{{user}}冒充{{char}}在备忘录里写了一条：${newNote.title}`);
+    setSnapshot(nextSnapshot);
+    setNoteTitle("");
+    setNoteBody("");
+    setComposerOpen(false);
+  }
+
   const payload = snapshot?.payload ?? null;
   const notes = useMemo(() => payload?.notes ?? [], [payload]);
 
@@ -148,6 +181,28 @@ export function CheckPhoneNotesPage({
           </button>
 
           <div style={{ display: "flex", gap: "10px" }}>
+            <button
+              type="button"
+              onClick={() => setComposerOpen((open) => !open)}
+              disabled={loading || !snapshot}
+              aria-label="写备忘录"
+              title="写备忘录"
+              style={{
+                background: composerOpen ? "#111" : "#fff",
+                color: composerOpen ? "#fff" : "#111",
+                border: "none",
+                width: "38px",
+                height: "38px",
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 0,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
+              }}
+            >
+              <Plus size={18} strokeWidth={2.5} />
+            </button>
             <button
               type="button"
               onClick={handleRefresh}
@@ -239,6 +294,80 @@ export function CheckPhoneNotesPage({
             PRIVATE FRAGMENTS
           </div>
         </div>
+
+        {composerOpen && (
+          <div
+            style={{
+              marginBottom: "20px",
+              background: "#fff",
+              padding: "16px",
+              borderRadius: "16px",
+              border: "1px dashed #e5dfc0",
+              display: "flex",
+              flexDirection: "column",
+              gap: "10px",
+            }}
+          >
+            <input
+              value={noteTitle}
+              onChange={(event) => setNoteTitle(event.target.value)}
+              placeholder="标题（可选）"
+              style={{
+                border: "1px solid #eee",
+                borderRadius: "8px",
+                padding: "10px 12px",
+                fontSize: "calc(14px*var(--app-text-scale,1))",
+                outline: "none",
+              }}
+            />
+            <textarea
+              value={noteBody}
+              onChange={(event) => setNoteBody(event.target.value)}
+              placeholder="以 TA 的口吻写点内容……"
+              rows={3}
+              style={{
+                border: "1px solid #eee",
+                borderRadius: "8px",
+                padding: "10px 12px",
+                fontSize: "calc(13px*var(--app-text-scale,1))",
+                outline: "none",
+                resize: "vertical",
+              }}
+            />
+            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => { setComposerOpen(false); setNoteTitle(""); setNoteBody(""); }}
+                style={{
+                  background: "#f2f2f2",
+                  color: "#666",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "8px 14px",
+                  fontSize: "calc(13px*var(--app-text-scale,1))",
+                }}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleAddNote}
+                disabled={!noteTitle.trim() && !noteBody.trim()}
+                style={{
+                  background: "#111",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "8px 14px",
+                  fontSize: "calc(13px*var(--app-text-scale,1))",
+                  opacity: (!noteTitle.trim() && !noteBody.trim()) ? 0.4 : 1,
+                }}
+              >
+                冒充 TA 写备忘录
+              </button>
+            </div>
+          </div>
+        )}
 
         {!loaded && (
           <div
