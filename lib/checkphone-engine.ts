@@ -798,31 +798,46 @@ export function formatSnapshotSummary(payload: unknown): string {
           typeof stats.savedCount === "number" ? `收藏 ${stats.savedCount}` : "",
         ].filter(Boolean).join(" / ")
       : "";
-    const viewedSummary = Array.isArray(record.recentlyViewed)
-      ? record.recentlyViewed
-          .map((item) => {
-            if (!item || typeof item !== "object") return "";
-            const product = item as Record<string, unknown>;
-            const title = typeof product.title === "string" ? product.title.trim() : "";
-            const priceLabel = typeof product.priceLabel === "string" ? product.priceLabel.trim() : "";
-            return [title, priceLabel].filter(Boolean).join("：");
-          })
-          .filter(Boolean)
-          .slice(0, 3)
-      : [];
-    const orderSummary = Array.isArray(record.orders)
-      ? record.orders
-          .map((item) => {
-            if (!item || typeof item !== "object") return "";
-            const order = item as Record<string, unknown>;
-            const summary = typeof order.summary === "string" ? order.summary.trim() : "";
-            const statusLabel = typeof order.statusLabel === "string" ? order.statusLabel.trim() : "";
-            return [summary, statusLabel].filter(Boolean).join(" · ");
-          })
-          .filter(Boolean)
-          .slice(0, 3)
-      : [];
-    return [statsBits, ...viewedSummary, ...orderSummary].filter(Boolean).join("\n");
+    const productLine = (item: Record<string, unknown>, withQty: boolean): string => {
+      const title = typeof item.title === "string" ? item.title.trim() : "";
+      const priceLabel = typeof item.priceLabel === "string" ? item.priceLabel.trim() : "";
+      const quantityLabel = withQty && typeof item.quantityLabel === "string" ? item.quantityLabel.trim() : "";
+      const qty = quantityLabel.replace(/[^0-9]/g, "");
+      return [title, qty ? `×${qty}` : "", priceLabel].filter(Boolean).join(" ");
+    };
+    const viewedSummary = (Array.isArray(record.recentlyViewed) ? record.recentlyViewed : [])
+      .map((item) => (item && typeof item === "object" ? productLine(item as Record<string, unknown>, false) : ""))
+      .filter(Boolean)
+      .slice(0, 3);
+    const savedSummary = (Array.isArray(record.savedItems) ? record.savedItems : [])
+      .map((item) => (item && typeof item === "object" ? productLine(item as Record<string, unknown>, false) : ""))
+      .filter(Boolean)
+      .slice(0, 4);
+    const cartSummary = (Array.isArray(record.cartItems) ? record.cartItems : [])
+      .map((item) => (item && typeof item === "object" ? productLine(item as Record<string, unknown>, true) : ""))
+      .filter(Boolean)
+      .slice(0, 4);
+    const orderSummary = (Array.isArray(record.orders) ? record.orders : [])
+      .map((item) => {
+        if (!item || typeof item !== "object") return "";
+        const order = item as Record<string, unknown>;
+        const statusLabel = typeof order.statusLabel === "string" ? order.statusLabel.trim() : "";
+        const items = Array.isArray(order.items) ? order.items : [];
+        const itemBits = items
+          .map((it) => (it && typeof it === "object" ? productLine(it as Record<string, unknown>, true) : ""))
+          .filter(Boolean);
+        const summary = typeof order.summary === "string" ? order.summary.trim() : "";
+        const totalLabel = typeof order.totalLabel === "string" ? order.totalLabel.trim() : "";
+        const body = itemBits.length ? itemBits.join("、") : [summary, totalLabel].filter(Boolean).join(" ");
+        return statusLabel ? `${body}（${statusLabel}）` : body;
+      })
+      .filter(Boolean)
+      .slice(0, 3);
+    const viewedBits = viewedSummary.length ? `最近浏览：${viewedSummary.join("、")}` : "";
+    const cartBits = cartSummary.length ? `购物车：${cartSummary.join("、")}` : "";
+    const savedBits = savedSummary.length ? `收藏：${savedSummary.join("、")}` : "";
+    const orderBits = orderSummary.length ? `订单：${orderSummary.join("、")}` : "";
+    return [statsBits, viewedBits, cartBits, savedBits, orderBits].filter(Boolean).join("\n");
   }
   if (
     record.profile &&
