@@ -701,27 +701,76 @@ export function formatSnapshotSummary(payload: unknown): string {
     Array.isArray(record.momentsFeed) &&
     Array.isArray(record.contacts)
   ) {
-    const conversationSummary = record.conversations
+    const cleanText = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
+
+    const conversationBlocks = record.conversations
       .map((item) => {
         if (!item || typeof item !== "object") return "";
         const thread = item as Record<string, unknown>;
-        const name = typeof thread.name === "string" ? thread.name.trim() : "";
-        const preview = typeof thread.preview === "string" ? thread.preview.trim() : "";
-        return [name, preview].filter(Boolean).join("：");
+        const name = cleanText(thread.name);
+        const messages = Array.isArray(thread.messages) ? thread.messages : [];
+        const lines = messages
+          .map((msg) => {
+            if (!msg || typeof msg !== "object") return "";
+            const bubble = msg as Record<string, unknown>;
+            const text = cleanText(bubble.text);
+            const sender = bubble.direction === "outgoing" ? "我" : name || "对方";
+            return text ? `${sender}：${text}` : "";
+          })
+          .filter(Boolean);
+        return lines.length ? [`[会话] ${name || "未知"}`, ...lines].join("\n") : "";
       })
-      .filter(Boolean)
-      .slice(0, 4);
-    const momentSummary = record.momentsFeed
+      .filter(Boolean);
+
+    const groupBlocks = record.groups
+      .map((item) => {
+        if (!item || typeof item !== "object") return "";
+        const group = item as Record<string, unknown>;
+        const name = cleanText(group.name);
+        const memberCountLabel = cleanText(group.memberCountLabel);
+        const messages = Array.isArray(group.messages) ? group.messages : [];
+        const lines = messages
+          .map((msg) => {
+            if (!msg || typeof msg !== "object") return "";
+            const bubble = msg as Record<string, unknown>;
+            const text = cleanText(bubble.text);
+            const authorLabel = cleanText(bubble.authorLabel);
+            const sender = authorLabel || (bubble.direction === "outgoing" ? "我" : "成员");
+            return text ? `${sender}：${text}` : "";
+          })
+          .filter(Boolean);
+        const title = memberCountLabel ? `${name}（${memberCountLabel}）` : name || "未知";
+        return lines.length ? [`[群聊] ${title}`, ...lines].join("\n") : "";
+      })
+      .filter(Boolean);
+
+    const momentLines = record.momentsFeed
       .map((item) => {
         if (!item || typeof item !== "object") return "";
         const post = item as Record<string, unknown>;
-        const authorLabel = typeof post.authorLabel === "string" ? post.authorLabel.trim() : "";
-        const body = typeof post.body === "string" ? post.body.trim() : "";
-        return [authorLabel, body].filter(Boolean).join("：");
+        const authorLabel = cleanText(post.authorLabel);
+        const body = cleanText(post.body);
+        return body ? `${authorLabel || "某人"}：${body}` : "";
       })
-      .filter(Boolean)
-      .slice(0, 3);
-    return [...conversationSummary, ...momentSummary].join("\n");
+      .filter(Boolean);
+
+    const contactLines = record.contacts
+      .map((item) => {
+        if (!item || typeof item !== "object") return "";
+        const contact = item as Record<string, unknown>;
+        const name = cleanText(contact.name);
+        const tagLabel = cleanText(contact.tagLabel);
+        const note = cleanText(contact.note);
+        return name ? [name, [tagLabel, note].filter(Boolean).join("｜")].filter(Boolean).join("：") : "";
+      })
+      .filter(Boolean);
+
+    const parts: string[] = [];
+    if (conversationBlocks.length) parts.push(conversationBlocks.join("\n"));
+    if (groupBlocks.length) parts.push(groupBlocks.join("\n"));
+    if (momentLines.length) parts.push(`[朋友圈]\n${momentLines.join("\n")}`);
+    if (contactLines.length) parts.push(`[联系人]\n${contactLines.join("\n")}`);
+    return parts.join("\n");
   }
   if (record.headline && Array.isArray(record.accounts) && Array.isArray(record.activities)) {
     const headline = record.headline && typeof record.headline === "object" ? record.headline as Record<string, unknown> : null;

@@ -46,6 +46,8 @@ import {
   recordCheckPhoneUserAction,
   savePhoneSnapshot,
 } from "@/lib/checkphone-storage";
+import { loadChatContacts, pushChatMessage } from "@/lib/chat-storage";
+import { addMomentPost } from "@/lib/moments-storage";
 import { splitBilingualText } from "@/lib/bilingual-text";
 import { resolveUserIdentity } from "@/lib/settings-storage";
 
@@ -99,6 +101,10 @@ function getInitial(name: string): string {
 
 function isRealDirectConversation(item: Pick<CheckPhoneChatConversation, "id" | "tagLabel">): boolean {
   return item.id.startsWith("real_conv_") || item.tagLabel === "真实会话";
+}
+
+function isRealGroupConversation(item: Pick<CheckPhoneChatGroup, "id">): boolean {
+  return item.id.startsWith("real_group_");
 }
 
 function parseCheckPhoneChatText(text: string): ChatTextPart[] {
@@ -839,6 +845,11 @@ export function CheckPhoneChatPage({
   function sendToConversation() {
     const text = composerText.trim();
     if (!text || !payload || !activeConversation) return;
+    // 真实会话（用户自己）→ 回写项目内聊天 App，退出查手机后能在聊天框看到这条消息
+    if (isRealDirectConversation(activeConversation)) {
+      const sessionId = activeConversation.id.slice("real_conv_".length);
+      pushChatMessage({ sessionId, role: "assistant", content: text });
+    }
     const newBubble: CheckPhoneChatBubble = {
       id: `msg_${Date.now()}`,
       text,
@@ -861,6 +872,17 @@ export function CheckPhoneChatPage({
   function sendToGroup() {
     const text = composerText.trim();
     if (!text || !payload || !activeGroup) return;
+    // 真实群聊 → 回写项目内群聊，群里出现该角色的发言
+    if (isRealGroupConversation(activeGroup)) {
+      const sessionId = activeGroup.id.slice("real_group_".length);
+      pushChatMessage({
+        sessionId,
+        role: "assistant",
+        senderCharacterId: character.id,
+        senderName: character.name,
+        content: text,
+      });
+    }
     const newBubble: CheckPhoneChatBubble = {
       id: `msg_${Date.now()}`,
       text,
@@ -883,6 +905,13 @@ export function CheckPhoneChatPage({
   function postMoment() {
     const text = momentText.trim();
     if (!text || !payload) return;
+    // 回写真实朋友圈：以角色账号发布，共同好友（所有联系人）可见
+    addMomentPost({
+      authorType: "character",
+      authorId: character.id,
+      content: text,
+      visibility: loadChatContacts().map((c) => c.characterId),
+    });
     const newMoment: CheckPhoneChatMomentItem = {
       id: `moment_${Date.now()}`,
       authorLabel: character.name,
