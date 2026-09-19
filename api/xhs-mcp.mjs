@@ -2359,9 +2359,7 @@ async function handleDiagnostics(url, env, request) {
 
 export default async function handler(request, context) {
     const env = (typeof process !== "undefined" && process.env) ? process.env : {};
-    const host = request.headers && (typeof request.headers.get === 'function' ? request.headers.get('host') : request.headers.host) || 'localhost';
-const reqUrl = request.url.startsWith('http') ? request.url : `https://${host}${request.url}`;
-const url = new URL(reqUrl);
+    const url = new URL(request.url);
 
     if (request.method === "OPTIONS") {
         return new Response(null, { status: 204, headers: CORS_HEADERS });
